@@ -3,7 +3,13 @@ import BottomNav from '@/components/BottomNav'
 import Logo from '@/components/Logo'
 import { money } from '@/lib/format'
 import { useAuth } from '@/store/AuthContext'
-import { getSettings, getWallet, listTransactions, createTopup } from '@/lib/api'
+import {
+  getSettings,
+  getWallet,
+  listTransactions,
+  createTopup,
+  uploadTopupProof,
+} from '@/lib/api'
 import type { Settings, Transaction, Wallet as WalletType } from '@/lib/types'
 
 /** محفظة قريب: الرصيد + التعبئة بتحويل بنكي ورفع إثبات + سجل المعاملات. */
@@ -18,7 +24,9 @@ export default function Wallet() {
 
   const [showTopup, setShowTopup] = useState(false)
   const [amount, setAmount] = useState('')
+  const [proof, setProof] = useState<File | null>(null)
   const [submitting, setSubmitting] = useState(false)
+  const [error, setError] = useState('')
   const [done, setDone] = useState(false)
 
   useEffect(() => {
@@ -40,12 +48,26 @@ export default function Wallet() {
   const submitTopup = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!wallet) return
+    setError('')
     setSubmitting(true)
-    // ملاحظة: رفع الإثبات إلى Supabase Storage يُضاف لاحقاً؛ هنا نرسل الطلب فقط.
-    await createTopup(wallet.id, Number(amount), null)
+
+    // ارفع إثبات التحويل (إن وُجد) إلى Storage ثم أرسل طلب التعبئة بمساره.
+    let proofPath: string | null = null
+    if (proof) {
+      const up = await uploadTopupProof(userId, proof)
+      if (up.error) {
+        setSubmitting(false)
+        return setError(`تعذّر رفع الإثبات: ${up.error}`)
+      }
+      proofPath = up.path ?? null
+    }
+
+    const { error } = await createTopup(wallet.id, Number(amount), proofPath)
     setSubmitting(false)
+    if (error) return setError(error)
     setDone(true)
     setAmount('')
+    setProof(null)
   }
 
   return (
@@ -107,8 +129,14 @@ export default function Wallet() {
                 </div>
                 <div>
                   <label className="label">إثبات التحويل</label>
-                  <input type="file" accept="image/*" className="field" />
+                  <input
+                    type="file"
+                    accept="image/*"
+                    className="field"
+                    onChange={(e) => setProof(e.target.files?.[0] ?? null)}
+                  />
                 </div>
+                {error && <p className="text-sm text-danger">{error}</p>}
                 <button className="btn-gold w-full" type="submit" disabled={submitting}>
                   {submitting ? '…' : 'إرسال للمراجعة'}
                 </button>

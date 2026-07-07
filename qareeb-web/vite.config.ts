@@ -14,4 +14,16 @@ export default defineConfig({
     port: 5173,
     host: true,
   },
+  build: {
+    rollupOptions: {
+      output: {
+        // فصل مكتبات الطرف الثالث لتقليل حجم الحزمة الرئيسية.
+        manualChunks: {
+          react: ['react', 'react-dom', 'react-router-dom'],
+          supabase: ['@supabase/supabase-js'],
+          maps: ['@react-google-maps/api'],
+        },
+      },
+    },
+  },
 })

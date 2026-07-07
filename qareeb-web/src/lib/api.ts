@@ -79,15 +79,36 @@ export async function listTransactions(walletId: string): Promise<Transaction[]>
 }
 
 // ---------- التعبئة (تحويل بنكي) ----------
+const PROOF_BUCKET = 'topup-proofs'
+
+/** يرفع إثبات التحويل إلى مجلد المستخدم ويرجّع مساره داخل الـ bucket. */
+export async function uploadTopupProof(
+  userId: string,
+  file: File,
+): Promise<{ path?: string; error?: string }> {
+  if (!isSupabaseConfigured) return { path: undefined }
+  const safeName = file.name.replace(/[^\w.\-]+/g, '_')
+  const path = `${userId}/${Date.now()}-${safeName}`
+  const { error } = await supabase.storage.from(PROOF_BUCKET).upload(path, file)
+  return error ? { error: error.message } : { path }
+}
+
+/** يُنشئ رابطاً موقّعاً مؤقتاً لعرض الإثبات (الـ bucket خاص). */
+export async function getProofUrl(path: string): Promise<string | null> {
+  if (!isSupabaseConfigured) return null
+  const { data } = await supabase.storage.from(PROOF_BUCKET).createSignedUrl(path, 3600)
+  return data?.signedUrl ?? null
+}
+
 export async function createTopup(
   walletId: string,
   amount: number,
-  proofUrl: string | null,
+  proofPath: string | null,
 ): Promise<{ error?: string }> {
   if (!isSupabaseConfigured) return {}
   const { error } = await supabase
     .from('topups')
-    .insert({ wallet_id: walletId, amount, proof_url: proofUrl, status: 'pending' })
+    .insert({ wallet_id: walletId, amount, proof_url: proofPath, status: 'pending' })
   return error ? { error: error.message } : {}
 }
 

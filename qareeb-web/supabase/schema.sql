@@ -316,3 +316,29 @@ begin
       (v_wallet, 'commission',   -v_commission,       p_ride, 'عمولة المنصة');
   end if;
 end $$;
+
+-- ============================================================
+--  التخزين: إثباتات التحويل (bucket خاص topup-proofs)
+-- ============================================================
+
+insert into storage.buckets (id, name, public)
+  values ('topup-proofs', 'topup-proofs', false)
+  on conflict (id) do nothing;
+
+-- كل مستخدم يرفع في مجلده الخاص (المسار يبدأ بمعرّفه): "<uid>/<file>"
+drop policy if exists "upload own proof" on storage.objects;
+create policy "upload own proof" on storage.objects
+  for insert to authenticated
+  with check (
+    bucket_id = 'topup-proofs'
+    and (storage.foldername(name))[1] = auth.uid()::text
+  );
+
+-- المستخدم يقرأ إثباته، والأدمن يقرأ كل الإثباتات
+drop policy if exists "read own or admin proof" on storage.objects;
+create policy "read own or admin proof" on storage.objects
+  for select to authenticated
+  using (
+    bucket_id = 'topup-proofs'
+    and ((storage.foldername(name))[1] = auth.uid()::text or public.is_admin())
+  );

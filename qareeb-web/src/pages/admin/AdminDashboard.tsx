@@ -8,6 +8,7 @@ import {
   approveTopup,
   rejectTopup,
   updateSettings,
+  getProofUrl,
   type AdminStats,
 } from '@/lib/api'
 import type { Settings, Topup } from '@/lib/types'
@@ -35,6 +36,12 @@ export default function AdminDashboard() {
       setSettings(cfg)
     })()
   }, [])
+
+  const viewProof = async (path: string) => {
+    const url = await getProofUrl(path)
+    if (url) window.open(url, '_blank', 'noopener')
+    else alert('عرض الإثبات غير متاح في وضع المعاينة')
+  }
 
   const review = async (id: string, approve: boolean) => {
     setBusyId(id)
@@ -99,14 +106,12 @@ export default function AdminDashboard() {
                     </p>
                   </div>
                   {t.proof_url && (
-                    <a
-                      href={t.proof_url}
-                      target="_blank"
-                      rel="noreferrer"
+                    <button
+                      onClick={() => viewProof(t.proof_url!)}
                       className="text-sm text-info underline"
                     >
                       الإثبات
-                    </a>
+                    </button>
                   )}
                   <button
                     onClick={() => review(t.id, true)}
