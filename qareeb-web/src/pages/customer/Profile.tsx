@@ -3,7 +3,7 @@ import BottomNav from '@/components/BottomNav'
 import { useAuth } from '@/store/AuthContext'
 
 const links = [
-  { label: 'رحلاتي السابقة', icon: '🧾' },
+  { label: 'رحلاتي السابقة', icon: '🧾', to: '/rides' },
   { label: 'العناوين المحفوظة', icon: '📍' },
   { label: 'الإشعارات', icon: '🔔' },
   { label: 'المساعدة والدعم', icon: '💬' },
@@ -42,6 +42,7 @@ export default function Profile() {
           {links.map((l) => (
             <button
               key={l.label}
+              onClick={() => l.to && navigate(l.to)}
               className="flex w-full items-center gap-3 px-4 py-3.5 text-right"
             >
               <span className="text-xl">{l.icon}</span>

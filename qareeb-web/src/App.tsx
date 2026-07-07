@@ -13,6 +13,7 @@ import Trip from '@/pages/customer/Trip'
 import Rate from '@/pages/customer/Rate'
 import Wallet from '@/pages/customer/Wallet'
 import Commute from '@/pages/customer/Commute'
+import Rides from '@/pages/customer/Rides'
 import Profile from '@/pages/customer/Profile'
 
 // السائق والأدمن
@@ -41,6 +42,7 @@ export default function App() {
           <Route path="/rate" element={guard(<Rate />)} />
           <Route path="/wallet" element={guard(<Wallet />)} />
           <Route path="/commute" element={guard(<Commute />)} />
+          <Route path="/rides" element={guard(<Rides />)} />
           <Route path="/profile" element={guard(<Profile />)} />
 
           {/* السائق */}

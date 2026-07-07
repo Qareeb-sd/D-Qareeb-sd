@@ -180,5 +180,79 @@ drop policy if exists "read settings" on public.settings;
 create policy "read settings" on public.settings
   for select using (auth.role() = 'authenticated');
 
--- ملاحظة: عمليات الأدمن (اعتماد التعبئة، تعديل العمولة، تسوية المحافظ)
--- تُنفَّذ عبر service_role من الخادم، أو تُضاف سياسات role='admin' حسب الحاجة.
+-- ============================================================
+--  صلاحيات الأدمن
+-- ============================================================
+
+-- هل المستخدم الحالي أدمن؟ (security definer لتفادي تكرار RLS)
+create or replace function public.is_admin()
+returns boolean language sql stable security definer set search_path = public as $$
+  select exists (
+    select 1 from public.users where id = auth.uid() and role = 'admin'
+  );
+$$;
+
+-- الأدمن يقرأ كل المستخدمين والمحافظ والتعبئات (للوحة التحكم)
+drop policy if exists "admin read users" on public.users;
+create policy "admin read users" on public.users
+  for select using (public.is_admin());
+
+drop policy if exists "admin read wallets" on public.wallets;
+create policy "admin read wallets" on public.wallets
+  for select using (public.is_admin());
+
+drop policy if exists "admin read topups" on public.topups;
+create policy "admin read topups" on public.topups
+  for select using (public.is_admin());
+
+-- الأدمن يعدّل الإعدادات (العمولة + الحساب البنكي)
+drop policy if exists "admin write settings" on public.settings;
+create policy "admin write settings" on public.settings
+  for update using (public.is_admin()) with check (public.is_admin());
+
+-- ============================================================
+--  اعتماد/رفض التعبئة (عمليات ذرّية عبر دوال آمنة)
+-- ============================================================
+
+-- اعتماد تعبئة: يعلّمها approved، يضيف المبلغ للمحفظة، ويسجّل معاملة — كلها معاً.
+create or replace function public.approve_topup(p_topup uuid)
+returns void language plpgsql security definer set search_path = public as $$
+declare
+  v_wallet uuid;
+  v_amount numeric;
+  v_status topup_status;
+begin
+  if not public.is_admin() then
+    raise exception 'غير مصرّح';
+  end if;
+
+  select wallet_id, amount, status
+    into v_wallet, v_amount, v_status
+    from public.topups where id = p_topup for update;
+
+  if v_wallet is null then raise exception 'التعبئة غير موجودة'; end if;
+  if v_status <> 'pending' then raise exception 'التعبئة روجعت مسبقاً'; end if;
+
+  update public.topups
+    set status = 'approved', reviewed_by = auth.uid()
+    where id = p_topup;
+
+  update public.wallets
+    set balance = balance + v_amount, updated_at = now()
+    where id = v_wallet;
+
+  insert into public.transactions (wallet_id, type, amount, note)
+    values (v_wallet, 'topup', v_amount, 'تعبئة رصيد (معتمدة)');
+end $$;
+
+-- رفض تعبئة
+create or replace function public.reject_topup(p_topup uuid)
+returns void language plpgsql security definer set search_path = public as $$
+begin
+  if not public.is_admin() then raise exception 'غير مصرّح'; end if;
+  update public.topups
+    set status = 'rejected', reviewed_by = auth.uid()
+    where id = p_topup and status = 'pending';
+end $$;
+
+-- ملاحظة: لتعيين أول أدمن:  update public.users set role = 'admin' where phone = '+249...';
