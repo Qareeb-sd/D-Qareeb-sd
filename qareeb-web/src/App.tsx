@@ -4,6 +4,7 @@ import { RideProvider } from '@/store/RideContext'
 import { DriverProvider } from '@/store/DriverContext'
 import ProtectedRoute from '@/components/ProtectedRoute'
 import AdminRoute from '@/components/AdminRoute'
+import DriverRoute from '@/components/DriverRoute'
 
 // العميل
 import Onboarding from '@/pages/customer/Onboarding'
@@ -32,6 +33,11 @@ function guard(el: React.ReactNode) {
   return <ProtectedRoute>{el}</ProtectedRoute>
 }
 
+/** يلفّ مسارات السائق بحارس دور السائق. */
+function driverGuard(el: React.ReactNode) {
+  return <DriverRoute>{el}</DriverRoute>
+}
+
 export default function App() {
   return (
     <AuthProvider>
@@ -53,11 +59,11 @@ export default function App() {
           <Route path="/rides" element={guard(<Rides />)} />
           <Route path="/profile" element={guard(<Profile />)} />
 
-          {/* السائق */}
-          <Route path="/driver" element={<DriverHome />} />
-          <Route path="/driver/trip" element={<DriverTrip />} />
-          <Route path="/driver/wallet" element={<DriverWallet />} />
-          <Route path="/driver/profile" element={<DriverProfile />} />
+          {/* السائق (محمي بدور driver) */}
+          <Route path="/driver" element={driverGuard(<DriverHome />)} />
+          <Route path="/driver/trip" element={driverGuard(<DriverTrip />)} />
+          <Route path="/driver/wallet" element={driverGuard(<DriverWallet />)} />
+          <Route path="/driver/profile" element={driverGuard(<DriverProfile />)} />
 
           {/* الأدمن (محمي بدور admin) */}
           <Route
