@@ -3,6 +3,7 @@ import { AuthProvider } from '@/store/AuthContext'
 import { RideProvider } from '@/store/RideContext'
 import { DriverProvider } from '@/store/DriverContext'
 import ProtectedRoute from '@/components/ProtectedRoute'
+import AdminRoute from '@/components/AdminRoute'
 
 // العميل
 import Onboarding from '@/pages/customer/Onboarding'
@@ -58,8 +59,15 @@ export default function App() {
           <Route path="/driver/wallet" element={<DriverWallet />} />
           <Route path="/driver/profile" element={<DriverProfile />} />
 
-          {/* الأدمن */}
-          <Route path="/admin" element={<AdminDashboard />} />
+          {/* الأدمن (محمي بدور admin) */}
+          <Route
+            path="/admin"
+            element={
+              <AdminRoute>
+                <AdminDashboard />
+              </AdminRoute>
+            }
+          />
 
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
