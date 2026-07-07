@@ -1,0 +1,27 @@
+{
+  "name": "قريب — نقل آمن في كل السودان",
+  "short_name": "قريب",
+  "description": "تطبيق نقل وتوصيل في كل السودان: قريب عادي، VIP، هايس، أمجاد، ترحيل، وركشة.",
+  "lang": "ar",
+  "dir": "rtl",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#FAF7F2",
+  "theme_color": "#1B6B3F",
+  "icons": [
+    {
+      "src": "/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}
