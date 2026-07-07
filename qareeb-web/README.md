@@ -38,6 +38,8 @@ npm run preview           # معاينة نسخة الإنتاج
 
 ## النشر على Cloudflare Pages
 
+> دليل مفصّل خطوة‑بخطوة (Supabase + Google Maps + Cloudflare): **[`DEPLOY.md`](./DEPLOY.md)**
+
 1. اربط المستودع بـ Cloudflare Pages.
 2. **Build command:** `npm run build`
 3. **Build output directory:** `dist`
