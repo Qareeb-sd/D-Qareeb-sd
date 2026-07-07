@@ -85,9 +85,25 @@ export interface Topup {
 export interface Settings {
   id: number
   commission_rate: number // 0..1 مثال 0.15
+  surge_multiplier: number // معامل التسعير الديناميكي، مثال 1.0 / 1.2 / 1.5
+  tier1_max_km: number // نهاية شريحة فتح العداد (كم) — افتراضي 2
+  tier2_max_km: number // نهاية الشريحة الحضرية (كم) — افتراضي 10
   bank_name: string | null
   bank_account_name: string | null
   bank_account_number: string | null
+  updated_at: string
+}
+
+/** تسعيرة نوع مركبة واحد — تُدار من لوحة الأدمن. */
+export interface ServicePricing {
+  service_id: string
+  name: string
+  base_fare: number // أجرة فتح العداد (تغطي حتى tier1_max_km)
+  per_km_urban: number // سعر الكيلومتر في الشريحة الحضرية (tier1..tier2)
+  per_km_far: number // سعر الكيلومتر التعويضي (> tier2)
+  per_minute: number // سعر الدقيقة
+  sort_order: number
+  active: boolean
   updated_at: string
 }
 

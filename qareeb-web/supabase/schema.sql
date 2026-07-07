@@ -105,16 +105,47 @@ create table if not exists public.topups (
 );
 create index if not exists topups_status_idx on public.topups(status);
 
--- ---------- الإعدادات (عمولة المنصة + الحساب البنكي) ----------
+-- ---------- الإعدادات (عمولة + Surge + شرائح + الحساب البنكي) ----------
 create table if not exists public.settings (
   id                  int primary key default 1 check (id = 1),  -- صف واحد
   commission_rate     numeric(4,3) not null default 0.150,       -- 0.150 = 15%
+  surge_multiplier    numeric(4,2) not null default 1.00,        -- التسعير الديناميكي
+  tier1_max_km        numeric(6,2) not null default 2,           -- نهاية فتح العداد
+  tier2_max_km        numeric(6,2) not null default 10,          -- نهاية الشريحة الحضرية
   bank_name           text,
   bank_account_name   text,
   bank_account_number text,
   updated_at          timestamptz not null default now()
 );
 insert into public.settings (id) values (1) on conflict (id) do nothing;
+-- ترقية القواعد القديمة (إن كان الصف موجوداً بدون الأعمدة الجديدة)
+alter table public.settings add column if not exists surge_multiplier numeric(4,2) not null default 1.00;
+alter table public.settings add column if not exists tier1_max_km numeric(6,2) not null default 2;
+alter table public.settings add column if not exists tier2_max_km numeric(6,2) not null default 10;
+
+-- ---------- تسعير المركبات (تسعيرة مستقلة لكل نوع) ----------
+create table if not exists public.service_pricing (
+  service_id   text primary key,        -- ladies / amjad / hiace / rickshaw / open / tow
+  name         text not null,
+  base_fare    numeric(12,2) not null default 0,   -- فتح العداد (يغطي أول tier1_max_km)
+  per_km_urban numeric(12,2) not null default 0,   -- الشريحة الحضرية (tier1..tier2)
+  per_km_far   numeric(12,2) not null default 0,   -- الشريحة التعويضية (> tier2)
+  per_minute   numeric(12,2) not null default 0,   -- سعر الدقيقة
+  sort_order   int not null default 0,
+  active       boolean not null default true,
+  updated_at   timestamptz not null default now()
+);
+
+-- بذور التسعير الابتدائية (بالجنيه السوداني — تُعدَّل من لوحة الأدمن)
+insert into public.service_pricing
+  (service_id, name, base_fare, per_km_urban, per_km_far, per_minute, sort_order) values
+  ('ladies',   'قريب نسائي',   900,  180, 220, 25, 1),
+  ('amjad',    'أمجاد',        800,  160, 200, 22, 2),
+  ('hiace',    'هايس',        1200,  200, 240, 30, 3),
+  ('rickshaw', 'ركشة',         300,   90, 110, 12, 4),
+  ('open',     'مشوار مفتوح',  700,  150, 190, 20, 5),
+  ('tow',      'سحاب',        2500,  300, 350, 40, 6)
+on conflict (service_id) do nothing;
 
 -- ============================================================
 --  دالة: إنشاء محفظة تلقائياً لكل مستخدم جديد
@@ -142,6 +173,12 @@ alter table public.wallets      enable row level security;
 alter table public.transactions enable row level security;
 alter table public.topups       enable row level security;
 alter table public.settings     enable row level security;
+alter table public.service_pricing enable row level security;
+
+-- التسعير: قراءة للجميع (المصادَق عليهم)
+drop policy if exists "read pricing" on public.service_pricing;
+create policy "read pricing" on public.service_pricing
+  for select using (auth.role() = 'authenticated');
 
 -- المستخدم يقرأ/يعدّل بياناته
 drop policy if exists "own profile" on public.users;
@@ -205,10 +242,15 @@ drop policy if exists "admin read topups" on public.topups;
 create policy "admin read topups" on public.topups
   for select using (public.is_admin());
 
--- الأدمن يعدّل الإعدادات (العمولة + الحساب البنكي)
+-- الأدمن يعدّل الإعدادات (العمولة + Surge + الشرائح + الحساب البنكي)
 drop policy if exists "admin write settings" on public.settings;
 create policy "admin write settings" on public.settings
   for update using (public.is_admin()) with check (public.is_admin());
+
+-- الأدمن يعدّل تسعير المركبات
+drop policy if exists "admin write pricing" on public.service_pricing;
+create policy "admin write pricing" on public.service_pricing
+  for all using (public.is_admin()) with check (public.is_admin());
 
 -- ============================================================
 --  اعتماد/رفض التعبئة (عمليات ذرّية عبر دوال آمنة)

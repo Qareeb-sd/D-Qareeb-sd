@@ -18,7 +18,7 @@ export default function Trip() {
   const navigate = useNavigate()
   const { serviceId, dropoff, payment, setPayment, fare } = useRide()
   const service = serviceId ? getService(serviceId) : undefined
-  const total = fare ?? (service ? service.baseFare + service.perKm * 6 : 0)
+  const total = fare ?? 0
 
   return (
     <Screen title="رحلتك الآن" bare>

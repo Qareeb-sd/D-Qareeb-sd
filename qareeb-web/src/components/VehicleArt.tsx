@@ -53,23 +53,36 @@ function shape(art: Shape, tint: string) {
     case 'sedan':
       return <Sedan tint={tint} />
 
-    case 'luxury':
-      return (
-        <>
-          <Sedan tint={tint} luxury />
-          {/* خط كروم للفخامة */}
-          <rect x="16" y="47" width="96" height="2" rx="1" fill={GOLD} opacity="0.8" />
-        </>
-      )
-
-    case 'taxi':
+    case 'ladies':
       return (
         <>
           <Sedan tint={tint} />
-          {/* لوحة التاكسي على السقف */}
-          <rect x="60" y="15" width="16" height="7" rx="2" fill={GOLD} stroke={STROKE} />
-          {/* شريط جانبي */}
-          <rect x="14" y="49" width="100" height="3" fill={GOLD} opacity="0.7" />
+          {/* قلب صغير يميّز الخدمة النسائية */}
+          <path
+            d="M64 44c-1-1.6-3.6-1.4-3.6.7 0 1.4 2.2 2.9 3.6 3.8 1.4-.9 3.6-2.4 3.6-3.8 0-2.1-2.6-2.3-3.6-.7Z"
+            fill="#FFFFFF"
+          />
+        </>
+      )
+
+    case 'tow':
+      return (
+        <>
+          {/* منصّة السطحة (flatbed) */}
+          <path d="M50 44 L112 44 L116 48 L116 52 L50 52 Z" fill={tint} stroke={STROKE} />
+          <rect x="50" y="41" width="4" height="11" fill={STROKE} opacity="0.6" />
+          {/* المقصورة الأمامية */}
+          <path
+            d="M12 24 Q12 20 18 20 L40 20 Q46 20 48 26 L50 44 L14 44 Q12 44 12 40 Z"
+            fill={tint}
+            stroke={STROKE}
+          />
+          {/* زجاج المقصورة */}
+          <path d="M18 26 L38 26 Q42 26 44 33 L44 38 L18 38 Z" fill={GLASS} />
+          {/* ضوء علوي (إنقاذ) */}
+          <rect x="24" y="16" width="12" height="4" rx="1.5" fill={GOLD} />
+          <rect x="108" y="46" width="6" height="4" rx="2" fill="#F4D35E" />
+          <Wheels xs={[30, 92, 106]} />
         </>
       )
 

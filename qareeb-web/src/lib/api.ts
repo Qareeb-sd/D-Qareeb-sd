@@ -1,5 +1,13 @@
 import { supabase, isSupabaseConfigured } from './supabase'
-import type { Settings, Wallet, Transaction, Ride, Topup, Driver } from './types'
+import type {
+  Settings,
+  Wallet,
+  Transaction,
+  Ride,
+  Topup,
+  Driver,
+  ServicePricing,
+} from './types'
 
 /**
  * طبقة الوصول للبيانات.
@@ -11,6 +19,9 @@ import type { Settings, Wallet, Transaction, Ride, Topup, Driver } from './types
 const demoSettings: Settings = {
   id: 1,
   commission_rate: 0.15,
+  surge_multiplier: 1.0,
+  tier1_max_km: 2,
+  tier2_max_km: 10,
   bank_name: 'بنك الخرطوم',
   bank_account_name: 'شركة قريب للنقل',
   bank_account_number: '1234567890123',
@@ -21,6 +32,47 @@ export async function getSettings(): Promise<Settings> {
   if (!isSupabaseConfigured) return demoSettings
   const { data, error } = await supabase.from('settings').select('*').eq('id', 1).single()
   return error || !data ? demoSettings : data
+}
+
+// ---------- تسعير المركبات ----------
+const demoPricing: ServicePricing[] = [
+  { service_id: 'ladies', name: 'قريب نسائي', base_fare: 900, per_km_urban: 180, per_km_far: 220, per_minute: 25, sort_order: 1, active: true, updated_at: '' },
+  { service_id: 'amjad', name: 'أمجاد', base_fare: 800, per_km_urban: 160, per_km_far: 200, per_minute: 22, sort_order: 2, active: true, updated_at: '' },
+  { service_id: 'hiace', name: 'هايس', base_fare: 1200, per_km_urban: 200, per_km_far: 240, per_minute: 30, sort_order: 3, active: true, updated_at: '' },
+  { service_id: 'rickshaw', name: 'ركشة', base_fare: 300, per_km_urban: 90, per_km_far: 110, per_minute: 12, sort_order: 4, active: true, updated_at: '' },
+  { service_id: 'open', name: 'مشوار مفتوح', base_fare: 700, per_km_urban: 150, per_km_far: 190, per_minute: 20, sort_order: 5, active: true, updated_at: '' },
+  { service_id: 'tow', name: 'سحاب', base_fare: 2500, per_km_urban: 300, per_km_far: 350, per_minute: 40, sort_order: 6, active: true, updated_at: '' },
+]
+
+export async function listServicePricing(): Promise<ServicePricing[]> {
+  if (!isSupabaseConfigured) return demoPricing
+  const { data } = await supabase
+    .from('service_pricing')
+    .select('*')
+    .order('sort_order', { ascending: true })
+  return data ?? []
+}
+
+export async function getServicePricing(serviceId: string): Promise<ServicePricing | null> {
+  if (!isSupabaseConfigured) return demoPricing.find((p) => p.service_id === serviceId) ?? null
+  const { data } = await supabase
+    .from('service_pricing')
+    .select('*')
+    .eq('service_id', serviceId)
+    .single()
+  return data ?? null
+}
+
+export async function updateServicePricing(
+  serviceId: string,
+  patch: Partial<ServicePricing>,
+): Promise<{ error?: string }> {
+  if (!isSupabaseConfigured) return {}
+  const { error } = await supabase
+    .from('service_pricing')
+    .update({ ...patch, updated_at: new Date().toISOString() })
+    .eq('service_id', serviceId)
+  return error ? { error: error.message } : {}
 }
 
 // ---------- المحفظة ----------
@@ -129,7 +181,7 @@ const demoRides: Ride[] = [
     id: 'r1',
     customer_id: 'demo-user',
     driver_id: 'd1',
-    service_id: 'standard',
+    service_id: 'amjad',
     status: 'completed',
     pickup_lat: 15.5,
     pickup_lng: 32.55,
@@ -146,7 +198,7 @@ const demoRides: Ride[] = [
     id: 'r2',
     customer_id: 'demo-user',
     driver_id: 'd2',
-    service_id: 'vip',
+    service_id: 'ladies',
     status: 'completed',
     pickup_lat: 15.5,
     pickup_lng: 32.55,
@@ -271,7 +323,7 @@ export async function updateSettings(
 const demoDriver: Driver = {
   id: 'demo-driver',
   user_id: 'demo-user',
-  vehicle_type: 'standard',
+  vehicle_type: 'amjad',
   plate_number: 'خ ط م ١٢٣٤',
   is_online: false,
   rating: 4.9,
@@ -300,7 +352,7 @@ const demoAvailableRide: Ride = {
   id: 'open-1',
   customer_id: 'c-88',
   driver_id: null,
-  service_id: 'standard',
+  service_id: 'open',
   status: 'searching',
   pickup_lat: 15.5,
   pickup_lng: 32.55,

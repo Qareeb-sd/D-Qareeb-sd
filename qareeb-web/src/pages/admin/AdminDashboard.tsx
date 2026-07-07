@@ -9,31 +9,37 @@ import {
   rejectTopup,
   updateSettings,
   getProofUrl,
+  listServicePricing,
+  updateServicePricing,
   type AdminStats,
 } from '@/lib/api'
-import type { Settings, Topup } from '@/lib/types'
+import type { Settings, Topup, ServicePricing } from '@/lib/types'
 
 /**
- * لوحة الأدمن: إحصاءات + اعتماد/رفض طلبات التعبئة + إعدادات (العمولة + الحساب البنكي).
- * الأمان الفعلي مفروض عبر RLS ودوال Postgres (is_admin / approve_topup / reject_topup).
+ * لوحة الأدمن: إحصاءات + اعتماد التعبئات + إعدادات المنصة (عمولة/Surge/شرائح/بنك)
+ * + تسعير كل نوع مركبة. الأمان مفروض عبر RLS ودوال Postgres.
  */
 export default function AdminDashboard() {
   const [stats, setStats] = useState<AdminStats | null>(null)
   const [topups, setTopups] = useState<Topup[]>([])
   const [settings, setSettings] = useState<Settings | null>(null)
+  const [pricing, setPricing] = useState<ServicePricing[]>([])
   const [busyId, setBusyId] = useState<string | null>(null)
   const [savedMsg, setSavedMsg] = useState('')
+  const [priceMsg, setPriceMsg] = useState('')
 
   useEffect(() => {
     void (async () => {
-      const [s, t, cfg] = await Promise.all([
+      const [s, t, cfg, pr] = await Promise.all([
         getAdminStats(),
         listPendingTopups(),
         getSettings(),
+        listServicePricing(),
       ])
       setStats(s)
       setTopups(t)
       setSettings(cfg)
+      setPricing(pr)
     })()
   }, [])
 
@@ -58,11 +64,30 @@ export default function AdminDashboard() {
     setSavedMsg('')
     const { error } = await updateSettings({
       commission_rate: settings.commission_rate,
+      surge_multiplier: settings.surge_multiplier,
+      tier1_max_km: settings.tier1_max_km,
+      tier2_max_km: settings.tier2_max_km,
       bank_name: settings.bank_name,
       bank_account_name: settings.bank_account_name,
       bank_account_number: settings.bank_account_number,
     })
     setSavedMsg(error ? `خطأ: ${error}` : 'تم حفظ الإعدادات ✓')
+  }
+
+  const setPrice = (id: string, field: keyof ServicePricing, value: number) =>
+    setPricing((cur) => cur.map((p) => (p.service_id === id ? { ...p, [field]: value } : p)))
+
+  const savePrice = async (p: ServicePricing) => {
+    setBusyId(p.service_id)
+    setPriceMsg('')
+    const { error } = await updateServicePricing(p.service_id, {
+      base_fare: p.base_fare,
+      per_km_urban: p.per_km_urban,
+      per_km_far: p.per_km_far,
+      per_minute: p.per_minute,
+    })
+    setBusyId(null)
+    setPriceMsg(error ? `خطأ: ${error}` : `تم حفظ تسعيرة «${p.name}» ✓`)
   }
 
   const commissionPct = settings ? Math.round(settings.commission_rate * 100) : 0
@@ -133,7 +158,54 @@ export default function AdminDashboard() {
           )}
         </div>
 
-        {/* الإعدادات */}
+        {/* تسعير المركبات */}
+        <div className="card p-4">
+          <p className="font-bold">تسعير المركبات</p>
+          <p className="mb-3 text-xs text-ink-muted">
+            الأجرة = فتح العداد + شرائح الكيلومتر + الدقائق، مضروبة في معامل Surge.
+          </p>
+          <div className="space-y-3">
+            {pricing.map((p) => (
+              <div key={p.service_id} className="rounded-2xl border border-hairline p-3">
+                <div className="mb-2 flex items-center justify-between">
+                  <p className="font-bold">{p.name}</p>
+                  <button
+                    onClick={() => savePrice(p)}
+                    disabled={busyId === p.service_id}
+                    className="btn-primary px-3 py-1.5 text-sm"
+                  >
+                    {busyId === p.service_id ? '…' : 'حفظ'}
+                  </button>
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  <NumField
+                    label="فتح العداد"
+                    value={p.base_fare}
+                    onChange={(v) => setPrice(p.service_id, 'base_fare', v)}
+                  />
+                  <NumField
+                    label="حضري / كم"
+                    value={p.per_km_urban}
+                    onChange={(v) => setPrice(p.service_id, 'per_km_urban', v)}
+                  />
+                  <NumField
+                    label="بعيد / كم"
+                    value={p.per_km_far}
+                    onChange={(v) => setPrice(p.service_id, 'per_km_far', v)}
+                  />
+                  <NumField
+                    label="سعر الدقيقة"
+                    value={p.per_minute}
+                    onChange={(v) => setPrice(p.service_id, 'per_minute', v)}
+                  />
+                </div>
+              </div>
+            ))}
+          </div>
+          {priceMsg && <p className="mt-3 text-sm text-green">{priceMsg}</p>}
+        </div>
+
+        {/* إعدادات المنصة */}
         {settings && (
           <form onSubmit={saveSettings} className="card space-y-4 p-4">
             <div>
@@ -152,6 +224,25 @@ export default function AdminDashboard() {
                 النسبة: <span className="font-bold text-green">{commissionPct}%</span> — تُخصم من
                 أرباح السائق تلقائياً.
               </p>
+            </div>
+
+            <div className="grid grid-cols-3 gap-2">
+              <NumField
+                label="Surge (معامل)"
+                step={0.1}
+                value={settings.surge_multiplier}
+                onChange={(v) => setSettings({ ...settings, surge_multiplier: v })}
+              />
+              <NumField
+                label="نهاية فتح العداد (كم)"
+                value={settings.tier1_max_km}
+                onChange={(v) => setSettings({ ...settings, tier1_max_km: v })}
+              />
+              <NumField
+                label="نهاية الحضري (كم)"
+                value={settings.tier2_max_km}
+                onChange={(v) => setSettings({ ...settings, tier2_max_km: v })}
+              />
             </div>
 
             <div className="space-y-2">
@@ -189,5 +280,32 @@ export default function AdminDashboard() {
         )}
       </main>
     </div>
+  )
+}
+
+function NumField({
+  label,
+  value,
+  onChange,
+  step = 1,
+}: {
+  label: string
+  value: number
+  onChange: (v: number) => void
+  step?: number
+}) {
+  return (
+    <label className="block">
+      <span className="mb-1 block text-xs text-ink-soft">{label}</span>
+      <input
+        type="number"
+        inputMode="decimal"
+        step={step}
+        min={0}
+        value={value}
+        onChange={(e) => onChange(Number(e.target.value))}
+        className="w-full rounded-xl border border-hairline bg-white px-3 py-2 text-ink outline-none focus:border-green"
+      />
+    </label>
   )
 }

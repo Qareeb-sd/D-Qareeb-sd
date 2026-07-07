@@ -12,7 +12,7 @@ export default function Rate() {
   const navigate = useNavigate()
   const { rideId, serviceId, dropoff, payment, fare, reset } = useRide()
   const service = serviceId ? getService(serviceId) : undefined
-  const total = fare ?? (service ? service.baseFare + service.perKm * 6 : 0)
+  const total = fare ?? 0
   const [stars, setStars] = useState(5)
   const [busy, setBusy] = useState(false)
 

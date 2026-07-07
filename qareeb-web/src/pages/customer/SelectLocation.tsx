@@ -4,8 +4,9 @@ import Screen from '@/components/Screen'
 import MapView from '@/components/MapView'
 import { useRide } from '@/store/RideContext'
 import { useAuth } from '@/store/AuthContext'
-import { getService } from '@/data/services'
-import { createRide } from '@/lib/api'
+import { DEFAULT_SERVICE_ID } from '@/data/services'
+import { createRide, getServicePricing, getSettings } from '@/lib/api'
+import { estimateFare, estimateRoute } from '@/lib/pricing'
 import { KHARTOUM } from '@/theme'
 
 /** تحديد موقع الوجهة على الخريطة. المؤشّر ثابت في المنتصف والخريطة تتحرك تحته. */
@@ -22,15 +23,22 @@ export default function SelectLocation() {
     const dropoff = { pos: center, address: address || 'وجهة على الخريطة' }
     setDropoff(dropoff)
 
-    // أجرة تقديرية مبدئية (تُستبدل بحساب مسافة فعلي لاحقاً).
-    const service = serviceId ? getService(serviceId) : undefined
-    const fare = service ? service.baseFare + service.perKm * 6 : 0
+    const sid = serviceId ?? DEFAULT_SERVICE_ID
+
+    // حساب الأجرة من محرّك التسعير (تسعيرة النوع + إعدادات المنصة).
+    // المسافة/الزمن تقديريان الآن (Haversine) — يُستبدلان بـ Directions API لاحقاً.
+    const [pricing, settings] = await Promise.all([getServicePricing(sid), getSettings()])
+    let fare = 0
+    if (pricing) {
+      const { distanceKm, durationMin } = estimateRoute(pickup.pos, dropoff.pos)
+      fare = estimateFare({ distanceKm, durationMin, pricing, settings }).total
+    }
     setFare(fare)
 
     // أنشئ سجل الرحلة (يُتجاهل بلا أثر في وضع المعاينة).
     const { id } = await createRide({
       customer_id: profile?.id,
-      service_id: serviceId ?? 'standard',
+      service_id: sid,
       status: 'searching',
       pickup_lat: pickup.pos.lat,
       pickup_lng: pickup.pos.lng,

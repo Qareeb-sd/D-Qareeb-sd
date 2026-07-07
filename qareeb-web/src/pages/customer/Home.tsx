@@ -44,9 +44,12 @@ export default function Home() {
               onClick={() => chooseService(s.id)}
               className="card relative flex flex-col items-center gap-2 p-4 text-center transition hover:shadow-lift"
             >
-              {s.pending && (
-                <span className="chip absolute left-2 top-2 bg-gold-soft text-gold-deep">
-                  قريباً
+              {s.femaleDriver && (
+                <span
+                  className="chip absolute left-2 top-2"
+                  style={{ backgroundColor: '#FBE4F0', color: '#B03A76' }}
+                >
+                  سائقة
                 </span>
               )}
               <VehicleImage service={s} className="h-16 w-full" />
