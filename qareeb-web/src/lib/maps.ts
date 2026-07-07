@@ -24,3 +24,30 @@ export const MAP_OPTIONS: google.maps.MapOptions = {
     { featureType: 'transit', stylers: [{ visibility: 'off' }] },
   ],
 }
+
+/**
+ * مسافة وزمن الطريق الفعليان عبر Google Directions API.
+ * يرجّع null إذا لم تُحمّل الخريطة أو فشل الطلب (فيُستخدم بديل Haversine).
+ */
+export async function fetchRoute(
+  origin: google.maps.LatLngLiteral,
+  destination: google.maps.LatLngLiteral,
+): Promise<{ distanceKm: number; durationMin: number } | null> {
+  if (typeof google === 'undefined' || !google.maps?.DirectionsService) return null
+  try {
+    const svc = new google.maps.DirectionsService()
+    const res = await svc.route({
+      origin,
+      destination,
+      travelMode: google.maps.TravelMode.DRIVING,
+    })
+    const leg = res.routes[0]?.legs[0]
+    if (!leg?.distance || !leg?.duration) return null
+    return {
+      distanceKm: leg.distance.value / 1000,
+      durationMin: leg.duration.value / 60,
+    }
+  } catch {
+    return null
+  }
+}

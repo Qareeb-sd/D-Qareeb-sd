@@ -10,3 +10,6 @@ export const money = (n: number) => `${nf.format(Math.round(n))} ج.س`
 
 /** تنسيق مسافة بالكيلومتر. */
 export const km = (n: number) => `${nf.format(Math.round(n * 10) / 10)} كم`
+
+/** تنسيق زمن بالدقائق. */
+export const mins = (n: number) => `${nf.format(Math.max(1, Math.round(n)))} دقيقة`

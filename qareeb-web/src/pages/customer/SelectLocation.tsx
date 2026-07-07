@@ -1,41 +1,115 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { useJsApiLoader } from '@react-google-maps/api'
 import Screen from '@/components/Screen'
 import MapView from '@/components/MapView'
 import { useRide } from '@/store/RideContext'
 import { useAuth } from '@/store/AuthContext'
-import { DEFAULT_SERVICE_ID } from '@/data/services'
+import { DEFAULT_SERVICE_ID, getService } from '@/data/services'
 import { createRide, getServicePricing, getSettings } from '@/lib/api'
 import { estimateFare, estimateRoute } from '@/lib/pricing'
+import {
+  fetchRoute,
+  GOOGLE_MAPS_API_KEY,
+  MAPS_LIBRARIES,
+  MAPS_LOADER_ID,
+  isMapsConfigured,
+} from '@/lib/maps'
+import { km, mins, money } from '@/lib/format'
 import { KHARTOUM } from '@/theme'
+import type { Settings, ServicePricing } from '@/lib/types'
 
-/** تحديد موقع الوجهة على الخريطة. المؤشّر ثابت في المنتصف والخريطة تتحرك تحته. */
+interface Quote {
+  distanceKm: number
+  durationMin: number
+  fare: number
+  real: boolean // true = من Directions API، false = تقدير Haversine
+}
+
+/** تحديد موقع الوجهة على الخريطة + معاينة أجرة حيّة (Directions API). */
 export default function SelectLocation() {
   const navigate = useNavigate()
   const { profile } = useAuth()
-  const { serviceId, pickup, setDropoff, setFare, setRideId } = useRide()
+  const { serviceId, pickup, setPickup, setDropoff, setFare, setRideId } = useRide()
+
+  const sid = serviceId ?? DEFAULT_SERVICE_ID
+  const service = getService(sid)
+
   const [center, setCenter] = useState<google.maps.LatLngLiteral>(pickup.pos ?? KHARTOUM)
   const [address, setAddress] = useState('')
   const [busy, setBusy] = useState(false)
+  const [pricing, setPricing] = useState<ServicePricing | null>(null)
+  const [settings, setSettings] = useState<Settings | null>(null)
+  const [quote, setQuote] = useState<Quote | null>(null)
+  const [quoting, setQuoting] = useState(false)
+
+  const { isLoaded } = useJsApiLoader({
+    id: MAPS_LOADER_ID,
+    googleMapsApiKey: GOOGLE_MAPS_API_KEY,
+    libraries: MAPS_LIBRARIES,
+  })
+
+  // موقع المستخدم الحالي كنقطة انطلاق (مرة واحدة).
+  const gotLocation = useRef(false)
+  useEffect(() => {
+    if (gotLocation.current || !navigator.geolocation) return
+    gotLocation.current = true
+    navigator.geolocation.getCurrentPosition(
+      (p) =>
+        setPickup({
+          pos: { lat: p.coords.latitude, lng: p.coords.longitude },
+          address: 'موقعي الحالي',
+        }),
+      () => {},
+      { enableHighAccuracy: true, timeout: 8000 },
+    )
+  }, [setPickup])
+
+  // تحميل تسعيرة النوع + إعدادات المنصة.
+  useEffect(() => {
+    void Promise.all([getServicePricing(sid), getSettings()]).then(([p, s]) => {
+      setPricing(p)
+      setSettings(s)
+    })
+  }, [sid])
+
+  // معاينة الأجرة الحيّة عند تحريك الخريطة (Directions API مع بديل Haversine).
+  useEffect(() => {
+    if (!pricing || !settings) return
+    let alive = true
+    setQuoting(true)
+    const t = setTimeout(async () => {
+      const real = isLoaded && isMapsConfigured ? await fetchRoute(pickup.pos, center) : null
+      const route = real ?? estimateRoute(pickup.pos, center)
+      if (!alive) return
+      const fare = estimateFare({
+        distanceKm: route.distanceKm,
+        durationMin: route.durationMin,
+        pricing,
+        settings,
+      }).total
+      setQuote({ ...route, fare, real: Boolean(real) })
+      setQuoting(false)
+    }, 500)
+    return () => {
+      alive = false
+      clearTimeout(t)
+    }
+  }, [center, pickup.pos, pricing, settings, isLoaded])
 
   const confirm = async () => {
     setBusy(true)
     const dropoff = { pos: center, address: address || 'وجهة على الخريطة' }
     setDropoff(dropoff)
 
-    const sid = serviceId ?? DEFAULT_SERVICE_ID
-
-    // حساب الأجرة من محرّك التسعير (تسعيرة النوع + إعدادات المنصة).
-    // المسافة/الزمن تقديريان الآن (Haversine) — يُستبدلان بـ Directions API لاحقاً.
-    const [pricing, settings] = await Promise.all([getServicePricing(sid), getSettings()])
-    let fare = 0
-    if (pricing) {
-      const { distanceKm, durationMin } = estimateRoute(pickup.pos, dropoff.pos)
-      fare = estimateFare({ distanceKm, durationMin, pricing, settings }).total
+    // استخدم الأجرة المعروضة، وإلا احسبها الآن.
+    let fare = quote?.fare ?? 0
+    if (!quote && pricing && settings) {
+      const route = (await fetchRoute(pickup.pos, center)) ?? estimateRoute(pickup.pos, center)
+      fare = estimateFare({ ...route, pricing, settings }).total
     }
     setFare(fare)
 
-    // أنشئ سجل الرحلة (يُتجاهل بلا أثر في وضع المعاينة).
     const { id } = await createRide({
       customer_id: profile?.id,
       service_id: sid,
@@ -66,6 +140,24 @@ export default function SelectLocation() {
         </div>
 
         <div className="space-y-3 border-t border-hairline bg-bg p-4">
+          {/* معاينة الأجرة */}
+          <div className="card flex items-center justify-between p-3">
+            <div className="text-sm">
+              <p className="font-bold">{service?.name ?? 'الخدمة'}</p>
+              {quote ? (
+                <p className="text-ink-soft">
+                  {km(quote.distanceKm)} · {mins(quote.durationMin)}
+                  {!quote.real && ' · تقديري'}
+                </p>
+              ) : (
+                <p className="text-ink-muted">{quoting ? 'نحسب الأجرة…' : '—'}</p>
+              )}
+            </div>
+            <p className="text-lg font-extrabold text-green">
+              {quote ? money(quote.fare) : quoting ? '…' : '—'}
+            </p>
+          </div>
+
           <input
             className="field"
             value={address}
