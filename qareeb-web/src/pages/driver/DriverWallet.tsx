@@ -43,7 +43,7 @@ export default function DriverWallet() {
         <h1 className="text-lg font-bold">محفظتي</h1>
       </header>
 
-      <main className="flex-1 px-4 pb-4">
+      <main className="flex-1 px-4 pb-24">
         <div className="rounded-3xl bg-gradient-to-br from-green to-green-dark p-6 text-white shadow-lift">
           <p className="text-sm text-white/80">رصيدك الحالي</p>
           <p className="mt-1 text-3xl font-extrabold">

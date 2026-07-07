@@ -25,7 +25,7 @@ export default function Home() {
         </div>
       </header>
 
-      <main className="flex-1 px-4 pb-4">
+      <main className="flex-1 px-4 pb-24">
         <button
           onClick={() => navigate('/select-location')}
           className="card flex w-full items-center gap-3 p-4 text-right"

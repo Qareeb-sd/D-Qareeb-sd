@@ -77,7 +77,7 @@ export default function Wallet() {
         <h1 className="text-lg font-bold">محفظة قريب</h1>
       </header>
 
-      <main className="flex-1 px-4 pb-4">
+      <main className="flex-1 px-4 pb-24">
         {/* بطاقة الرصيد */}
         <div className="rounded-3xl bg-gradient-to-br from-green to-green-dark p-6 text-white shadow-lift">
           <p className="text-sm text-white/80">رصيدك الحالي</p>

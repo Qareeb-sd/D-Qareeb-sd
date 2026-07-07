@@ -24,7 +24,7 @@ export default function Commute() {
         <h1 className="text-lg font-bold">ترحيل يومي</h1>
       </header>
 
-      <main className="flex-1 space-y-4 px-4 pb-4">
+      <main className="flex-1 space-y-4 px-4 pb-24">
         <div className="card space-y-3 p-4">
           <div>
             <label className="label">من</label>

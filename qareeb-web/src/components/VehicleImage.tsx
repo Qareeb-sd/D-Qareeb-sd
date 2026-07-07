@@ -1,9 +1,10 @@
 import { useState } from 'react'
 import type { Service } from '@/data/services'
+import VehicleArt from './VehicleArt'
 
 /**
- * صورة المركبة مع بديل رسومي عند غياب الملف الحقيقي.
- * (صور المركبات الحقيقية تُوضع في public/vehicles/.)
+ * صورة المركبة: تعرض الصورة الفوتوغرافية الحقيقية من public/vehicles/ إن وُجدت،
+ * وإلا تعرض رسم SVG مميّزاً لنوع المركبة (بديل أنيق بدل صورة عامّة).
  */
 export default function VehicleImage({
   service,
@@ -16,11 +17,11 @@ export default function VehicleImage({
 
   if (failed) {
     return (
-      <div
-        className={`grid place-items-center rounded-xl bg-green-mint text-green ${className ?? ''}`}
-      >
-        <span className="text-2xl">🚗</span>
-      </div>
+      <VehicleArt
+        art={service.art}
+        tint={service.tint}
+        className={`h-full w-full ${className ?? ''}`}
+      />
     )
   }
 

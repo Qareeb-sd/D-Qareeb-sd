@@ -81,7 +81,7 @@ export default function DriverHome() {
         </button>
       </header>
 
-      <main className="flex-1 px-4 py-4">
+      <main className="flex-1 px-4 pt-4 pb-24">
         {!online ? (
           <div className="flex flex-col items-center gap-3 py-24 text-center text-ink-soft">
             <div className="text-5xl">🚗💤</div>

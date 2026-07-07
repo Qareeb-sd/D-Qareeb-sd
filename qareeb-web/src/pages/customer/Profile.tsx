@@ -25,7 +25,7 @@ export default function Profile() {
         <h1 className="text-lg font-bold">حسابي</h1>
       </header>
 
-      <main className="flex-1 px-4 pb-4">
+      <main className="flex-1 px-4 pb-24">
         <div className="card flex items-center gap-4 p-4">
           <div className="grid h-14 w-14 place-items-center rounded-full bg-green-soft text-2xl">
             🧑🏽
