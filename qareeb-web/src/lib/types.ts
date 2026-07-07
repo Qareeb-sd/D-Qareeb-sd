@@ -107,6 +107,37 @@ export interface ServicePricing {
   updated_at: string
 }
 
+// ---------- ترحيل (المشاركة اليومية) ----------
+export type CommuteStatus = 'forming' | 'dispatched' | 'active' | 'cancelled'
+
+/** طلب ترحيل: وجهة مشتركة (العمل) + وقت + أيام، ينضمّ إليه أعضاء كلٌّ بمنزله. */
+export interface CommuteOrder {
+  id: string
+  organizer_id: string | null
+  service_id: string
+  dest_lat: number
+  dest_lng: number
+  dest_address: string | null // مكان العمل
+  scheduled_time: string // "HH:MM"
+  days: string[]
+  round_trip: boolean
+  invite_code: string
+  status: CommuteStatus
+  created_at: string
+}
+
+/** عضو في طلب ترحيل — نقطة انطلاقه (منزله). */
+export interface CommuteMember {
+  id: string
+  order_id: string
+  name: string
+  home_lat: number
+  home_lng: number
+  home_address: string | null
+  is_organizer: boolean
+  created_at: string
+}
+
 // نوع Database مبسّط لعميل supabase-js. وسّعه عند الحاجة.
 export interface Database {
   public: {

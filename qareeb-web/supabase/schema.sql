@@ -147,6 +147,40 @@ insert into public.service_pricing
   ('tow',      'سحاب',        2500,  300, 350, 40, 6)
 on conflict (service_id) do nothing;
 
+-- ---------- ترحيل (المشاركة اليومية) ----------
+do $$ begin
+  create type commute_status as enum ('forming','dispatched','active','cancelled');
+exception when duplicate_object then null; end $$;
+
+create table if not exists public.commute_orders (
+  id             uuid primary key default gen_random_uuid(),
+  organizer_id   uuid references public.users(id) on delete set null,
+  service_id     text not null,                 -- أي نوع عدا سحاب
+  dest_lat       double precision not null,     -- مكان العمل (الوجهة المشتركة)
+  dest_lng       double precision not null,
+  dest_address   text,
+  scheduled_time text not null,                 -- "HH:MM"
+  days           text[] not null default '{}',
+  round_trip     boolean not null default true,
+  invite_code    text not null unique default substr(md5(random()::text), 1, 6),
+  status         commute_status not null default 'forming',
+  created_at     timestamptz not null default now()
+);
+create index if not exists commute_orders_status_idx on public.commute_orders(status);
+
+create table if not exists public.commute_members (
+  id           uuid primary key default gen_random_uuid(),
+  order_id     uuid not null references public.commute_orders(id) on delete cascade,
+  user_id      uuid references public.users(id) on delete set null,
+  name         text not null,
+  home_lat     double precision not null,       -- منزل العضو (نقطة انطلاقه)
+  home_lng     double precision not null,
+  home_address text,
+  is_organizer boolean not null default false,
+  created_at   timestamptz not null default now()
+);
+create index if not exists commute_members_order_idx on public.commute_members(order_id);
+
 -- ============================================================
 --  دالة: إنشاء محفظة تلقائياً لكل مستخدم جديد
 -- ============================================================
@@ -174,11 +208,35 @@ alter table public.transactions enable row level security;
 alter table public.topups       enable row level security;
 alter table public.settings     enable row level security;
 alter table public.service_pricing enable row level security;
+alter table public.commute_orders  enable row level security;
+alter table public.commute_members enable row level security;
 
 -- التسعير: قراءة للجميع (المصادَق عليهم)
 drop policy if exists "read pricing" on public.service_pricing;
 create policy "read pricing" on public.service_pricing
   for select using (auth.role() = 'authenticated');
+
+-- ترحيل: المصادَق عليهم يقرؤون الطلبات (للوصول عبر رابط الدعوة) وينشئونها ويحدّثونها.
+drop policy if exists "read commute orders" on public.commute_orders;
+create policy "read commute orders" on public.commute_orders
+  for select using (auth.role() = 'authenticated');
+
+drop policy if exists "create commute orders" on public.commute_orders;
+create policy "create commute orders" on public.commute_orders
+  for insert to authenticated with check (true);
+
+drop policy if exists "update own commute orders" on public.commute_orders;
+create policy "update own commute orders" on public.commute_orders
+  for update using (auth.uid() = organizer_id or public.is_admin());
+
+-- ترحيل: الأعضاء يُقرؤون ويُضافون من قِبل المصادَق عليهم.
+drop policy if exists "read commute members" on public.commute_members;
+create policy "read commute members" on public.commute_members
+  for select using (auth.role() = 'authenticated');
+
+drop policy if exists "add commute members" on public.commute_members;
+create policy "add commute members" on public.commute_members
+  for insert to authenticated with check (true);
 
 -- المستخدم يقرأ/يعدّل بياناته
 drop policy if exists "own profile" on public.users;

@@ -16,6 +16,8 @@ import Trip from '@/pages/customer/Trip'
 import Rate from '@/pages/customer/Rate'
 import Wallet from '@/pages/customer/Wallet'
 import Commute from '@/pages/customer/Commute'
+import CommuteOrder from '@/pages/customer/CommuteOrder'
+import CommuteJoin from '@/pages/customer/CommuteJoin'
 import Rides from '@/pages/customer/Rides'
 import Profile from '@/pages/customer/Profile'
 
@@ -23,6 +25,7 @@ import Profile from '@/pages/customer/Profile'
 import DriverHome from '@/pages/driver/DriverHome'
 import DriverTrip from '@/pages/driver/DriverTrip'
 import DriverWallet from '@/pages/driver/DriverWallet'
+import DriverCommute from '@/pages/driver/DriverCommute'
 import DriverProfile from '@/pages/driver/DriverProfile'
 
 // الأدمن
@@ -56,12 +59,15 @@ export default function App() {
           <Route path="/rate" element={guard(<Rate />)} />
           <Route path="/wallet" element={guard(<Wallet />)} />
           <Route path="/commute" element={guard(<Commute />)} />
+          <Route path="/commute/join/:code" element={guard(<CommuteJoin />)} />
+          <Route path="/commute/:id" element={guard(<CommuteOrder />)} />
           <Route path="/rides" element={guard(<Rides />)} />
           <Route path="/profile" element={guard(<Profile />)} />
 
           {/* السائق (محمي بدور driver) */}
           <Route path="/driver" element={driverGuard(<DriverHome />)} />
           <Route path="/driver/trip" element={driverGuard(<DriverTrip />)} />
+          <Route path="/driver/commute" element={driverGuard(<DriverCommute />)} />
           <Route path="/driver/wallet" element={driverGuard(<DriverWallet />)} />
           <Route path="/driver/profile" element={driverGuard(<DriverProfile />)} />
 

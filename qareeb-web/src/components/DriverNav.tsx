@@ -1,5 +1,5 @@
 import { NavLink } from 'react-router-dom'
-import { HomeIcon, WalletIcon, UserIcon } from './Icons'
+import { HomeIcon, WalletIcon, UserIcon, CommuteIcon } from './Icons'
 import type { ComponentType, SVGProps } from 'react'
 
 const items: {
@@ -9,6 +9,7 @@ const items: {
   end?: boolean
 }[] = [
   { to: '/driver', label: 'الطلبات', Icon: HomeIcon, end: true },
+  { to: '/driver/commute', label: 'ترحيل', Icon: CommuteIcon },
   { to: '/driver/wallet', label: 'محفظتي', Icon: WalletIcon },
   { to: '/driver/profile', label: 'حسابي', Icon: UserIcon },
 ]
