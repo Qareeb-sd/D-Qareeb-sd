@@ -1,9 +1,11 @@
+import { useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import Screen from '@/components/Screen'
 import MapView from '@/components/MapView'
 import VehicleImage from '@/components/VehicleImage'
 import { useRide } from '@/store/RideContext'
 import { getService } from '@/data/services'
+import { subscribeToRide } from '@/lib/realtime'
 import { money } from '@/lib/format'
 import type { PaymentMethod } from '@/lib/types'
 
@@ -16,9 +18,17 @@ const payments: { id: PaymentMethod; label: string; icon: string }[] = [
 /** شاشة الرحلة الجارية — بيانات السائق، الوجهة، طريقة الدفع، والإنهاء. */
 export default function Trip() {
   const navigate = useNavigate()
-  const { serviceId, dropoff, payment, setPayment, fare } = useRide()
+  const { rideId, serviceId, dropoff, payment, setPayment, fare } = useRide()
   const service = serviceId ? getService(serviceId) : undefined
   const total = fare ?? 0
+
+  // Realtime: انتقل للتقييم لحظة إنهاء السائق للرحلة (تسويتها).
+  useEffect(() => {
+    const unsub = subscribeToRide(rideId ?? '', (ride) => {
+      if (ride.status === 'completed') navigate('/rate')
+    })
+    return unsub
+  }, [rideId, navigate])
 
   return (
     <Screen title="رحلتك الآن" bare>

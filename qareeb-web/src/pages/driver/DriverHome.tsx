@@ -6,6 +6,7 @@ import VehicleImage from '@/components/VehicleImage'
 import { useAuth } from '@/store/AuthContext'
 import { useDriver } from '@/store/DriverContext'
 import { getDriver, setDriverOnline, listAvailableRides, acceptRide } from '@/lib/api'
+import { subscribeToRides } from '@/lib/realtime'
 import { getService } from '@/data/services'
 import { money } from '@/lib/format'
 import type { Driver, Ride } from '@/lib/types'
@@ -37,9 +38,12 @@ export default function DriverHome() {
     let alive = true
     const load = () => listAvailableRides().then((r) => alive && setRides(r))
     void load()
-    const iv = setInterval(load, 8000) // استطلاع بسيط (يُستبدل بـ Realtime لاحقاً)
+    // Realtime: أعِد الجلب فور أي تغيّر على الرحلات + استطلاع احتياطي بطيء.
+    const unsub = subscribeToRides(load)
+    const iv = setInterval(load, 20000)
     return () => {
       alive = false
+      unsub()
       clearInterval(iv)
     }
   }, [online])

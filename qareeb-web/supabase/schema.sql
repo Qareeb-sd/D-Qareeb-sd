@@ -384,3 +384,21 @@ create policy "read own or admin proof" on storage.objects
     bucket_id = 'topup-proofs'
     and ((storage.foldername(name))[1] = auth.uid()::text or public.is_admin())
   );
+
+-- ============================================================
+--  Realtime: تفعيل النشر على جدول الرحلات
+--  (يمكّن اشتراكات العميل/السائق اللحظية على تغيّرات rides)
+-- ============================================================
+do $$
+begin
+  if exists (select 1 from pg_publication where pubname = 'supabase_realtime')
+     and not exists (
+       select 1 from pg_publication_tables
+       where pubname = 'supabase_realtime'
+         and schemaname = 'public'
+         and tablename = 'rides'
+     )
+  then
+    execute 'alter publication supabase_realtime add table public.rides';
+  end if;
+end $$;

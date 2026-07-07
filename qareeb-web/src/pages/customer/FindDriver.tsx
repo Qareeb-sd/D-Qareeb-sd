@@ -2,15 +2,36 @@ import { useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import Screen from '@/components/Screen'
 import Logo from '@/components/Logo'
+import { useRide } from '@/store/RideContext'
+import { subscribeToRide } from '@/lib/realtime'
+import { isSupabaseConfigured } from '@/lib/supabase'
 
-/** شاشة البحث عن سائق — مؤقتة، تنتقل تلقائياً لشاشة الرحلة (تُربط بـ Realtime لاحقاً). */
+/**
+ * البحث عن سائق. ينتقل لشاشة الرحلة لحظة قبول السائق (Realtime).
+ * في وضع المعاينة (بدون backend) ينتقل تلقائياً بعد لحظات.
+ */
 export default function FindDriver() {
   const navigate = useNavigate()
+  const { rideId } = useRide()
 
   useEffect(() => {
-    const t = setTimeout(() => navigate('/trip'), 2500)
-    return () => clearTimeout(t)
-  }, [navigate])
+    // Realtime: انتظر تحديث حالة الرحلة إلى "مقبولة" فأبعد.
+    const unsub = rideId
+      ? subscribeToRide(rideId, (ride) => {
+          if (ride.status !== 'searching' && ride.status !== 'requested' && ride.status !== 'cancelled') {
+            navigate('/trip')
+          }
+        })
+      : () => {}
+
+    // بديل المعاينة: انتقال تلقائي.
+    const t = !isSupabaseConfigured ? setTimeout(() => navigate('/trip'), 2500) : undefined
+
+    return () => {
+      unsub()
+      if (t) clearTimeout(t)
+    }
+  }, [rideId, navigate])
 
   return (
     <Screen title="البحث عن سائق" back>
