@@ -1,5 +1,6 @@
 import { useNavigate } from 'react-router-dom'
 import BottomNav from '@/components/BottomNav'
+import { useAuth } from '@/store/AuthContext'
 
 const links = [
   { label: 'رحلاتي السابقة', icon: '🧾' },
@@ -11,6 +12,12 @@ const links = [
 
 export default function Profile() {
   const navigate = useNavigate()
+  const { profile, signOut } = useAuth()
+
+  const logout = async () => {
+    await signOut()
+    navigate('/auth')
+  }
 
   return (
     <div className="screen">
@@ -24,9 +31,9 @@ export default function Profile() {
             🧑🏽
           </div>
           <div>
-            <p className="font-bold">محمد أحمد</p>
+            <p className="font-bold">{profile?.full_name ?? 'مستخدم قريب'}</p>
             <p className="text-sm text-ink-soft" dir="ltr">
-              +249 91 234 5678
+              {profile?.phone ?? '—'}
             </p>
           </div>
         </div>
@@ -44,10 +51,7 @@ export default function Profile() {
           ))}
         </div>
 
-        <button
-          onClick={() => navigate('/auth')}
-          className="btn-outline mt-6 w-full text-danger"
-        >
+        <button onClick={logout} className="btn-outline mt-6 w-full text-danger">
           تسجيل الخروج
         </button>
       </main>

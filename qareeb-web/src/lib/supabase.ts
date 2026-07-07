@@ -1,5 +1,4 @@
 import { createClient } from '@supabase/supabase-js'
-import type { Database } from './types'
 
 const url = import.meta.env.VITE_SUPABASE_URL
 const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY
@@ -12,7 +11,9 @@ if (!url || !anonKey) {
   )
 }
 
-export const supabase = createClient<Database>(
+// عميل غير مُنمَّط عمداً (نستخدم أنواع النطاق في lib/types.ts للتوصيف اليدوي).
+// يمكن لاحقاً توليد أنواع كاملة عبر `supabase gen types typescript`.
+export const supabase = createClient(
   url ?? 'http://localhost:54321',
   anonKey ?? 'public-anon-key',
   {

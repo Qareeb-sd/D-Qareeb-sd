@@ -1,33 +1,52 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import BottomNav from '@/components/BottomNav'
 import Logo from '@/components/Logo'
 import { money } from '@/lib/format'
+import { useAuth } from '@/store/AuthContext'
+import { getSettings, getWallet, listTransactions, createTopup } from '@/lib/api'
+import type { Settings, Transaction, Wallet as WalletType } from '@/lib/types'
 
 /** محفظة قريب: الرصيد + التعبئة بتحويل بنكي ورفع إثبات + سجل المعاملات. */
-
-interface Tx {
-  id: string
-  label: string
-  amount: number
-  date: string
-}
-
-const demoTx: Tx[] = [
-  { id: '1', label: 'تعبئة رصيد', amount: 20000, date: 'اليوم' },
-  { id: '2', label: 'رحلة · قريب عادي', amount: -1220, date: 'أمس' },
-  { id: '3', label: 'رحلة · ترحيل', amount: -800, date: 'قبل يومين' },
-]
-
-// بيانات الحساب البنكي — تُجلب من settings في الأدمن لاحقاً.
-const bank = {
-  name: 'بنك الخرطوم',
-  accountName: 'شركة قريب للنقل',
-  accountNumber: '1234567890123',
-}
-
 export default function Wallet() {
-  const [topup, setTopup] = useState(false)
-  const balance = 18000
+  const { profile } = useAuth()
+  const userId = profile?.id ?? 'demo-user'
+
+  const [wallet, setWallet] = useState<WalletType | null>(null)
+  const [txs, setTxs] = useState<Transaction[]>([])
+  const [settings, setSettings] = useState<Settings | null>(null)
+  const [loading, setLoading] = useState(true)
+
+  const [showTopup, setShowTopup] = useState(false)
+  const [amount, setAmount] = useState('')
+  const [submitting, setSubmitting] = useState(false)
+  const [done, setDone] = useState(false)
+
+  useEffect(() => {
+    let alive = true
+    async function load() {
+      const [w, s] = await Promise.all([getWallet(userId), getSettings()])
+      if (!alive) return
+      setWallet(w)
+      setSettings(s)
+      if (w) setTxs(await listTransactions(w.id))
+      setLoading(false)
+    }
+    void load()
+    return () => {
+      alive = false
+    }
+  }, [userId])
+
+  const submitTopup = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!wallet) return
+    setSubmitting(true)
+    // ملاحظة: رفع الإثبات إلى Supabase Storage يُضاف لاحقاً؛ هنا نرسل الطلب فقط.
+    await createTopup(wallet.id, Number(amount), null)
+    setSubmitting(false)
+    setDone(true)
+    setAmount('')
+  }
 
   return (
     <div className="screen">
@@ -40,9 +59,11 @@ export default function Wallet() {
         {/* بطاقة الرصيد */}
         <div className="rounded-3xl bg-gradient-to-br from-green to-green-dark p-6 text-white shadow-lift">
           <p className="text-sm text-white/80">رصيدك الحالي</p>
-          <p className="mt-1 text-3xl font-extrabold">{money(balance)}</p>
+          <p className="mt-1 text-3xl font-extrabold">
+            {loading ? '…' : money(wallet?.balance ?? 0)}
+          </p>
           <button
-            onClick={() => setTopup((v) => !v)}
+            onClick={() => setShowTopup((v) => !v)}
             className="btn mt-4 bg-white/15 text-white hover:bg-white/25"
           >
             تعبئة الرصيد
@@ -50,54 +71,79 @@ export default function Wallet() {
         </div>
 
         {/* نموذج التعبئة */}
-        {topup && (
+        {showTopup && (
           <div className="card mt-4 space-y-3 p-4">
             <p className="font-bold">تعبئة بتحويل بنكي</p>
-            <div className="rounded-2xl bg-gold-soft p-3 text-sm text-ink">
-              <p>
-                <span className="text-ink-soft">البنك:</span> {bank.name}
-              </p>
-              <p>
-                <span className="text-ink-soft">اسم الحساب:</span> {bank.accountName}
-              </p>
-              <p dir="ltr" className="text-left">
-                <span className="text-ink-soft">الرقم:</span> {bank.accountNumber}
-              </p>
-            </div>
-            <div>
-              <label className="label">المبلغ المحوّل</label>
-              <input className="field" inputMode="numeric" placeholder="مثال: 20000" />
-            </div>
-            <div>
-              <label className="label">إثبات التحويل</label>
-              <input type="file" accept="image/*" className="field" />
-            </div>
-            <button className="btn-gold w-full">إرسال للمراجعة</button>
-            <p className="text-center text-xs text-ink-muted">
-              يعتمد الأدمن التحويل ثم يُضاف الرصيد لمحفظتك.
-            </p>
+            {settings && (
+              <div className="rounded-2xl bg-gold-soft p-3 text-sm text-ink">
+                <p>
+                  <span className="text-ink-soft">البنك:</span> {settings.bank_name}
+                </p>
+                <p>
+                  <span className="text-ink-soft">اسم الحساب:</span> {settings.bank_account_name}
+                </p>
+                <p dir="ltr" className="text-left">
+                  <span className="text-ink-soft">الرقم:</span> {settings.bank_account_number}
+                </p>
+              </div>
+            )}
+
+            {done ? (
+              <div className="rounded-2xl bg-green-soft p-4 text-center text-sm text-green">
+                تم إرسال طلب التعبئة للمراجعة. سيُضاف الرصيد بعد اعتماد الأدمن.
+              </div>
+            ) : (
+              <form onSubmit={submitTopup} className="space-y-3">
+                <div>
+                  <label className="label">المبلغ المحوّل</label>
+                  <input
+                    className="field"
+                    inputMode="numeric"
+                    value={amount}
+                    onChange={(e) => setAmount(e.target.value)}
+                    placeholder="مثال: 20000"
+                    required
+                  />
+                </div>
+                <div>
+                  <label className="label">إثبات التحويل</label>
+                  <input type="file" accept="image/*" className="field" />
+                </div>
+                <button className="btn-gold w-full" type="submit" disabled={submitting}>
+                  {submitting ? '…' : 'إرسال للمراجعة'}
+                </button>
+              </form>
+            )}
           </div>
         )}
 
         {/* سجل المعاملات */}
         <h2 className="mb-2 mt-6 font-bold">سجل المعاملات</h2>
-        <div className="card divide-y divide-hairline p-0">
-          {demoTx.map((t) => (
-            <div key={t.id} className="flex items-center justify-between px-4 py-3">
-              <div>
-                <p className="font-medium">{t.label}</p>
-                <p className="text-xs text-ink-muted">{t.date}</p>
+        {loading ? (
+          <div className="card h-24 animate-pulse" />
+        ) : txs.length === 0 ? (
+          <p className="card p-4 text-center text-sm text-ink-muted">لا توجد معاملات بعد</p>
+        ) : (
+          <div className="card divide-y divide-hairline p-0">
+            {txs.map((t) => (
+              <div key={t.id} className="flex items-center justify-between px-4 py-3">
+                <div>
+                  <p className="font-medium">{t.note ?? t.type}</p>
+                  <p className="text-xs text-ink-muted">
+                    {new Date(t.created_at).toLocaleDateString('ar-SD')}
+                  </p>
+                </div>
+                <p
+                  className={`font-bold ${t.amount > 0 ? 'text-green' : 'text-danger'}`}
+                  dir="ltr"
+                >
+                  {t.amount > 0 ? '+' : ''}
+                  {money(Math.abs(t.amount))}
+                </p>
               </div>
-              <p
-                className={`font-bold ${t.amount > 0 ? 'text-green' : 'text-danger'}`}
-                dir="ltr"
-              >
-                {t.amount > 0 ? '+' : ''}
-                {money(Math.abs(t.amount))}
-              </p>
-            </div>
-          ))}
-        </div>
+            ))}
+          </div>
+        )}
       </main>
 
       <BottomNav />

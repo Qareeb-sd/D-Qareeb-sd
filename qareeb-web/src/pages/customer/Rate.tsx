@@ -4,21 +4,24 @@ import Screen from '@/components/Screen'
 import { StarIcon } from '@/components/Icons'
 import { useRide } from '@/store/RideContext'
 import { getService } from '@/data/services'
+import { completeRide } from '@/lib/api'
 import { money } from '@/lib/format'
 
 /** تقييم الرحلة + إيصال مختصر. */
 export default function Rate() {
   const navigate = useNavigate()
-  const { serviceId, dropoff, payment, reset } = useRide()
+  const { rideId, serviceId, dropoff, payment, fare, reset } = useRide()
   const service = serviceId ? getService(serviceId) : undefined
-  const fare = service ? service.baseFare + service.perKm * 6 : 0
+  const total = fare ?? (service ? service.baseFare + service.perKm * 6 : 0)
   const [stars, setStars] = useState(5)
+  const [busy, setBusy] = useState(false)
 
   const paymentLabel =
     payment === 'cash' ? 'كاش' : payment === 'wallet' ? 'محفظة قريب' : 'تحويل بنكي'
 
-  const finish = () => {
-    // TODO: احفظ التقييم في supabase (rides.rating)
+  const finish = async () => {
+    setBusy(true)
+    if (rideId) await completeRide(rideId, stars)
     reset()
     navigate('/home')
   }
@@ -49,11 +52,11 @@ export default function Rate() {
         <Row label="الخدمة" value={service?.name ?? '—'} />
         <Row label="الوجهة" value={dropoff?.address ?? '—'} />
         <Row label="طريقة الدفع" value={paymentLabel} />
-        <Row label="الإجمالي" value={money(fare)} strong />
+        <Row label="الإجمالي" value={money(total)} strong />
       </div>
 
-      <button className="btn-primary mt-6 w-full" onClick={finish}>
-        تم
+      <button className="btn-primary mt-6 w-full" onClick={finish} disabled={busy}>
+        {busy ? '…' : 'تم'}
       </button>
     </Screen>
   )

@@ -1,5 +1,7 @@
 import { Routes, Route, Navigate } from 'react-router-dom'
+import { AuthProvider } from '@/store/AuthContext'
 import { RideProvider } from '@/store/RideContext'
+import ProtectedRoute from '@/components/ProtectedRoute'
 
 // العميل
 import Onboarding from '@/pages/customer/Onboarding'
@@ -17,30 +19,39 @@ import Profile from '@/pages/customer/Profile'
 import DriverHome from '@/pages/driver/DriverHome'
 import AdminDashboard from '@/pages/admin/AdminDashboard'
 
+/** يلفّ مسارات العميل بحارس المصادقة. */
+function guard(el: React.ReactNode) {
+  return <ProtectedRoute>{el}</ProtectedRoute>
+}
+
 export default function App() {
   return (
-    <RideProvider>
-      <Routes>
-        {/* العميل */}
-        <Route path="/" element={<Onboarding />} />
-        <Route path="/auth" element={<Auth />} />
-        <Route path="/home" element={<Home />} />
-        <Route path="/select-location" element={<SelectLocation />} />
-        <Route path="/find-driver" element={<FindDriver />} />
-        <Route path="/trip" element={<Trip />} />
-        <Route path="/rate" element={<Rate />} />
-        <Route path="/wallet" element={<Wallet />} />
-        <Route path="/commute" element={<Commute />} />
-        <Route path="/profile" element={<Profile />} />
+    <AuthProvider>
+      <RideProvider>
+        <Routes>
+          {/* عامّة */}
+          <Route path="/" element={<Onboarding />} />
+          <Route path="/auth" element={<Auth />} />
 
-        {/* السائق */}
-        <Route path="/driver" element={<DriverHome />} />
+          {/* العميل (محمي) */}
+          <Route path="/home" element={guard(<Home />)} />
+          <Route path="/select-location" element={guard(<SelectLocation />)} />
+          <Route path="/find-driver" element={guard(<FindDriver />)} />
+          <Route path="/trip" element={guard(<Trip />)} />
+          <Route path="/rate" element={guard(<Rate />)} />
+          <Route path="/wallet" element={guard(<Wallet />)} />
+          <Route path="/commute" element={guard(<Commute />)} />
+          <Route path="/profile" element={guard(<Profile />)} />
 
-        {/* الأدمن */}
-        <Route path="/admin" element={<AdminDashboard />} />
+          {/* السائق */}
+          <Route path="/driver" element={<DriverHome />} />
 
-        <Route path="*" element={<Navigate to="/" replace />} />
-      </Routes>
-    </RideProvider>
+          {/* الأدمن */}
+          <Route path="/admin" element={<AdminDashboard />} />
+
+          <Route path="*" element={<Navigate to="/" replace />} />
+        </Routes>
+      </RideProvider>
+    </AuthProvider>
   )
 }

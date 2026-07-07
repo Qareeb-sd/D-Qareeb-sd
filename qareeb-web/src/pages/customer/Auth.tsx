@@ -1,37 +1,45 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import Logo from '@/components/Logo'
+import { useAuth } from '@/store/AuthContext'
 
 type Mode = 'login' | 'signup'
 type Step = 'form' | 'otp'
 
 /**
- * تسجيل/دخول. رمز التحقق (OTP) عند التسجيل الجديد فقط؛
- * الدخول العادي يذهب مباشرة للرئيسية.
- * (الربط الفعلي بـ supabase.auth يُضاف لاحقاً — هذا الهيكل جاهز له.)
+ * تسجيل/دخول عبر Supabase (OTP على الهاتف).
+ * رمز التحقق يُطلب في الحالتين؛ الاسم يُسجَّل عند "حساب جديد" فقط.
+ * في وضع المعاينة (بدون مفاتيح Supabase) يمرّ التدفّق مباشرة.
  */
 export default function Auth() {
   const navigate = useNavigate()
+  const { signInWithOtp, verifyOtp } = useAuth()
+
   const [mode, setMode] = useState<Mode>('login')
   const [step, setStep] = useState<Step>('form')
   const [phone, setPhone] = useState('')
   const [name, setName] = useState('')
   const [otp, setOtp] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState('')
 
-  const submitForm = (e: React.FormEvent) => {
+  const submitForm = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (mode === 'signup') {
-      // TODO: supabase.auth.signInWithOtp({ phone })
-      setStep('otp')
-    } else {
-      // TODO: supabase.auth.signInWithPassword / OTP verify
-      navigate('/home')
-    }
+    setError('')
+    setBusy(true)
+    const { error } = await signInWithOtp(phone, mode === 'signup' ? name : undefined)
+    setBusy(false)
+    if (error) return setError(error)
+    setStep('otp')
   }
 
-  const verifyOtp = (e: React.FormEvent) => {
+  const submitOtp = async (e: React.FormEvent) => {
     e.preventDefault()
-    // TODO: supabase.auth.verifyOtp({ phone, token: otp, type: 'sms' })
+    setError('')
+    setBusy(true)
+    const { error } = await verifyOtp(phone, otp)
+    setBusy(false)
+    if (error) return setError(error)
     navigate('/home')
   }
 
@@ -48,6 +56,12 @@ export default function Auth() {
               : 'أنشئ حساباً جديداً'}
         </p>
       </div>
+
+      {error && (
+        <p className="mb-4 rounded-2xl bg-danger/10 px-4 py-3 text-center text-sm text-danger">
+          {error}
+        </p>
+      )}
 
       {step === 'form' ? (
         <>
@@ -90,13 +104,13 @@ export default function Auth() {
                 required
               />
             </div>
-            <button className="btn-primary w-full" type="submit">
-              {mode === 'login' ? 'دخول' : 'إرسال رمز التحقق'}
+            <button className="btn-primary w-full" type="submit" disabled={busy}>
+              {busy ? '…' : mode === 'login' ? 'إرسال رمز الدخول' : 'إرسال رمز التحقق'}
             </button>
           </form>
         </>
       ) : (
-        <form onSubmit={verifyOtp} className="space-y-4">
+        <form onSubmit={submitOtp} className="space-y-4">
           <div>
             <label className="label">رمز التحقق</label>
             <input
@@ -110,13 +124,16 @@ export default function Auth() {
               required
             />
           </div>
-          <button className="btn-primary w-full" type="submit">
-            تأكيد
+          <button className="btn-primary w-full" type="submit" disabled={busy}>
+            {busy ? '…' : 'تأكيد'}
           </button>
           <button
             type="button"
             className="w-full text-sm text-ink-soft"
-            onClick={() => setStep('form')}
+            onClick={() => {
+              setStep('form')
+              setError('')
+            }}
           >
             تغيير الرقم
           </button>

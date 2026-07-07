@@ -8,6 +8,7 @@ interface Place {
 }
 
 interface RideDraft {
+  rideId: string | null
   serviceId: string | null
   pickup: Place
   dropoff: Place | null
@@ -16,6 +17,7 @@ interface RideDraft {
 }
 
 interface RideContextValue extends RideDraft {
+  setRideId: (id: string | null) => void
   setServiceId: (id: string) => void
   setPickup: (p: Place) => void
   setDropoff: (p: Place | null) => void
@@ -25,6 +27,7 @@ interface RideContextValue extends RideDraft {
 }
 
 const defaultDraft: RideDraft = {
+  rideId: null,
   serviceId: null,
   pickup: { pos: KHARTOUM, address: 'الخرطوم' },
   dropoff: null,
@@ -39,6 +42,7 @@ export function RideProvider({ children }: { children: ReactNode }) {
 
   const value: RideContextValue = {
     ...draft,
+    setRideId: (rideId) => setDraft((d) => ({ ...d, rideId })),
     setServiceId: (serviceId) => setDraft((d) => ({ ...d, serviceId })),
     setPickup: (pickup) => setDraft((d) => ({ ...d, pickup })),
     setDropoff: (dropoff) => setDraft((d) => ({ ...d, dropoff })),
