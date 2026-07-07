@@ -1,7 +1,7 @@
 {
   // إعداد نشر "قريب" على Cloudflare (Worker يخدم أصولاً ثابتة كـ SPA).
   // البناء: npm run build → مجلد dist، ثم npx wrangler deploy يرفعه.
-  "name": "qareeb",
+  "name": "qarreb",
   "compatibility_date": "2024-12-01",
   "assets": {
     "directory": "./dist",
