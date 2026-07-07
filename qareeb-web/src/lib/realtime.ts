@@ -43,3 +43,43 @@ export function subscribeToRides(onEvent: () => void): Unsubscribe {
     void supabase.removeChannel(channel)
   }
 }
+
+/** يستمع لانضمام/تغيّر ركّاب طلب ترحيل محدّد (لصفحة المنظّم). */
+export function subscribeToCommuteMembers(
+  orderId: string,
+  onEvent: () => void,
+): Unsubscribe {
+  if (!isSupabaseConfigured || !orderId) return () => {}
+  const channel = supabase
+    .channel(`commute-members:${orderId}`)
+    .on(
+      'postgres_changes',
+      {
+        event: '*',
+        schema: 'public',
+        table: 'commute_members',
+        filter: `order_id=eq.${orderId}`,
+      },
+      () => onEvent(),
+    )
+    .subscribe()
+  return () => {
+    void supabase.removeChannel(channel)
+  }
+}
+
+/** يستمع لتغيّرات طلبات الترحيل (لواجهة السائق). */
+export function subscribeToCommuteOrders(onEvent: () => void): Unsubscribe {
+  if (!isSupabaseConfigured) return () => {}
+  const channel = supabase
+    .channel('commute-orders:feed')
+    .on(
+      'postgres_changes',
+      { event: '*', schema: 'public', table: 'commute_orders' },
+      () => onEvent(),
+    )
+    .subscribe()
+  return () => {
+    void supabase.removeChannel(channel)
+  }
+}

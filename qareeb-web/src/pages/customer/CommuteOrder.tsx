@@ -8,6 +8,7 @@ import {
   dispatchCommuteOrder,
   inviteLink,
 } from '@/lib/commute'
+import { subscribeToCommuteMembers } from '@/lib/realtime'
 import type { CommuteOrder as Order, CommuteMember } from '@/lib/types'
 
 /** ملخّص طلب الترحيل: الوجهة/الوقت/الأيام + رابط الدعوة + الأعضاء + الإرسال للسائق. */
@@ -26,7 +27,10 @@ export default function CommuteOrder() {
 
   useEffect(() => {
     void load()
-  }, [load])
+    // Realtime: حدّث القائمة فور انضمام راكب جديد.
+    const unsub = subscribeToCommuteMembers(id, load)
+    return unsub
+  }, [id, load])
 
   if (!order) {
     return (

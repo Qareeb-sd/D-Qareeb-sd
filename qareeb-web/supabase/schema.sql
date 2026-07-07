@@ -448,15 +448,17 @@ create policy "read own or admin proof" on storage.objects
 --  (يمكّن اشتراكات العميل/السائق اللحظية على تغيّرات rides)
 -- ============================================================
 do $$
+declare
+  t text;
 begin
-  if exists (select 1 from pg_publication where pubname = 'supabase_realtime')
-     and not exists (
-       select 1 from pg_publication_tables
-       where pubname = 'supabase_realtime'
-         and schemaname = 'public'
-         and tablename = 'rides'
-     )
-  then
-    execute 'alter publication supabase_realtime add table public.rides';
+  if exists (select 1 from pg_publication where pubname = 'supabase_realtime') then
+    foreach t in array array['rides', 'commute_orders', 'commute_members'] loop
+      if not exists (
+        select 1 from pg_publication_tables
+        where pubname = 'supabase_realtime' and schemaname = 'public' and tablename = t
+      ) then
+        execute format('alter publication supabase_realtime add table public.%I', t);
+      end if;
+    end loop;
   end if;
 end $$;

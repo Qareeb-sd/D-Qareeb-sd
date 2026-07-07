@@ -1,8 +1,9 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import Logo from '@/components/Logo'
 import DriverNav from '@/components/DriverNav'
 import { getService } from '@/data/services'
 import { listDispatchedCommutes, listCommuteMembers } from '@/lib/commute'
+import { subscribeToCommuteOrders } from '@/lib/realtime'
 import type { CommuteOrder, CommuteMember } from '@/lib/types'
 
 /** واجهة السائق لطلبات الترحيل المجمّعة (كل المنازل + مكان العمل + الوقت). */
@@ -11,17 +12,22 @@ export default function DriverCommute() {
   const [membersByOrder, setMembersByOrder] = useState<Record<string, CommuteMember[]>>({})
   const [loading, setLoading] = useState(true)
 
-  useEffect(() => {
-    void (async () => {
-      const os = await listDispatchedCommutes()
-      const entries = await Promise.all(
-        os.map(async (o) => [o.id, await listCommuteMembers(o.id)] as const),
-      )
-      setOrders(os)
-      setMembersByOrder(Object.fromEntries(entries))
-      setLoading(false)
-    })()
+  const load = useCallback(async () => {
+    const os = await listDispatchedCommutes()
+    const entries = await Promise.all(
+      os.map(async (o) => [o.id, await listCommuteMembers(o.id)] as const),
+    )
+    setOrders(os)
+    setMembersByOrder(Object.fromEntries(entries))
+    setLoading(false)
   }, [])
+
+  useEffect(() => {
+    void load()
+    // Realtime: حدّث القائمة فور إرسال طلب ترحيل جديد.
+    const unsub = subscribeToCommuteOrders(load)
+    return unsub
+  }, [load])
 
   return (
     <div className="screen">
