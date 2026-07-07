@@ -1,0 +1,114 @@
+/**
+ * أنواع قاعدة البيانات — تعكس supabase/schema.sql.
+ * يمكن استبدالها لاحقاً بالأنواع المولّدة تلقائياً عبر:
+ *   npx supabase gen types typescript --project-id <ref> > src/lib/types.ts
+ */
+
+export type PaymentMethod = 'cash' | 'bank_transfer' | 'wallet'
+
+export type RideStatus =
+  | 'requested'
+  | 'searching'
+  | 'accepted'
+  | 'arrived'
+  | 'in_progress'
+  | 'completed'
+  | 'cancelled'
+
+export type TransactionType = 'topup' | 'ride_payment' | 'ride_earning' | 'commission'
+
+export type TopupStatus = 'pending' | 'approved' | 'rejected'
+
+export interface AppUser {
+  id: string
+  phone: string
+  full_name: string | null
+  role: 'customer' | 'driver' | 'admin'
+  created_at: string
+}
+
+export interface Driver {
+  id: string
+  user_id: string
+  vehicle_type: string
+  plate_number: string | null
+  is_online: boolean
+  rating: number | null
+  created_at: string
+}
+
+export interface Ride {
+  id: string
+  customer_id: string
+  driver_id: string | null
+  service_id: string
+  status: RideStatus
+  pickup_lat: number
+  pickup_lng: number
+  pickup_address: string | null
+  dropoff_lat: number | null
+  dropoff_lng: number | null
+  dropoff_address: string | null
+  fare: number | null
+  payment_method: PaymentMethod
+  rating: number | null
+  created_at: string
+}
+
+export interface Wallet {
+  id: string
+  user_id: string
+  balance: number
+  updated_at: string
+}
+
+export interface Transaction {
+  id: string
+  wallet_id: string
+  type: TransactionType
+  amount: number
+  ride_id: string | null
+  note: string | null
+  created_at: string
+}
+
+export interface Topup {
+  id: string
+  wallet_id: string
+  amount: number
+  proof_url: string | null
+  status: TopupStatus
+  reviewed_by: string | null
+  created_at: string
+}
+
+export interface Settings {
+  id: number
+  commission_rate: number // 0..1 مثال 0.15
+  bank_name: string | null
+  bank_account_name: string | null
+  bank_account_number: string | null
+  updated_at: string
+}
+
+// نوع Database مبسّط لعميل supabase-js. وسّعه عند الحاجة.
+export interface Database {
+  public: {
+    Tables: {
+      users: { Row: AppUser; Insert: Partial<AppUser>; Update: Partial<AppUser> }
+      drivers: { Row: Driver; Insert: Partial<Driver>; Update: Partial<Driver> }
+      rides: { Row: Ride; Insert: Partial<Ride>; Update: Partial<Ride> }
+      wallets: { Row: Wallet; Insert: Partial<Wallet>; Update: Partial<Wallet> }
+      transactions: {
+        Row: Transaction
+        Insert: Partial<Transaction>
+        Update: Partial<Transaction>
+      }
+      topups: { Row: Topup; Insert: Partial<Topup>; Update: Partial<Topup> }
+      settings: { Row: Settings; Insert: Partial<Settings>; Update: Partial<Settings> }
+    }
+    Views: Record<string, never>
+    Functions: Record<string, never>
+    Enums: Record<string, never>
+  }
+}
