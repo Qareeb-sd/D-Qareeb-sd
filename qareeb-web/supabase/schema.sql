@@ -256,3 +256,63 @@ begin
 end $$;
 
 -- ملاحظة: لتعيين أول أدمن:  update public.users set role = 'admin' where phone = '+249...';
+
+-- ============================================================
+--  السائق: قبول الرحلات وتسوية الأرباح (خصم العمولة)
+-- ============================================================
+
+-- السائق يدير صفّه في drivers
+drop policy if exists "own driver row" on public.drivers;
+create policy "own driver row" on public.drivers
+  for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
+
+-- السائق يرى الرحلات المنتظرة سائقاً
+drop policy if exists "drivers see open rides" on public.rides;
+create policy "drivers see open rides" on public.rides
+  for select using (status in ('requested', 'searching'));
+
+-- السائق يقبل رحلة منتظرة (يعيّن نفسه سائقاً)
+drop policy if exists "driver accept ride" on public.rides;
+create policy "driver accept ride" on public.rides
+  for update using (status in ('requested', 'searching'))
+  with check (auth.uid() = driver_id);
+
+-- تسوية رحلة عند اكتمالها: يُقيَّد للسائق (الأجرة − العمولة)، وتُسجَّل
+-- معاملتان (أرباح إجمالية + عمولة سالبة) بحيث يتطابق مجموعهما مع صافي الرصيد.
+create or replace function public.settle_ride(p_ride uuid)
+returns void language plpgsql security definer set search_path = public as $$
+declare
+  v_driver_user uuid;
+  v_fare        numeric;
+  v_status      ride_status;
+  v_rate        numeric;
+  v_wallet      uuid;
+  v_commission  numeric;
+  v_net         numeric;
+begin
+  select driver_id, fare, status
+    into v_driver_user, v_fare, v_status
+    from public.rides where id = p_ride for update;
+
+  if v_driver_user is null then raise exception 'الرحلة بلا سائق'; end if;
+  if auth.uid() <> v_driver_user and not public.is_admin() then
+    raise exception 'غير مصرّح';
+  end if;
+  if v_status = 'completed' then raise exception 'الرحلة مسوّاة مسبقاً'; end if;
+
+  select commission_rate into v_rate from public.settings where id = 1;
+  v_commission := round(coalesce(v_fare, 0) * coalesce(v_rate, 0));
+  v_net        := coalesce(v_fare, 0) - v_commission;
+
+  update public.rides set status = 'completed' where id = p_ride;
+
+  select id into v_wallet from public.wallets where user_id = v_driver_user;
+  if v_wallet is not null then
+    update public.wallets
+      set balance = balance + v_net, updated_at = now()
+      where id = v_wallet;
+    insert into public.transactions (wallet_id, type, amount, ride_id, note) values
+      (v_wallet, 'ride_earning', coalesce(v_fare, 0), p_ride, 'أرباح رحلة (إجمالي)'),
+      (v_wallet, 'commission',   -v_commission,       p_ride, 'عمولة المنصة');
+  end if;
+end $$;

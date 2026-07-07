@@ -1,5 +1,5 @@
 import { supabase, isSupabaseConfigured } from './supabase'
-import type { Settings, Wallet, Transaction, Ride, Topup } from './types'
+import type { Settings, Wallet, Transaction, Ride, Topup, Driver } from './types'
 
 /**
  * طبقة الوصول للبيانات.
@@ -241,4 +241,124 @@ export async function updateSettings(
     .update({ ...patch, updated_at: new Date().toISOString() })
     .eq('id', 1)
   return error ? { error: error.message } : {}
+}
+
+// ============================================================
+//  السائق
+// ============================================================
+
+const demoDriver: Driver = {
+  id: 'demo-driver',
+  user_id: 'demo-user',
+  vehicle_type: 'standard',
+  plate_number: 'خ ط م ١٢٣٤',
+  is_online: false,
+  rating: 4.9,
+  created_at: new Date().toISOString(),
+}
+
+export async function getDriver(userId: string): Promise<Driver | null> {
+  if (!isSupabaseConfigured) return demoDriver
+  const { data } = await supabase.from('drivers').select('*').eq('user_id', userId).single()
+  return data ?? null
+}
+
+export async function setDriverOnline(
+  driverId: string,
+  online: boolean,
+): Promise<{ error?: string }> {
+  if (!isSupabaseConfigured) return {}
+  const { error } = await supabase
+    .from('drivers')
+    .update({ is_online: online })
+    .eq('id', driverId)
+  return error ? { error: error.message } : {}
+}
+
+const demoAvailableRide: Ride = {
+  id: 'open-1',
+  customer_id: 'c-88',
+  driver_id: null,
+  service_id: 'standard',
+  status: 'searching',
+  pickup_lat: 15.5,
+  pickup_lng: 32.55,
+  pickup_address: 'سوق أم درمان',
+  dropoff_lat: 15.6,
+  dropoff_lng: 32.53,
+  dropoff_address: 'الخرطوم 2',
+  fare: 1400,
+  payment_method: 'cash',
+  rating: null,
+  created_at: new Date().toISOString(),
+}
+
+export async function listAvailableRides(): Promise<Ride[]> {
+  if (!isSupabaseConfigured) return [demoAvailableRide]
+  const { data } = await supabase
+    .from('rides')
+    .select('*')
+    .eq('status', 'searching')
+    .is('driver_id', null)
+    .order('created_at', { ascending: true })
+  return data ?? []
+}
+
+export async function acceptRide(
+  rideId: string,
+  driverUserId: string,
+): Promise<{ error?: string }> {
+  if (!isSupabaseConfigured) return {}
+  const { error } = await supabase
+    .from('rides')
+    .update({ driver_id: driverUserId, status: 'accepted' })
+    .eq('id', rideId)
+  return error ? { error: error.message } : {}
+}
+
+/** تسوية الرحلة عند اكتمالها: يُقيَّد للسائق (الأجرة − العمولة) عبر دالة آمنة. */
+export async function settleRide(rideId: string): Promise<{ error?: string }> {
+  if (!isSupabaseConfigured) return {}
+  const { error } = await supabase.rpc('settle_ride', { p_ride: rideId })
+  return error ? { error: error.message } : {}
+}
+
+const demoDriverTransactions: Transaction[] = [
+  {
+    id: 'de1',
+    wallet_id: 'demo-driver-wallet',
+    type: 'ride_earning',
+    amount: 1400,
+    ride_id: null,
+    note: 'أرباح رحلة (إجمالي)',
+    created_at: new Date().toISOString(),
+  },
+  {
+    id: 'dc1',
+    wallet_id: 'demo-driver-wallet',
+    type: 'commission',
+    amount: -210,
+    ride_id: null,
+    note: 'عمولة المنصة',
+    created_at: new Date().toISOString(),
+  },
+  {
+    id: 'de2',
+    wallet_id: 'demo-driver-wallet',
+    type: 'ride_earning',
+    amount: 1220,
+    ride_id: null,
+    note: 'أرباح رحلة (إجمالي)',
+    created_at: new Date(Date.now() - 86400000).toISOString(),
+  },
+]
+
+export async function listDriverTransactions(walletId: string): Promise<Transaction[]> {
+  if (!isSupabaseConfigured) return demoDriverTransactions
+  const { data } = await supabase
+    .from('transactions')
+    .select('*')
+    .eq('wallet_id', walletId)
+    .order('created_at', { ascending: false })
+  return data ?? []
 }
