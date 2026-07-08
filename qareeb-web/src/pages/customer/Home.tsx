@@ -38,37 +38,37 @@ export default function Home() {
 
         <h2 className="mb-3 mt-6 text-lg font-bold">اختر الخدمة</h2>
         <div className="grid grid-cols-2 gap-3">
-          {services.map((s) => (
-            <button
-              key={s.id}
-              onClick={() => chooseService(s.id)}
-              className="card relative flex flex-col items-center gap-2 p-4 text-center transition hover:shadow-lift"
-              style={
-                s.femaleDriver
-                  ? { border: '1.5px solid #E85C9E', backgroundColor: '#FDF2F8' }
-                  : undefined
-              }
-            >
-              {s.femaleDriver && (
-                <span
-                  className="chip absolute left-2 top-2"
-                  style={{ backgroundColor: '#E85C9E', color: '#fff' }}
-                >
-                  🌸 سائقة
-                </span>
-              )}
-              <VehicleImage
-                service={s}
-                className={`h-16 w-full ${s.femaleDriver ? 'rounded-xl ring-2 ring-[#E85C9E]/30' : ''}`}
-              />
-              <div>
-                <p className="font-bold" style={s.femaleDriver ? { color: '#C13584' } : undefined}>
-                  {s.name}
-                </p>
-                <p className="text-xs text-ink-muted">{s.tagline}</p>
-              </div>
-            </button>
-          ))}
+          {services.map((s) => {
+            const accent = s.femaleDriver
+              ? { border: '#E85C9E', bg: '#FDF2F8', title: '#C13584', badge: '🌸 سائقة' }
+              : s.id === 'open'
+                ? { border: '#E5B800', bg: '#FFF9E0', title: '#A87A00', badge: '⏱️ مفتوح' }
+                : null
+            return (
+              <button
+                key={s.id}
+                onClick={() => chooseService(s.id)}
+                className="card relative flex flex-col items-center gap-2 p-4 text-center transition hover:shadow-lift"
+                style={accent ? { border: `1.5px solid ${accent.border}`, backgroundColor: accent.bg } : undefined}
+              >
+                {accent && (
+                  <span
+                    className="chip absolute left-2 top-2"
+                    style={{ backgroundColor: accent.border, color: '#fff' }}
+                  >
+                    {accent.badge}
+                  </span>
+                )}
+                <VehicleImage service={s} className="h-16 w-full" />
+                <div>
+                  <p className="font-bold" style={accent ? { color: accent.title } : undefined}>
+                    {s.name}
+                  </p>
+                  <p className="text-xs text-ink-muted">{s.tagline}</p>
+                </div>
+              </button>
+            )
+          })}
         </div>
       </main>
 
