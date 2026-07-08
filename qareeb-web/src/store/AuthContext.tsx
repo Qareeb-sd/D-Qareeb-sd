@@ -13,16 +13,25 @@ interface AuthValue {
   session: Session | null
   profile: AppUser | null
   loading: boolean
-  /** أرسل رمز OTP إلى الهاتف. عند التسجيل الجديد مرّر الاسم. */
-  signInWithOtp: (phone: string, fullName?: string) => Promise<{ error?: string }>
-  /** أكّد رمز OTP وأنشئ/حمّل ملف المستخدم. */
-  verifyOtp: (phone: string, token: string) => Promise<{ error?: string }>
+  /**
+   * دخول برقم الهاتف + كلمة السر (بلا SMS).
+   * إن لم يوجد حساب بعد يُنشأ تلقائياً (مؤقتاً حتى نبني تسجيل واتساب).
+   */
+  signInWithPhone: (
+    phone: string,
+    password: string,
+    fullName?: string,
+  ) => Promise<{ error?: string }>
   signOut: () => Promise<void>
 }
 
 const AuthContext = createContext<AuthValue | null>(null)
 
-// اسم مؤقت يُحمل بين الخطوتين (إرسال ثم تأكيد) لتسجيل الاسم عند التسجيل الجديد.
+// نربط الرقم بحساب Supabase عبر بريد اصطناعي (مصادقة بلا مزوّد SMS).
+const phoneToEmail = (phone: string) => `${phone.replace(/\D/g, '')}@qareeb.sd`
+
+// نحمل الرقم/الاسم لإنشاء ملف المستخدم بعد أول دخول.
+let pendingPhone: string | undefined
 let pendingName: string | undefined
 
 export function AuthProvider({ children }: { children: ReactNode }) {
@@ -30,20 +39,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [profile, setProfile] = useState<AppUser | null>(null)
   const [loading, setLoading] = useState(true)
 
-  // تحميل ملف المستخدم من جدول users.
-  async function loadProfile(userId: string, phone: string) {
+  // تحميل ملف المستخدم من جدول users (وإنشاؤه أول مرة).
+  async function loadProfile(userId: string) {
     const { data } = await supabase.from('users').select('*').eq('id', userId).single()
     if (data) {
       setProfile(data)
       return
     }
-    // لا يوجد ملف بعد → أنشئه (أول تسجيل).
     const { data: created } = await supabase
       .from('users')
-      .insert({ id: userId, phone, full_name: pendingName ?? null, role: 'customer' })
+      .insert({
+        id: userId,
+        phone: pendingPhone ?? userId,
+        full_name: pendingName ?? null,
+        role: 'customer',
+      })
       .select('*')
       .single()
     setProfile(created ?? null)
+    pendingPhone = undefined
     pendingName = undefined
   }
 
@@ -55,15 +69,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     supabase.auth.getSession().then(({ data }) => {
       setSession(data.session)
-      if (data.session?.user) {
-        void loadProfile(data.session.user.id, data.session.user.phone ?? '')
-      }
+      if (data.session?.user) void loadProfile(data.session.user.id)
       setLoading(false)
     })
 
     const { data: sub } = supabase.auth.onAuthStateChange((_event, s) => {
       setSession(s)
-      if (s?.user) void loadProfile(s.user.id, s.user.phone ?? '')
+      if (s?.user) void loadProfile(s.user.id)
       else setProfile(null)
     })
 
@@ -75,31 +87,37 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     profile,
     loading,
 
-    async signInWithOtp(phone, fullName) {
+    async signInWithPhone(phone, password, fullName) {
+      pendingPhone = phone
       pendingName = fullName
-      if (!isSupabaseConfigured) {
-        // وضع تجريبي: نتخطّى الإرسال الحقيقي.
-        return {}
-      }
-      const { error } = await supabase.auth.signInWithOtp({ phone })
-      return error ? { error: error.message } : {}
-    },
 
-    async verifyOtp(phone, token) {
       if (!isSupabaseConfigured) {
-        // وضع تجريبي: نُنشئ جلسة وهمية محلية لتسيير الواجهة.
+        // وضع تجريبي: جلسة وهمية محلية.
         setProfile({
           id: 'demo-user',
           phone,
-          full_name: pendingName ?? 'مستخدم تجريبي',
+          full_name: fullName ?? 'مستخدم تجريبي',
           role: 'customer',
           created_at: new Date().toISOString(),
         })
         setSession({ user: { id: 'demo-user' } } as unknown as Session)
         return {}
       }
-      const { error } = await supabase.auth.verifyOtp({ phone, token, type: 'sms' })
-      return error ? { error: error.message } : {}
+
+      const email = phoneToEmail(phone)
+      // جرّب الدخول أولاً.
+      const { error } = await supabase.auth.signInWithPassword({ email, password })
+      if (!error) return {}
+
+      // لا يوجد حساب بعد → أنشئه (مؤقتاً حتى تسجيل واتساب).
+      const { data, error: signUpError } = await supabase.auth.signUp({ email, password })
+      if (signUpError) return { error: signUpError.message }
+      // في حال تعطيل تأكيد البريد، تُنشأ الجلسة مباشرة.
+      if (!data.session) {
+        const retry = await supabase.auth.signInWithPassword({ email, password })
+        if (retry.error) return { error: retry.error.message }
+      }
+      return {}
     },
 
     async signOut() {

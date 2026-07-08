@@ -3,41 +3,25 @@ import { useNavigate } from 'react-router-dom'
 import Logo from '@/components/Logo'
 import { useAuth } from '@/store/AuthContext'
 
-type Mode = 'login' | 'signup'
-type Step = 'form' | 'otp'
-
 /**
- * تسجيل/دخول عبر Supabase (OTP على الهاتف).
- * رمز التحقق يُطلب في الحالتين؛ الاسم يُسجَّل عند "حساب جديد" فقط.
- * في وضع المعاينة (بدون مفاتيح Supabase) يمرّ التدفّق مباشرة.
+ * دخول برقم الهاتف + كلمة السر (بلا SMS).
+ * تسجيل حساب جديد سيكون عبر واتساب لاحقاً؛ حالياً الدخول يُنشئ الحساب تلقائياً.
  */
 export default function Auth() {
   const navigate = useNavigate()
-  const { signInWithOtp, verifyOtp } = useAuth()
+  const { signInWithPhone } = useAuth()
 
-  const [mode, setMode] = useState<Mode>('login')
-  const [step, setStep] = useState<Step>('form')
   const [phone, setPhone] = useState('')
+  const [password, setPassword] = useState('')
   const [name, setName] = useState('')
-  const [otp, setOtp] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
 
-  const submitForm = async (e: React.FormEvent) => {
+  const submit = async (e: React.FormEvent) => {
     e.preventDefault()
     setError('')
     setBusy(true)
-    const { error } = await signInWithOtp(phone, mode === 'signup' ? name : undefined)
-    setBusy(false)
-    if (error) return setError(error)
-    setStep('otp')
-  }
-
-  const submitOtp = async (e: React.FormEvent) => {
-    e.preventDefault()
-    setError('')
-    setBusy(true)
-    const { error } = await verifyOtp(phone, otp)
+    const { error } = await signInWithPhone(phone, password, name || undefined)
     setBusy(false)
     if (error) return setError(error)
     navigate('/home')
@@ -48,13 +32,7 @@ export default function Auth() {
       <div className="mb-8 flex flex-col items-center text-center">
         <Logo size={72} rounded={20} />
         <h1 className="mt-4 text-2xl font-extrabold text-green">قريب</h1>
-        <p className="text-sm text-ink-soft">
-          {step === 'otp'
-            ? `أدخل الرمز المُرسل إلى ${phone}`
-            : mode === 'login'
-              ? 'سجّل دخولك للمتابعة'
-              : 'أنشئ حساباً جديداً'}
-        </p>
+        <p className="text-sm text-ink-soft">سجّل دخولك للمتابعة</p>
       </div>
 
       {error && (
@@ -63,82 +41,48 @@ export default function Auth() {
         </p>
       )}
 
-      {step === 'form' ? (
-        <>
-          <div className="mb-6 grid grid-cols-2 rounded-2xl border border-hairline bg-white p-1">
-            {(['login', 'signup'] as Mode[]).map((m) => (
-              <button
-                key={m}
-                onClick={() => setMode(m)}
-                className={`rounded-xl py-2.5 text-sm font-bold transition ${
-                  mode === m ? 'bg-green text-white' : 'text-ink-soft'
-                }`}
-              >
-                {m === 'login' ? 'دخول' : 'حساب جديد'}
-              </button>
-            ))}
-          </div>
+      <form onSubmit={submit} className="space-y-4">
+        <div>
+          <label className="label">الاسم (اختياري)</label>
+          <input
+            className="field"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            placeholder="اسمك"
+          />
+        </div>
+        <div>
+          <label className="label">رقم الهاتف</label>
+          <input
+            className="field text-left"
+            dir="ltr"
+            inputMode="tel"
+            value={phone}
+            onChange={(e) => setPhone(e.target.value)}
+            placeholder="+249 9X XXX XXXX"
+            required
+          />
+        </div>
+        <div>
+          <label className="label">كلمة السر</label>
+          <input
+            className="field text-left"
+            dir="ltr"
+            type="password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            placeholder="••••••"
+            required
+          />
+        </div>
+        <button className="btn-primary w-full" type="submit" disabled={busy}>
+          {busy ? '…' : 'دخول'}
+        </button>
+      </form>
 
-          <form onSubmit={submitForm} className="space-y-4">
-            {mode === 'signup' && (
-              <div>
-                <label className="label">الاسم الكامل</label>
-                <input
-                  className="field"
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                  placeholder="مثال: محمد أحمد"
-                  required
-                />
-              </div>
-            )}
-            <div>
-              <label className="label">رقم الهاتف</label>
-              <input
-                className="field text-left"
-                dir="ltr"
-                inputMode="tel"
-                value={phone}
-                onChange={(e) => setPhone(e.target.value)}
-                placeholder="+249 9X XXX XXXX"
-                required
-              />
-            </div>
-            <button className="btn-primary w-full" type="submit" disabled={busy}>
-              {busy ? '…' : mode === 'login' ? 'إرسال رمز الدخول' : 'إرسال رمز التحقق'}
-            </button>
-          </form>
-        </>
-      ) : (
-        <form onSubmit={submitOtp} className="space-y-4">
-          <div>
-            <label className="label">رمز التحقق</label>
-            <input
-              className="field text-center tracking-[0.5em]"
-              dir="ltr"
-              inputMode="numeric"
-              maxLength={6}
-              value={otp}
-              onChange={(e) => setOtp(e.target.value)}
-              placeholder="______"
-              required
-            />
-          </div>
-          <button className="btn-primary w-full" type="submit" disabled={busy}>
-            {busy ? '…' : 'تأكيد'}
-          </button>
-          <button
-            type="button"
-            className="w-full text-sm text-ink-soft"
-            onClick={() => {
-              setStep('form')
-              setError('')
-            }}
-          >
-            تغيير الرقم
-          </button>
-        </form>
-      )}
+      <p className="mt-6 text-center text-xs text-ink-muted">
+        تسجيل حساب جديد عبر واتساب — قريباً.
+      </p>
     </div>
   )
 }
