@@ -36,8 +36,13 @@ create table if not exists public.users (
   phone      text unique not null,
   full_name  text,
   role       user_role not null default 'customer',
+  sos_contact1 text,                           -- جهة طوارئ 1 (يضبطها العميل)
+  sos_contact2 text,                           -- جهة طوارئ 2
   created_at timestamptz not null default now()
 );
+-- ترقية للقواعد القائمة
+alter table public.users add column if not exists sos_contact1 text;
+alter table public.users add column if not exists sos_contact2 text;
 
 -- ---------- السائقون ----------
 create table if not exists public.drivers (

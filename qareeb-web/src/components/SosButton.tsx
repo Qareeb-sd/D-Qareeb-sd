@@ -1,10 +1,13 @@
 import { useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { useAuth } from '@/store/AuthContext'
 import { raiseSos } from '@/lib/api'
 import { EMERGENCY_POLICE, QAREEB_SUPPORT_TEL } from '@/theme'
 import type { SosRole } from '@/lib/types'
 
 type SendState = 'idle' | 'sending' | 'done' | 'error'
+
+const isIOS = /iP(hone|ad|od)/.test(navigator.userAgent)
 
 /**
  * زر طوارئ عائم — بضغطة واحدة:
@@ -20,16 +23,32 @@ export default function SosButton({
   role: SosRole
 }) {
   const { profile } = useAuth()
+  const navigate = useNavigate()
   const [open, setOpen] = useState(false)
   const [state, setState] = useState<SendState>('idle')
+  const [pos, setPos] = useState<{ lat: number; lng: number } | null>(null)
+
+  const contacts = [profile?.sos_contact1, profile?.sos_contact2].filter(Boolean) as string[]
+
+  // رسالة SMS جاهزة لجهات الطوارئ (تعمل حتى بلا إنترنت — عبر شبكة الاتصال).
+  const smsHref = () => {
+    if (contacts.length === 0) return null
+    const loc = pos ? ` موقعي: https://maps.google.com/?q=${pos.lat},${pos.lng}` : ''
+    const body = encodeURIComponent(
+      `🚨 أنا في حالة طوارئ وأحتاج مساعدة الآن.${loc} — عبر تطبيق قريب`,
+    )
+    return `sms:${contacts.join(',')}${isIOS ? '&' : '?'}body=${body}`
+  }
 
   const trigger = () => {
     setOpen(true)
     setState('sending')
-    const send = (lat?: number, lng?: number) =>
+    const send = (lat?: number, lng?: number) => {
+      if (lat != null && lng != null) setPos({ lat, lng })
       void raiseSos({ user_id: profile?.id, ride_id: rideId ?? null, role, lat, lng }).then(
         ({ error }) => setState(error ? 'error' : 'done'),
       )
+    }
 
     if ('geolocation' in navigator) {
       navigator.geolocation.getCurrentPosition(
@@ -71,6 +90,29 @@ export default function SosButton({
                 'تعذّر الإبلاغ عبر الشبكة — اتصل مباشرة بأرقام الطوارئ فوراً:'}
               {state === 'idle' && 'اختر إجراء الطوارئ المناسب:'}
             </p>
+
+            {/* رسالة لجهات طوارئ العميل (إن أضافها) — تعمل حتى بلا إنترنت */}
+            {contacts.length > 0 ? (
+              <a
+                href={smsHref() ?? undefined}
+                className="mb-2 flex w-full items-center justify-center gap-2 rounded-2xl py-3.5 text-lg font-extrabold text-white"
+                style={{ backgroundColor: '#1B6B3F' }}
+              >
+                📩 إرسال رسالة لجهات طوارئك ({contacts.length})
+              </a>
+            ) : (
+              role === 'customer' && (
+                <button
+                  onClick={() => {
+                    setOpen(false)
+                    navigate('/profile')
+                  }}
+                  className="mb-2 flex w-full items-center justify-center gap-2 rounded-2xl border border-hairline py-3 text-sm font-bold text-ink-soft"
+                >
+                  ➕ أضف جهات طوارئ من حسابك
+                </button>
+              )
+            )}
 
             <a
               href={`tel:${EMERGENCY_POLICE}`}

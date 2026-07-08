@@ -268,6 +268,20 @@ export async function resolveSos(id: string): Promise<{ error?: string }> {
   return error ? { error: error.message } : {}
 }
 
+/** يحفظ رقمَي جهات الطوارئ في ملف العميل. */
+export async function updateEmergencyContacts(
+  userId: string,
+  contact1: string | null,
+  contact2: string | null,
+): Promise<{ error?: string }> {
+  if (!isSupabaseConfigured) return {}
+  const { error } = await supabase
+    .from('users')
+    .update({ sos_contact1: contact1, sos_contact2: contact2 })
+    .eq('id', userId)
+  return error ? { error: error.message } : {}
+}
+
 const demoRides: Ride[] = [
   {
     id: 'r1',

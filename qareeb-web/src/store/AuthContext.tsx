@@ -23,6 +23,8 @@ interface AuthValue {
     fullName?: string,
   ) => Promise<{ error?: string }>
   signOut: () => Promise<void>
+  /** يعيد تحميل ملف المستخدم (بعد تعديل بيانات مثل جهات الطوارئ). */
+  refreshProfile: () => Promise<void>
 }
 
 const AuthContext = createContext<AuthValue | null>(null)
@@ -124,6 +126,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (isSupabaseConfigured) await supabase.auth.signOut()
       setSession(null)
       setProfile(null)
+    },
+
+    async refreshProfile() {
+      if (!isSupabaseConfigured) return
+      const uid = session?.user?.id
+      if (uid) await loadProfile(uid)
     },
   }
 
