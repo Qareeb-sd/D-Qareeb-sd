@@ -13,6 +13,8 @@ interface MapViewProps {
   center?: google.maps.LatLngLiteral
   marker?: google.maps.LatLngLiteral
   onCenterChanged?: (pos: google.maps.LatLngLiteral) => void
+  /** يُستدعى عند سحب المستخدم للخريطة فعلياً (تفاعل حقيقي). */
+  onUserDrag?: () => void
   className?: string
 }
 
@@ -23,6 +25,7 @@ export default function MapView({
   center = KHARTOUM,
   marker,
   onCenterChanged,
+  onUserDrag,
   className = 'h-64 w-full rounded-2xl',
 }: MapViewProps) {
   const mapRef = useRef<google.maps.Map | null>(null)
@@ -65,6 +68,7 @@ export default function MapView({
           mapRef.current = map
         }}
         onIdle={onCenterChanged ? handleIdle : undefined}
+        onDragEnd={onUserDrag}
       >
         {marker && <MarkerF position={marker} />}
       </GoogleMap>

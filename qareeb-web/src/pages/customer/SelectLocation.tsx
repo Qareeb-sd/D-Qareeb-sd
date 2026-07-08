@@ -44,8 +44,12 @@ export default function SelectLocation() {
   const [pickupSet, setPickupSet] = useState(false)
   const [dropoffPos, setDropoffPos] = useState<google.maps.LatLngLiteral>(KHARTOUM)
   const [dropoffAddr, setDropoffAddr] = useState('')
+  const [dropoffSet, setDropoffSet] = useState(false)
   const [gpsBusy, setGpsBusy] = useState(false)
   const [gpsErr, setGpsErr] = useState('')
+
+  const destOptional = Boolean(service?.destinationOptional)
+  const destChosen = dropoffSet || dropoffAddr.trim() !== ''
 
   const [pricing, setPricing] = useState<ServicePricing | null>(null)
   const [settings, setSettings] = useState<Settings | null>(null)
@@ -217,13 +221,19 @@ export default function SelectLocation() {
       <div className="mt-4 flex items-center gap-2">
         <span>📍</span>
         <p className="font-bold">إلى أين؟</p>
+        <span className="text-xs text-ink-muted">
+          {destOptional ? '(اختياري)' : '(مطلوب)'}
+        </span>
       </div>
       <input
         className="field mt-2"
         value={dropoffAddr}
         onFocus={() => setActive('dropoff')}
-        onChange={(e) => setDropoffAddr(e.target.value)}
-        placeholder="اكتب اسم الوجهة (اختياري)"
+        onChange={(e) => {
+          setDropoffAddr(e.target.value)
+          setDropoffSet(true)
+        }}
+        placeholder={destOptional ? 'اكتب اسم الوجهة (اختياري)' : 'اكتب اسم الوجهة'}
       />
 
       {/* الخريطة تحدّد النقطة النشطة */}
@@ -231,7 +241,12 @@ export default function SelectLocation() {
         حرّك الخريطة لتحديد {active === 'pickup' ? 'الإقلاع 🟢' : 'الوجهة 📍'}
       </p>
       <div className="relative h-52 overflow-hidden rounded-2xl">
-        <MapView center={activePos} onCenterChanged={setActivePos} className="h-full w-full" />
+        <MapView
+          center={activePos}
+          onCenterChanged={setActivePos}
+          onUserDrag={() => (active === 'pickup' ? setPickupSet(true) : setDropoffSet(true))}
+          className="h-full w-full"
+        />
         <div className="pointer-events-none absolute inset-0 grid place-items-center">
           <div className="-mt-6 text-4xl drop-shadow">{active === 'pickup' ? '🟢' : '📍'}</div>
         </div>
@@ -250,7 +265,14 @@ export default function SelectLocation() {
       </div>
       <p className="mt-1 text-center text-xs text-ink-muted">{service?.name}</p>
 
-      <button className="btn-primary mt-4 w-full" onClick={confirm} disabled={busy || !quote}>
+      {!destOptional && !destChosen && (
+        <p className="mt-3 text-center text-xs text-warning">حدّد وجهتك للمتابعة</p>
+      )}
+      <button
+        className="btn-primary mt-2 w-full"
+        onClick={confirm}
+        disabled={busy || !quote || (!destOptional && !destChosen)}
+      >
         {busy ? '…' : 'تأكيد الرحلة'}
       </button>
     </Screen>

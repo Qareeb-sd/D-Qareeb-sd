@@ -21,6 +21,7 @@ export interface Service {
   seats: number
   femaleDriver?: boolean
   sharable?: boolean // يدعم ترحيل
+  destinationOptional?: boolean // الوجهة اختيارية (مشوار مفتوح)
 }
 
 export const services: Service[] = [
@@ -84,6 +85,7 @@ export const services: Service[] = [
     tint: '#EDEFEC',
     seats: 4,
     sharable: true,
+    destinationOptional: true,
   },
   {
     id: 'tow',
