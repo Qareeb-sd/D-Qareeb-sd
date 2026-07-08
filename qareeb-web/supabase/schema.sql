@@ -211,6 +211,14 @@ alter table public.service_pricing enable row level security;
 alter table public.commute_orders  enable row level security;
 alter table public.commute_members enable row level security;
 
+-- هل المستخدم الحالي أدمن؟ (تُعرَّف مبكراً لأن السياسات أدناه تستخدمها)
+create or replace function public.is_admin()
+returns boolean language sql stable security definer set search_path = public as $$
+  select exists (
+    select 1 from public.users where id = auth.uid() and role = 'admin'
+  );
+$$;
+
 -- التسعير: قراءة للجميع (المصادَق عليهم)
 drop policy if exists "read pricing" on public.service_pricing;
 create policy "read pricing" on public.service_pricing
@@ -278,14 +286,6 @@ create policy "read settings" on public.settings
 -- ============================================================
 --  صلاحيات الأدمن
 -- ============================================================
-
--- هل المستخدم الحالي أدمن؟ (security definer لتفادي تكرار RLS)
-create or replace function public.is_admin()
-returns boolean language sql stable security definer set search_path = public as $$
-  select exists (
-    select 1 from public.users where id = auth.uid() and role = 'admin'
-  );
-$$;
 
 -- الأدمن يقرأ كل المستخدمين والمحافظ والتعبئات (للوحة التحكم)
 drop policy if exists "admin read users" on public.users;
