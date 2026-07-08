@@ -63,6 +63,9 @@ export default function Home() {
                 <div>
                   <p className="font-bold" style={accent ? { color: accent.title } : undefined}>
                     {s.name}
+                    <span className="mr-1 text-sm font-extrabold text-ink-soft">
+                      {s.seats}
+                    </span>
                   </p>
                   <p className="text-xs text-ink-muted">{s.tagline}</p>
                 </div>
