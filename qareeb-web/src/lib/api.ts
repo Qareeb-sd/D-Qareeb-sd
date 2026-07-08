@@ -7,6 +7,8 @@ import type {
   Topup,
   Driver,
   ServicePricing,
+  SosAlert,
+  SosRole,
 } from './types'
 
 /**
@@ -211,6 +213,59 @@ export async function savePushSubscription(sub: {
 export async function deletePushSubscription(endpoint: string): Promise<void> {
   if (!isSupabaseConfigured) return
   await supabase.from('push_subscriptions').delete().eq('endpoint', endpoint)
+}
+
+// ---------- الطوارئ (SOS) ----------
+/** يُطلق تنبيه طوارئ (يُخزَّن ويظهر للأدمن لحظياً). يتحمّل غياب الموقع. */
+export async function raiseSos(alert: {
+  user_id?: string
+  ride_id?: string | null
+  role: SosRole
+  lat?: number | null
+  lng?: number | null
+  note?: string | null
+}): Promise<{ error?: string }> {
+  if (!isSupabaseConfigured) return {}
+  const { error } = await supabase.from('sos_alerts').insert({
+    user_id: alert.user_id,
+    ride_id: alert.ride_id ?? null,
+    role: alert.role,
+    lat: alert.lat ?? null,
+    lng: alert.lng ?? null,
+    note: alert.note ?? null,
+    status: 'open',
+  })
+  return error ? { error: error.message } : {}
+}
+
+const demoSosAlerts: SosAlert[] = [
+  {
+    id: 'sos-demo',
+    ride_id: null,
+    user_id: 'c-88',
+    role: 'customer',
+    lat: 15.5007,
+    lng: 32.5599,
+    note: null,
+    status: 'open',
+    created_at: new Date().toISOString(),
+  },
+]
+
+export async function listSosAlerts(): Promise<SosAlert[]> {
+  if (!isSupabaseConfigured) return demoSosAlerts
+  const { data } = await supabase
+    .from('sos_alerts')
+    .select('*')
+    .eq('status', 'open')
+    .order('created_at', { ascending: false })
+  return data ?? []
+}
+
+export async function resolveSos(id: string): Promise<{ error?: string }> {
+  if (!isSupabaseConfigured) return {}
+  const { error } = await supabase.from('sos_alerts').update({ status: 'resolved' }).eq('id', id)
+  return error ? { error: error.message } : {}
 }
 
 const demoRides: Ride[] = [

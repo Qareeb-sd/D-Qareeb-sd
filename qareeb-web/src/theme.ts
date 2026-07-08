@@ -32,3 +32,7 @@ export const KHARTOUM: google.maps.LatLngLiteral = {
   lat: 15.5007,
   lng: 32.5599,
 }
+
+// أرقام الطوارئ (للسودان) — تُستخدم في زر SOS.
+export const EMERGENCY_POLICE = '999'
+export const QAREEB_SUPPORT_TEL = '+249912900553'

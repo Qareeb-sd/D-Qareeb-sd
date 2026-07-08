@@ -11,9 +11,12 @@ import {
   getProofUrl,
   listServicePricing,
   updateServicePricing,
+  listSosAlerts,
+  resolveSos,
   type AdminStats,
 } from '@/lib/api'
-import type { Settings, Topup, ServicePricing } from '@/lib/types'
+import { subscribeToSos } from '@/lib/realtime'
+import type { Settings, Topup, ServicePricing, SosAlert } from '@/lib/types'
 
 /**
  * لوحة الأدمن: إحصاءات + اعتماد التعبئات + إعدادات المنصة (عمولة/Surge/شرائح/بنك)
@@ -27,6 +30,7 @@ export default function AdminDashboard() {
   const [busyId, setBusyId] = useState<string | null>(null)
   const [savedMsg, setSavedMsg] = useState('')
   const [priceMsg, setPriceMsg] = useState('')
+  const [sos, setSos] = useState<SosAlert[]>([])
 
   useEffect(() => {
     void (async () => {
@@ -42,6 +46,22 @@ export default function AdminDashboard() {
       setPricing(pr)
     })()
   }, [])
+
+  // تنبيهات الطوارئ — تحميل أوّلي + متابعة لحظية.
+  useEffect(() => {
+    const load = () => listSosAlerts().then(setSos)
+    void load()
+    const unsub = subscribeToSos(load)
+    return unsub
+  }, [])
+
+  const clearSos = async (id: string) => {
+    setBusyId(id)
+    const { error } = await resolveSos(id)
+    setBusyId(null)
+    if (error) return alert(error)
+    setSos((cur) => cur.filter((a) => a.id !== id))
+  }
 
   const viewProof = async (path: string) => {
     const url = await getProofUrl(path)
@@ -100,6 +120,48 @@ export default function AdminDashboard() {
       </header>
 
       <main className="flex-1 space-y-4 p-4">
+        {/* تنبيهات الطوارئ (SOS) — تظهر فقط عند وجود تنبيهات مفتوحة */}
+        {sos.length > 0 && (
+          <div className="rounded-2xl border-2 p-4" style={{ borderColor: '#C5453B', backgroundColor: '#FDECEA' }}>
+            <p className="mb-3 flex items-center gap-2 font-extrabold" style={{ color: '#C5453B' }}>
+              🚨 تنبيهات طوارئ ({sos.length})
+            </p>
+            <div className="space-y-2">
+              {sos.map((a) => (
+                <div key={a.id} className="flex items-center gap-3 rounded-xl bg-white p-3">
+                  <div className="flex-1">
+                    <p className="font-bold">
+                      {a.role === 'driver' ? '🧑🏽‍✈️ سائق' : '🧍 راكب'} · طلب مساعدة
+                    </p>
+                    <p className="text-xs text-ink-muted">
+                      {new Date(a.created_at).toLocaleTimeString('ar-SD')}
+                      {a.ride_id ? ` · رحلة ${a.ride_id.slice(0, 8)}` : ''}
+                    </p>
+                  </div>
+                  {a.lat != null && a.lng != null && (
+                    <a
+                      href={`https://www.google.com/maps?q=${a.lat},${a.lng}`}
+                      target="_blank"
+                      rel="noopener"
+                      className="text-sm font-bold text-info underline"
+                    >
+                      الموقع 📍
+                    </a>
+                  )}
+                  <button
+                    onClick={() => clearSos(a.id)}
+                    disabled={busyId === a.id}
+                    className="rounded-xl px-3 py-1.5 text-sm font-bold text-white"
+                    style={{ backgroundColor: '#C5453B' }}
+                  >
+                    {busyId === a.id ? '…' : 'تمّت المعالجة'}
+                  </button>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
         {/* إحصاءات */}
         <div className="grid grid-cols-3 gap-3">
           {[

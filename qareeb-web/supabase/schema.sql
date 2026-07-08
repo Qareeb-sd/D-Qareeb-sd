@@ -89,6 +89,20 @@ create table if not exists public.push_subscriptions (
 );
 create index if not exists push_subs_user_idx on public.push_subscriptions(user_id);
 
+-- ---------- تنبيهات الطوارئ (SOS) ----------
+create table if not exists public.sos_alerts (
+  id         uuid primary key default gen_random_uuid(),
+  ride_id    uuid references public.rides(id) on delete set null,
+  user_id    uuid not null references public.users(id) on delete cascade,
+  role       text not null default 'customer',  -- customer / driver
+  lat        double precision,
+  lng        double precision,
+  note       text,
+  status     text not null default 'open',       -- open / resolved
+  created_at timestamptz not null default now()
+);
+create index if not exists sos_open_idx on public.sos_alerts(status);
+
 -- ---------- المحافظ ----------
 create table if not exists public.wallets (
   id         uuid primary key default gen_random_uuid(),
@@ -228,6 +242,7 @@ alter table public.service_pricing enable row level security;
 alter table public.commute_orders  enable row level security;
 alter table public.commute_members enable row level security;
 alter table public.push_subscriptions enable row level security;
+alter table public.sos_alerts enable row level security;
 
 -- الإشعارات: كل مستخدم يدير اشتراكاته فقط (الإرسال يتم بدور service_role الذي يتجاوز RLS).
 drop policy if exists "own push subs" on public.push_subscriptions;
@@ -322,6 +337,19 @@ create policy "admin read wallets" on public.wallets
 drop policy if exists "admin read topups" on public.topups;
 create policy "admin read topups" on public.topups
   for select using (public.is_admin());
+
+-- الطوارئ: المستخدم يُطلق تنبيهه، ويقرؤه هو أو الأدمن، والأدمن يعالجه.
+drop policy if exists "raise own sos" on public.sos_alerts;
+create policy "raise own sos" on public.sos_alerts
+  for insert to authenticated with check (auth.uid() = user_id);
+
+drop policy if exists "read sos" on public.sos_alerts;
+create policy "read sos" on public.sos_alerts
+  for select using (auth.uid() = user_id or public.is_admin());
+
+drop policy if exists "admin update sos" on public.sos_alerts;
+create policy "admin update sos" on public.sos_alerts
+  for update using (public.is_admin()) with check (public.is_admin());
 
 -- الأدمن يعدّل الإعدادات (العمولة + Surge + الشرائح + الحساب البنكي)
 drop policy if exists "admin write settings" on public.settings;
@@ -490,7 +518,7 @@ declare
   t text;
 begin
   if exists (select 1 from pg_publication where pubname = 'supabase_realtime') then
-    foreach t in array array['rides', 'commute_orders', 'commute_members'] loop
+    foreach t in array array['rides', 'commute_orders', 'commute_members', 'sos_alerts'] loop
       if not exists (
         select 1 from pg_publication_tables
         where pubname = 'supabase_realtime' and schemaname = 'public' and tablename = t

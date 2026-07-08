@@ -68,6 +68,22 @@ export function subscribeToCommuteMembers(
   }
 }
 
+/** يستمع لتنبيهات الطوارئ الجديدة (للوحة الأدمن). */
+export function subscribeToSos(onEvent: () => void): Unsubscribe {
+  if (!isSupabaseConfigured) return () => {}
+  const channel = supabase
+    .channel('sos:feed')
+    .on(
+      'postgres_changes',
+      { event: '*', schema: 'public', table: 'sos_alerts' },
+      () => onEvent(),
+    )
+    .subscribe()
+  return () => {
+    void supabase.removeChannel(channel)
+  }
+}
+
 /** يستمع لتغيّرات طلبات الترحيل (لواجهة السائق). */
 export function subscribeToCommuteOrders(onEvent: () => void): Unsubscribe {
   if (!isSupabaseConfigured) return () => {}

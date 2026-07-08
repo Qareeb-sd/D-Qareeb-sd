@@ -110,6 +110,23 @@ export interface ServicePricing {
   updated_at: string
 }
 
+// ---------- الطوارئ (SOS) ----------
+export type SosRole = 'customer' | 'driver'
+export type SosStatus = 'open' | 'resolved'
+
+/** تنبيه طوارئ من راكب أو سائق أثناء رحلة — يظهر للأدمن لحظياً. */
+export interface SosAlert {
+  id: string
+  ride_id: string | null
+  user_id: string
+  role: SosRole
+  lat: number | null
+  lng: number | null
+  note: string | null
+  status: SosStatus
+  created_at: string
+}
+
 // ---------- ترحيل (المشاركة اليومية) ----------
 export type CommuteStatus = 'forming' | 'dispatched' | 'active' | 'cancelled'
 

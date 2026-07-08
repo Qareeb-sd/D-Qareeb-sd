@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import Screen from '@/components/Screen'
 import MapView from '@/components/MapView'
 import VehicleImage from '@/components/VehicleImage'
+import SosButton from '@/components/SosButton'
 import { useRide } from '@/store/RideContext'
 import { getService } from '@/data/services'
 import { getRide } from '@/lib/api'
@@ -134,6 +135,8 @@ export default function Trip() {
           </button>
         </div>
       </div>
+
+      <SosButton rideId={rideId} role="customer" />
     </Screen>
   )
 }

@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { useNavigate, Navigate } from 'react-router-dom'
 import Screen from '@/components/Screen'
 import MapView from '@/components/MapView'
+import SosButton from '@/components/SosButton'
 import { useDriver } from '@/store/DriverContext'
 import { settleRide, getSettings, updateDriverLocation } from '@/lib/api'
 import { getService } from '@/data/services'
@@ -103,6 +104,8 @@ export default function DriverTrip() {
           </button>
         </div>
       </div>
+
+      <SosButton rideId={activeRide.id} role="driver" />
     </Screen>
   )
 }
