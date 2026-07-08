@@ -1,13 +1,15 @@
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import Screen from '@/components/Screen'
 import MapView from '@/components/MapView'
 import VehicleImage from '@/components/VehicleImage'
 import { useRide } from '@/store/RideContext'
 import { getService } from '@/data/services'
+import { getRide } from '@/lib/api'
 import { subscribeToRide } from '@/lib/realtime'
-import { money } from '@/lib/format'
-import type { PaymentMethod } from '@/lib/types'
+import { estimateRoute } from '@/lib/pricing'
+import { km, mins, money } from '@/lib/format'
+import type { PaymentMethod, Ride } from '@/lib/types'
 
 const payments: { id: PaymentMethod; label: string; icon: string }[] = [
   { id: 'cash', label: 'كاش', icon: '💵' },
@@ -15,27 +17,69 @@ const payments: { id: PaymentMethod; label: string; icon: string }[] = [
   { id: 'wallet', label: 'محفظة قريب', icon: '👛' },
 ]
 
-/** شاشة الرحلة الجارية — بيانات السائق، الوجهة، طريقة الدفع، والإنهاء. */
+const driverPosOf = (r: Ride | null): google.maps.LatLngLiteral | null =>
+  r && r.driver_lat != null && r.driver_lng != null
+    ? { lat: r.driver_lat, lng: r.driver_lng }
+    : null
+
+/** شاشة الرحلة الجارية — تتبّع السائق المباشر، بيانات السائق، الوجهة، والدفع. */
 export default function Trip() {
   const navigate = useNavigate()
-  const { rideId, serviceId, dropoff, payment, setPayment, fare } = useRide()
+  const { rideId, serviceId, pickup, dropoff, payment, setPayment, fare } = useRide()
   const service = serviceId ? getService(serviceId) : undefined
   const total = fare ?? 0
 
-  // Realtime: انتقل للتقييم لحظة إنهاء السائق للرحلة (تسويتها).
+  const [driverPos, setDriverPos] = useState<google.maps.LatLngLiteral | null>(null)
+
+  // موقع مبدئي للسائق (إن وُجد) فور فتح الشاشة.
+  useEffect(() => {
+    if (!rideId) return
+    void getRide(rideId).then((r) => {
+      const pos = driverPosOf(r)
+      if (pos) setDriverPos(pos)
+    })
+  }, [rideId])
+
+  // Realtime: يتحرّك دبوس السائق مع كل تحديث موقع (بلا أي طلب لخرائط قوقل)،
+  // والانتقال للتقييم لحظة إنهاء السائق للرحلة.
   useEffect(() => {
     const unsub = subscribeToRide(rideId ?? '', (ride) => {
+      const pos = driverPosOf(ride)
+      if (pos) setDriverPos(pos)
       if (ride.status === 'completed') navigate('/rate')
     })
     return unsub
   }, [rideId, navigate])
 
+  // مسافة/زمن تقديريان (Haversine مجاني) من السائق إليك.
+  const eta = driverPos ? estimateRoute(driverPos, pickup.pos) : null
+
   return (
     <Screen title="رحلتك الآن" bare>
       <div className="flex h-full flex-col">
-        <MapView marker={dropoff?.pos} className="h-56 w-full" />
+        <MapView
+          center={driverPos ?? dropoff?.pos ?? pickup.pos}
+          driver={driverPos ?? undefined}
+          marker={dropoff?.pos ?? pickup.pos}
+          line={driverPos ? [driverPos, pickup.pos] : undefined}
+          className="h-56 w-full"
+        />
 
         <div className="flex-1 space-y-4 p-4">
+          {/* حالة التتبع */}
+          <div className="card flex items-center gap-3 p-3">
+            <span className="grid h-9 w-9 place-items-center rounded-full bg-green-soft">
+              📍
+            </span>
+            {driverPos ? (
+              <p className="flex-1 text-sm font-bold text-green">
+                السائق في الطريق إليك · {km(eta!.distanceKm)} · ~{mins(eta!.durationMin)}
+              </p>
+            ) : (
+              <p className="flex-1 text-sm text-ink-soft">في انتظار بدء تتبّع السائق…</p>
+            )}
+          </div>
+
           {/* السائق */}
           <div className="card flex items-center gap-3 p-4">
             <div className="grid h-12 w-12 place-items-center rounded-full bg-green-soft text-xl">

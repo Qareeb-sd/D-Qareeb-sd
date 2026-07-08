@@ -50,6 +50,9 @@ export interface Ride {
   dropoff_lng: number | null
   dropoff_address: string | null
   fare: number | null
+  driver_lat?: number | null // آخر موقع مباشر للسائق (تتبع)
+  driver_lng?: number | null
+  driver_loc_at?: string | null
   payment_method: PaymentMethod
   rating: number | null
   created_at: string

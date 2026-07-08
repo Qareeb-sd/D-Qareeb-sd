@@ -73,6 +73,11 @@ create index if not exists rides_customer_idx on public.rides(customer_id);
 create index if not exists rides_driver_idx   on public.rides(driver_id);
 create index if not exists rides_status_idx   on public.rides(status);
 
+-- تتبع مباشر: آخر موقع للسائق (يُبثّ عبر Realtime على صفّ الرحلة نفسه)
+alter table public.rides add column if not exists driver_lat    double precision;
+alter table public.rides add column if not exists driver_lng    double precision;
+alter table public.rides add column if not exists driver_loc_at timestamptz;
+
 -- ---------- المحافظ ----------
 create table if not exists public.wallets (
   id         uuid primary key default gen_random_uuid(),
@@ -377,6 +382,21 @@ drop policy if exists "driver accept ride" on public.rides;
 create policy "driver accept ride" on public.rides
   for update using (status in ('requested', 'searching'))
   with check (auth.uid() = driver_id);
+
+-- تتبع مباشر: السائق المرتبط بالرحلة يحدّث موقعه فقط (بلا استهلاك خرائط قوقل).
+-- عبر دالة آمنة حتى لا تتعارض مع سياسة الكتابة العامة على صفّ الرحلة.
+create or replace function public.update_driver_location(
+  p_ride uuid,
+  p_lat  double precision,
+  p_lng  double precision
+) returns void language plpgsql security definer set search_path = public as $$
+begin
+  update public.rides
+     set driver_lat = p_lat, driver_lng = p_lng, driver_loc_at = now()
+   where id = p_ride
+     and driver_id = auth.uid()
+     and status in ('accepted', 'arrived', 'in_progress');
+end $$;
 
 -- تسوية رحلة عند اكتمالها: يُقيَّد للسائق (الأجرة − العمولة)، وتُسجَّل
 -- معاملتان (أرباح إجمالية + عمولة سالبة) بحيث يتطابق مجموعهما مع صافي الرصيد.

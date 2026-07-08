@@ -28,12 +28,25 @@ export const MAP_OPTIONS: google.maps.MapOptions = {
 /**
  * مسافة وزمن الطريق الفعليان عبر Google Directions API.
  * يرجّع null إذا لم تُحمّل الخريطة أو فشل الطلب (فيُستخدم بديل Haversine).
+ *
+ * لتقليل رسوم قوقل: نُخزّن النتائج مؤقتاً بمفتاح إحداثيات مُقرّبة (~11م)،
+ * فأي تكرار لنفس الطلب (تحريك بسيط للخريطة ذهاباً وإياباً) يُخدَم من الكاش.
  */
+type RouteResult = { distanceKm: number; durationMin: number }
+const routeCache = new Map<string, RouteResult>()
+const routeKey = (o: google.maps.LatLngLiteral, d: google.maps.LatLngLiteral) =>
+  `${o.lat.toFixed(4)},${o.lng.toFixed(4)}>${d.lat.toFixed(4)},${d.lng.toFixed(4)}`
+
 export async function fetchRoute(
   origin: google.maps.LatLngLiteral,
   destination: google.maps.LatLngLiteral,
-): Promise<{ distanceKm: number; durationMin: number } | null> {
+): Promise<RouteResult | null> {
   if (typeof google === 'undefined' || !google.maps?.DirectionsService) return null
+
+  const key = routeKey(origin, destination)
+  const cached = routeCache.get(key)
+  if (cached) return cached
+
   try {
     const svc = new google.maps.DirectionsService()
     const res = await svc.route({
@@ -43,10 +56,12 @@ export async function fetchRoute(
     })
     const leg = res.routes[0]?.legs[0]
     if (!leg?.distance || !leg?.duration) return null
-    return {
+    const result: RouteResult = {
       distanceKm: leg.distance.value / 1000,
       durationMin: leg.duration.value / 60,
     }
+    routeCache.set(key, result)
+    return result
   } catch {
     return null
   }

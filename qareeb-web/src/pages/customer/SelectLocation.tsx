@@ -110,8 +110,12 @@ export default function SelectLocation() {
   useEffect(() => {
     if (!pricing || !settings) return
     let alive = true
+    // توفير رسوم قوقل: لا نطلب Directions إلا بعد أن يحدّد العميل النقطتين فعلاً؛
+    // قبل ذلك نكتفي بتقدير Haversine المجاني. ومهلة أطول تقلّل الطلبات أثناء التحريك.
+    const bothPlaced = pickupSet && dropoffSet
     const t = setTimeout(async () => {
-      const real = isLoaded && isMapsConfigured ? await fetchRoute(pickupPos, dropoffPos) : null
+      const real =
+        bothPlaced && isLoaded && isMapsConfigured ? await fetchRoute(pickupPos, dropoffPos) : null
       const route = real ?? estimateRoute(pickupPos, dropoffPos)
       if (!alive) return
       const fare = estimateFare({
@@ -121,12 +125,12 @@ export default function SelectLocation() {
         settings,
       }).total
       setQuote({ ...route, fare, real: Boolean(real) })
-    }, 500)
+    }, 700)
     return () => {
       alive = false
       clearTimeout(t)
     }
-  }, [pickupPos, dropoffPos, pricing, settings, isLoaded])
+  }, [pickupPos, dropoffPos, pickupSet, dropoffSet, pricing, settings, isLoaded])
 
   const activePos = active === 'pickup' ? pickupPos : dropoffPos
   const setActivePos = active === 'pickup' ? setPickupPos : setDropoffPos

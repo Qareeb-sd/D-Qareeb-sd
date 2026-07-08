@@ -177,6 +177,26 @@ export async function completeRide(rideId: string, rating: number): Promise<void
   await supabase.from('rides').update({ status: 'completed', rating }).eq('id', rideId)
 }
 
+/** يجلب رحلة واحدة (للحصول على الموقع المبدئي للسائق عند فتح شاشة التتبع). */
+export async function getRide(rideId: string): Promise<Ride | null> {
+  if (!isSupabaseConfigured || !rideId) return null
+  const { data } = await supabase.from('rides').select('*').eq('id', rideId).single()
+  return data ?? null
+}
+
+/**
+ * تتبع مباشر: يبثّ السائق موقعه عبر دالة آمنة (Supabase) — بلا أي طلب لخرائط قوقل.
+ * يُستدعى بمعدّل مُقنَّن من جهاز السائق أثناء الرحلة.
+ */
+export async function updateDriverLocation(
+  rideId: string,
+  lat: number,
+  lng: number,
+): Promise<void> {
+  if (!isSupabaseConfigured || !rideId) return
+  await supabase.rpc('update_driver_location', { p_ride: rideId, p_lat: lat, p_lng: lng })
+}
+
 const demoRides: Ride[] = [
   {
     id: 'r1',
