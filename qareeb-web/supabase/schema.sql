@@ -139,6 +139,7 @@ create table if not exists public.service_pricing (
 -- بذور التسعير الابتدائية (بالجنيه السوداني — تُعدَّل من لوحة الأدمن)
 insert into public.service_pricing
   (service_id, name, base_fare, per_km_urban, per_km_far, per_minute, sort_order) values
+  ('standard', 'قريب عادي',    600,  130, 160, 18, 0),
   ('ladies',   'قريب نسائي',   900,  180, 220, 25, 1),
   ('amjad',    'أمجاد',        800,  160, 200, 22, 2),
   ('hiace',    'هايس',        1200,  200, 240, 30, 3),

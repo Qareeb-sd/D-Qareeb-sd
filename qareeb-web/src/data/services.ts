@@ -25,6 +25,16 @@ export interface Service {
 
 export const services: Service[] = [
   {
+    id: 'standard',
+    name: 'قريب عادي',
+    tagline: 'سيارة عادية · اقتصادي وسريع',
+    image: '/vehicles/standard.png',
+    art: 'sedan',
+    tint: '#EDEFEC',
+    seats: 4,
+    sharable: true,
+  },
+  {
     id: 'ladies',
     name: 'قريب نسائي',
     tagline: 'سائقة · للنساء والعائلات',

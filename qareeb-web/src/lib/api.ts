@@ -36,6 +36,7 @@ export async function getSettings(): Promise<Settings> {
 
 // ---------- تسعير المركبات ----------
 const demoPricing: ServicePricing[] = [
+  { service_id: 'standard', name: 'قريب عادي', base_fare: 600, per_km_urban: 130, per_km_far: 160, per_minute: 18, sort_order: 0, active: true, updated_at: '' },
   { service_id: 'ladies', name: 'قريب نسائي', base_fare: 900, per_km_urban: 180, per_km_far: 220, per_minute: 25, sort_order: 1, active: true, updated_at: '' },
   { service_id: 'amjad', name: 'أمجاد', base_fare: 800, per_km_urban: 160, per_km_far: 200, per_minute: 22, sort_order: 2, active: true, updated_at: '' },
   { service_id: 'hiace', name: 'هايس', base_fare: 1200, per_km_urban: 200, per_km_far: 240, per_minute: 30, sort_order: 3, active: true, updated_at: '' },

@@ -33,7 +33,7 @@ export default function Home() {
           <span className="grid h-10 w-10 place-items-center rounded-full bg-green-soft text-green">
             <PinIcon />
           </span>
-          <span className="flex-1 text-ink-muted">وين رايح؟</span>
+          <span className="flex-1 text-ink-muted">وين ماشي؟</span>
         </button>
 
         <h2 className="mb-3 mt-6 text-lg font-bold">اختر الخدمة</h2>
