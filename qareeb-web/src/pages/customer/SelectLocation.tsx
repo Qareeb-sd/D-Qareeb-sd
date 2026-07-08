@@ -19,7 +19,7 @@ import { km, mins, money } from '@/lib/format'
 import { KHARTOUM } from '@/theme'
 import type { Settings, ServicePricing } from '@/lib/types'
 
-type Step = 'pickup' | 'dropoff'
+type Field = 'pickup' | 'dropoff'
 interface Quote {
   distanceKm: number
   durationMin: number
@@ -27,7 +27,7 @@ interface Quote {
   real: boolean
 }
 
-/** تحديد نقطة الإقلاع ثم الوجهة على الخريطة + معاينة أجرة حيّة. */
+/** صفحة واحدة: نقطة الإقلاع + الوجهة + المسافة/المدة/السعر. */
 export default function SelectLocation() {
   const navigate = useNavigate()
   const { profile } = useAuth()
@@ -36,16 +36,15 @@ export default function SelectLocation() {
   const sid = serviceId ?? DEFAULT_SERVICE_ID
   const service = getService(sid)
 
-  const [step, setStep] = useState<Step>('pickup')
+  const [active, setActive] = useState<Field>('dropoff')
   const [pickupPos, setPickupPos] = useState<google.maps.LatLngLiteral>(KHARTOUM)
-  const [pickupAddr, setPickupAddr] = useState('')
+  const [pickupAddr, setPickupAddr] = useState('موقعي الحالي')
   const [dropoffPos, setDropoffPos] = useState<google.maps.LatLngLiteral>(KHARTOUM)
   const [dropoffAddr, setDropoffAddr] = useState('')
 
   const [pricing, setPricing] = useState<ServicePricing | null>(null)
   const [settings, setSettings] = useState<Settings | null>(null)
   const [quote, setQuote] = useState<Quote | null>(null)
-  const [quoting, setQuoting] = useState(false)
   const [busy, setBusy] = useState(false)
 
   const { isLoaded } = useJsApiLoader({
@@ -54,7 +53,7 @@ export default function SelectLocation() {
     libraries: MAPS_LIBRARIES,
   })
 
-  // موقع المستخدم الحالي كنقطة إقلاع مبدئية (مرة واحدة).
+  // موقع المستخدم الحالي كنقطة إقلاع مبدئية.
   const located = useRef(false)
   useEffect(() => {
     if (located.current || !navigator.geolocation) return
@@ -77,11 +76,10 @@ export default function SelectLocation() {
     })
   }, [sid])
 
-  // معاينة الأجرة على خطوة الوجهة (المسار من الإقلاع إلى الوجهة).
+  // معاينة الأجرة كلما تغيّرت النقطتان.
   useEffect(() => {
-    if (step !== 'dropoff' || !pricing || !settings) return
+    if (!pricing || !settings) return
     let alive = true
-    setQuoting(true)
     const t = setTimeout(async () => {
       const real = isLoaded && isMapsConfigured ? await fetchRoute(pickupPos, dropoffPos) : null
       const route = real ?? estimateRoute(pickupPos, dropoffPos)
@@ -93,16 +91,15 @@ export default function SelectLocation() {
         settings,
       }).total
       setQuote({ ...route, fare, real: Boolean(real) })
-      setQuoting(false)
     }, 500)
     return () => {
       alive = false
       clearTimeout(t)
     }
-  }, [step, pickupPos, dropoffPos, pricing, settings, isLoaded])
+  }, [pickupPos, dropoffPos, pricing, settings, isLoaded])
 
-  const activePos = step === 'pickup' ? pickupPos : dropoffPos
-  const setActivePos = step === 'pickup' ? setPickupPos : setDropoffPos
+  const activePos = active === 'pickup' ? pickupPos : dropoffPos
+  const setActivePos = active === 'pickup' ? setPickupPos : setDropoffPos
 
   const confirm = async () => {
     setBusy(true)
@@ -110,13 +107,7 @@ export default function SelectLocation() {
     const dropoff = { pos: dropoffPos, address: dropoffAddr || 'الوجهة' }
     setPickup(pickup)
     setDropoff(dropoff)
-
-    let fare = quote?.fare ?? 0
-    if (!quote && pricing && settings) {
-      const route = (await fetchRoute(pickupPos, dropoffPos)) ?? estimateRoute(pickupPos, dropoffPos)
-      fare = estimateFare({ ...route, pricing, settings }).total
-    }
-    setFare(fare)
+    setFare(quote?.fare ?? 0)
 
     const { id } = await createRide({
       customer_id: profile?.id,
@@ -128,88 +119,119 @@ export default function SelectLocation() {
       dropoff_lat: dropoff.pos.lat,
       dropoff_lng: dropoff.pos.lng,
       dropoff_address: dropoff.address,
-      fare,
+      fare: quote?.fare ?? 0,
     })
     setRideId(id ?? null)
-
     setBusy(false)
     navigate('/find-driver')
   }
 
   return (
-    <Screen title={step === 'pickup' ? 'نقطة الإقلاع' : 'الوجهة'} back bare>
-      <div className="relative flex h-full flex-col">
-        {/* خطوات */}
-        <div className="flex items-center justify-center gap-2 border-b border-hairline bg-bg py-2 text-xs">
-          <span className={step === 'pickup' ? 'font-bold text-green' : 'text-ink-muted'}>
-            ● الإقلاع
-          </span>
-          <span className="text-ink-muted">—</span>
-          <span className={step === 'dropoff' ? 'font-bold text-green' : 'text-ink-muted'}>
-            ● الوجهة
-          </span>
-        </div>
+    <Screen title="حدد رحلتك" back>
+      {/* من / إلى */}
+      <div className="card divide-y divide-hairline p-0">
+        <FieldRow
+          icon="🟢"
+          label="من"
+          value={pickupAddr}
+          active={active === 'pickup'}
+          onFocus={() => setActive('pickup')}
+          onChange={setPickupAddr}
+          placeholder="نقطة الإقلاع"
+        />
+        <FieldRow
+          icon="📍"
+          label="إلى"
+          value={dropoffAddr}
+          active={active === 'dropoff'}
+          onFocus={() => setActive('dropoff')}
+          onChange={setDropoffAddr}
+          placeholder="الوجهة"
+        />
+      </div>
 
-        <div className="relative flex-1">
-          <MapView center={activePos} onCenterChanged={setActivePos} className="h-full w-full" />
-          <div className="pointer-events-none absolute inset-0 grid place-items-center">
-            <div className="-mt-6 text-4xl">{step === 'pickup' ? '🟢' : '📍'}</div>
-          </div>
-        </div>
-
-        <div className="space-y-3 border-t border-hairline bg-bg p-4">
-          {step === 'dropoff' && (
-            <button
-              onClick={() => setStep('pickup')}
-              className="flex w-full items-center gap-2 rounded-2xl bg-green-soft px-3 py-2 text-right text-sm"
-            >
-              <span className="text-green">🟢</span>
-              <span className="flex-1 text-ink-soft">
-                الإقلاع: {pickupAddr || 'نقطة على الخريطة'}
-              </span>
-              <span className="text-xs text-green">تعديل</span>
-            </button>
-          )}
-
-          {step === 'dropoff' && (
-            <div className="card flex items-center justify-between p-3">
-              <div className="text-sm">
-                <p className="font-bold">{service?.name ?? 'الخدمة'}</p>
-                {quote ? (
-                  <p className="text-ink-soft">
-                    {km(quote.distanceKm)} · {mins(quote.durationMin)}
-                    {!quote.real && ' · تقديري'}
-                  </p>
-                ) : (
-                  <p className="text-ink-muted">{quoting ? 'نحسب الأجرة…' : '—'}</p>
-                )}
-              </div>
-              <p className="text-lg font-extrabold text-green">
-                {quote ? money(quote.fare) : quoting ? '…' : '—'}
-              </p>
-            </div>
-          )}
-
-          <input
-            className="field"
-            value={step === 'pickup' ? pickupAddr : dropoffAddr}
-            onChange={(e) =>
-              step === 'pickup' ? setPickupAddr(e.target.value) : setDropoffAddr(e.target.value)
-            }
-            placeholder={step === 'pickup' ? 'اسم نقطة الإقلاع (اختياري)' : 'اسم الوجهة (اختياري)'}
-          />
-
-          {step === 'pickup' ? (
-            <button className="btn-primary w-full" onClick={() => setStep('dropoff')}>
-              التالي: تحديد الوجهة
-            </button>
-          ) : (
-            <button className="btn-primary w-full" onClick={confirm} disabled={busy}>
-              {busy ? '…' : 'تأكيد الوجهة'}
-            </button>
-          )}
+      {/* الخريطة (تحدّد النقطة النشطة) */}
+      <p className="mb-2 mt-4 text-sm text-ink-soft">
+        حرّك الخريطة لتحديد {active === 'pickup' ? 'نقطة الإقلاع 🟢' : 'الوجهة 📍'}
+      </p>
+      <div className="relative h-56 overflow-hidden rounded-2xl">
+        <MapView center={activePos} onCenterChanged={setActivePos} className="h-full w-full" />
+        <div className="pointer-events-none absolute inset-0 grid place-items-center">
+          <div className="-mt-5 text-3xl drop-shadow">{active === 'pickup' ? '🟢' : '📍'}</div>
         </div>
       </div>
+
+      {/* المسافة · المدة · السعر */}
+      <div className="card mt-4 grid grid-cols-3 divide-x divide-x-reverse divide-hairline text-center">
+        <Stat label="المسافة" value={quote ? km(quote.distanceKm) : '—'} />
+        <Stat label="المدة" value={quote ? mins(quote.durationMin) : '—'} />
+        <Stat
+          label="السعر"
+          value={quote ? money(quote.fare) : '—'}
+          strong
+          note={quote && !quote.real ? 'تقديري' : undefined}
+        />
+      </div>
+      <p className="mt-1 text-center text-xs text-ink-muted">{service?.name}</p>
+
+      <button className="btn-primary mt-4 w-full" onClick={confirm} disabled={busy || !quote}>
+        {busy ? '…' : 'تأكيد الرحلة'}
+      </button>
     </Screen>
+  )
+}
+
+function FieldRow({
+  icon,
+  label,
+  value,
+  active,
+  onFocus,
+  onChange,
+  placeholder,
+}: {
+  icon: string
+  label: string
+  value: string
+  active: boolean
+  onFocus: () => void
+  onChange: (v: string) => void
+  placeholder: string
+}) {
+  return (
+    <div
+      className={`flex items-center gap-2 px-3 py-3 ${active ? 'bg-green-mint' : ''}`}
+      onClick={onFocus}
+    >
+      <span>{icon}</span>
+      <span className="w-8 text-sm font-bold text-ink-soft">{label}</span>
+      <input
+        className="flex-1 bg-transparent text-ink placeholder:text-ink-muted outline-none"
+        value={value}
+        onFocus={onFocus}
+        onChange={(e) => onChange(e.target.value)}
+        placeholder={placeholder}
+      />
+    </div>
+  )
+}
+
+function Stat({
+  label,
+  value,
+  strong,
+  note,
+}: {
+  label: string
+  value: string
+  strong?: boolean
+  note?: string
+}) {
+  return (
+    <div className="px-2 py-3">
+      <p className="text-xs text-ink-muted">{label}</p>
+      <p className={strong ? 'font-extrabold text-green' : 'font-bold'}>{value}</p>
+      {note && <p className="text-[10px] text-ink-muted">{note}</p>}
+    </div>
   )
 }
