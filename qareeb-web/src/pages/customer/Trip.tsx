@@ -18,7 +18,7 @@ const payments: { id: PaymentMethod; label: string; icon: string }[] = [
 /** شاشة الرحلة الجارية — بيانات السائق، الوجهة، طريقة الدفع، والإنهاء. */
 export default function Trip() {
   const navigate = useNavigate()
-  const { rideId, serviceId, dropoff, payment, setPayment, fare } = useRide()
+  const { rideId, serviceId, dropoff, payment, setPayment, fare, passengers } = useRide()
   const service = serviceId ? getService(serviceId) : undefined
   const total = fare ?? 0
 
@@ -58,6 +58,9 @@ export default function Trip() {
             <div className="flex-1 text-sm">
               <p className="text-ink-muted">الوجهة</p>
               <p className="font-medium">{dropoff?.address ?? '—'}</p>
+              {passengers > 0 && (
+                <p className="mt-0.5 text-xs text-ink-soft">👥 {passengers} راكب</p>
+              )}
             </div>
             <p className="font-extrabold text-green">{money(total)}</p>
           </div>

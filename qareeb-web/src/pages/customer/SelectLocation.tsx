@@ -32,7 +32,7 @@ interface Quote {
 export default function SelectLocation() {
   const navigate = useNavigate()
   const { profile } = useAuth()
-  const { serviceId, setPickup, setDropoff, setFare, setRideId } = useRide()
+  const { serviceId, passengers, setPickup, setDropoff, setFare, setRideId } = useRide()
 
   const sid = serviceId ?? DEFAULT_SERVICE_ID
   const service = getService(sid)
@@ -150,6 +150,7 @@ export default function SelectLocation() {
       dropoff_lng: dropoff.pos.lng,
       dropoff_address: dropoff.address,
       fare: quote?.fare ?? 0,
+      passengers,
     })
     setRideId(id ?? null)
     setBusy(false)

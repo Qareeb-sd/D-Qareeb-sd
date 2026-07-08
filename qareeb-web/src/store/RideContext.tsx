@@ -14,6 +14,7 @@ interface RideDraft {
   dropoff: Place | null
   payment: PaymentMethod
   fare: number | null
+  passengers: number // عدد الركاب — للمطابقة ومعلومة السائق (لا يؤثّر على السعر)
 }
 
 interface RideContextValue extends RideDraft {
@@ -23,6 +24,7 @@ interface RideContextValue extends RideDraft {
   setDropoff: (p: Place | null) => void
   setPayment: (m: PaymentMethod) => void
   setFare: (n: number) => void
+  setPassengers: (n: number) => void
   reset: () => void
 }
 
@@ -33,6 +35,7 @@ const defaultDraft: RideDraft = {
   dropoff: null,
   payment: 'cash',
   fare: null,
+  passengers: 1,
 }
 
 const RideContext = createContext<RideContextValue | null>(null)
@@ -48,6 +51,7 @@ export function RideProvider({ children }: { children: ReactNode }) {
     setDropoff: (dropoff) => setDraft((d) => ({ ...d, dropoff })),
     setPayment: (payment) => setDraft((d) => ({ ...d, payment })),
     setFare: (fare) => setDraft((d) => ({ ...d, fare })),
+    setPassengers: (passengers) => setDraft((d) => ({ ...d, passengers })),
     reset: () => setDraft(defaultDraft),
   }
 
