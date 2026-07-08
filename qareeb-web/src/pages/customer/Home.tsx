@@ -43,18 +43,28 @@ export default function Home() {
               key={s.id}
               onClick={() => chooseService(s.id)}
               className="card relative flex flex-col items-center gap-2 p-4 text-center transition hover:shadow-lift"
+              style={
+                s.femaleDriver
+                  ? { border: '1.5px solid #E85C9E', backgroundColor: '#FDF2F8' }
+                  : undefined
+              }
             >
               {s.femaleDriver && (
                 <span
                   className="chip absolute left-2 top-2"
-                  style={{ backgroundColor: '#FBE4F0', color: '#B03A76' }}
+                  style={{ backgroundColor: '#E85C9E', color: '#fff' }}
                 >
-                  سائقة
+                  🌸 سائقة
                 </span>
               )}
-              <VehicleImage service={s} className="h-16 w-full" />
+              <VehicleImage
+                service={s}
+                className={`h-16 w-full ${s.femaleDriver ? 'rounded-xl ring-2 ring-[#E85C9E]/30' : ''}`}
+              />
               <div>
-                <p className="font-bold">{s.name}</p>
+                <p className="font-bold" style={s.femaleDriver ? { color: '#C13584' } : undefined}>
+                  {s.name}
+                </p>
                 <p className="text-xs text-ink-muted">{s.tagline}</p>
               </div>
             </button>
