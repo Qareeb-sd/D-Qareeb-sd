@@ -65,7 +65,7 @@ export default function Home() {
                     {s.name}
                   </p>
                   <p className="text-xs text-ink-muted">{s.tagline}</p>
-                  <p className="mt-0.5 text-xs font-bold text-green">🪑 {s.seats} راكب</p>
+                  <p className="mt-0.5 text-xs font-bold text-green">المقاعد {s.seats}</p>
                 </div>
               </button>
             )
