@@ -83,6 +83,7 @@ export default function Auth() {
       <p className="mt-6 text-center text-xs text-ink-muted">
         تسجيل حساب جديد عبر واتساب — قريباً.
       </p>
+      <p className="mt-1 text-center text-[10px] text-ink-muted/70">إصدار 2 · دخول بكلمة السر</p>
     </div>
   )
 }
