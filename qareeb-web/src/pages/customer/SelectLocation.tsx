@@ -19,6 +19,7 @@ import { km, mins, money } from '@/lib/format'
 import { KHARTOUM } from '@/theme'
 import type { Settings, ServicePricing } from '@/lib/types'
 
+type Field = 'pickup' | 'dropoff'
 interface Quote {
   distanceKm: number
   durationMin: number
@@ -26,7 +27,12 @@ interface Quote {
   real: boolean
 }
 
-/** صفحة واحدة: الإقلاع (GPS) + الوجهة (بالدبوس على الخريطة) + المسافة/المدة/السعر. */
+/**
+ * صفحة واحدة لتحديد الرحلة:
+ * - الإقلاع: GPS مباشر · أو كتابة الاسم · أو بالدبوس على الخريطة (لطلب لشخص آخر).
+ * - الوجهة: بالدبوس على الخريطة · أو كتابة الاسم.
+ * مع المسافة والمدة والسعر.
+ */
 export default function SelectLocation() {
   const navigate = useNavigate()
   const { profile } = useAuth()
@@ -35,11 +41,12 @@ export default function SelectLocation() {
   const sid = serviceId ?? DEFAULT_SERVICE_ID
   const service = getService(sid)
 
-  const [pickupPos, setPickupPos] = useState<google.maps.LatLngLiteral | null>(null)
+  const [active, setActive] = useState<Field>('dropoff')
+  const [pickupPos, setPickupPos] = useState<google.maps.LatLngLiteral>(KHARTOUM)
+  const [pickupAddr, setPickupAddr] = useState('موقعي الحالي')
   const [dropoffPos, setDropoffPos] = useState<google.maps.LatLngLiteral>(KHARTOUM)
   const [dropoffAddr, setDropoffAddr] = useState('')
   const [gpsBusy, setGpsBusy] = useState(false)
-  const [gpsMsg, setGpsMsg] = useState('')
 
   const [pricing, setPricing] = useState<ServicePricing | null>(null)
   const [settings, setSettings] = useState<Settings | null>(null)
@@ -53,24 +60,18 @@ export default function SelectLocation() {
   })
 
   const useMyLocation = () => {
-    if (!navigator.geolocation) {
-      setGpsMsg('تحديد الموقع غير مدعوم في هذا المتصفح')
-      return
-    }
+    if (!navigator.geolocation) return
     setGpsBusy(true)
-    setGpsMsg('')
     navigator.geolocation.getCurrentPosition(
       (p) => {
         const pos = { lat: p.coords.latitude, lng: p.coords.longitude }
         setPickupPos(pos)
         setDropoffPos((d) => (d === KHARTOUM ? pos : d))
+        setPickupAddr('موقعي الحالي')
+        setActive('dropoff')
         setGpsBusy(false)
-        setGpsMsg('تم تحديد موقعك ✓')
       },
-      () => {
-        setGpsBusy(false)
-        setGpsMsg('تعذّر تحديد الموقع — فعّل صلاحية الموقع وأعد المحاولة')
-      },
+      () => setGpsBusy(false),
       { enableHighAccuracy: true, timeout: 8000 },
     )
   }
@@ -91,9 +92,8 @@ export default function SelectLocation() {
     })
   }, [sid])
 
-  // معاينة الأجرة (تحتاج نقطة إقلاع + وجهة).
   useEffect(() => {
-    if (!pricing || !settings || !pickupPos) return
+    if (!pricing || !settings) return
     let alive = true
     const t = setTimeout(async () => {
       const real = isLoaded && isMapsConfigured ? await fetchRoute(pickupPos, dropoffPos) : null
@@ -113,13 +113,12 @@ export default function SelectLocation() {
     }
   }, [pickupPos, dropoffPos, pricing, settings, isLoaded])
 
+  const activePos = active === 'pickup' ? pickupPos : dropoffPos
+  const setActivePos = active === 'pickup' ? setPickupPos : setDropoffPos
+
   const confirm = async () => {
-    if (!pickupPos) {
-      setGpsMsg('حدّد نقطة الإقلاع أولاً (استخدم موقعي)')
-      return
-    }
     setBusy(true)
-    const pickup = { pos: pickupPos, address: 'موقعي الحالي' }
+    const pickup = { pos: pickupPos, address: pickupAddr || 'نقطة الإقلاع' }
     const dropoff = { pos: dropoffPos, address: dropoffAddr || 'الوجهة' }
     setPickup(pickup)
     setDropoff(dropoff)
@@ -144,44 +143,59 @@ export default function SelectLocation() {
 
   return (
     <Screen title="حدد رحلتك" back>
-      {/* نقطة الإقلاع — GPS */}
-      <div className="card p-4">
-        <div className="mb-2 flex items-center gap-2">
-          <span>🟢</span>
-          <p className="font-bold">نقطة الإقلاع</p>
-        </div>
-        <button
-          onClick={useMyLocation}
-          disabled={gpsBusy}
-          className={`btn w-full ${pickupPos ? 'btn-ghost' : 'btn-primary'}`}
+      {/* من / إلى */}
+      <div className="card divide-y divide-hairline p-0">
+        <div
+          className={`flex items-center gap-2 px-3 py-3 ${active === 'pickup' ? 'bg-green-mint' : ''}`}
+          onClick={() => setActive('pickup')}
         >
-          {gpsBusy ? 'جارٍ تحديد موقعك…' : pickupPos ? 'تحديث موقعي 🔄' : '📍 استخدم موقعي الحالي (GPS)'}
-        </button>
-        {gpsMsg && (
-          <p className={`mt-2 text-center text-xs ${pickupPos ? 'text-green' : 'text-danger'}`}>
-            {gpsMsg}
-          </p>
-        )}
+          <span>🟢</span>
+          <span className="w-6 text-sm font-bold text-ink-soft">من</span>
+          <input
+            className="flex-1 bg-transparent outline-none placeholder:text-ink-muted"
+            value={pickupAddr}
+            onFocus={() => setActive('pickup')}
+            onChange={(e) => setPickupAddr(e.target.value)}
+            placeholder="نقطة الإقلاع"
+          />
+          <button
+            onClick={(e) => {
+              e.stopPropagation()
+              useMyLocation()
+            }}
+            disabled={gpsBusy}
+            className="shrink-0 rounded-full bg-green-soft px-2.5 py-1 text-xs font-bold text-green"
+          >
+            {gpsBusy ? '…' : 'موقعي 📍'}
+          </button>
+        </div>
+
+        <div
+          className={`flex items-center gap-2 px-3 py-3 ${active === 'dropoff' ? 'bg-green-mint' : ''}`}
+          onClick={() => setActive('dropoff')}
+        >
+          <span>📍</span>
+          <span className="w-6 text-sm font-bold text-ink-soft">إلى</span>
+          <input
+            className="flex-1 bg-transparent outline-none placeholder:text-ink-muted"
+            value={dropoffAddr}
+            onFocus={() => setActive('dropoff')}
+            onChange={(e) => setDropoffAddr(e.target.value)}
+            placeholder="الوجهة"
+          />
+        </div>
       </div>
 
-      {/* الوجهة — بالدبوس على الخريطة */}
-      <div className="mt-4 flex items-center gap-2">
-        <span>📍</span>
-        <p className="font-bold">الوجهة</p>
-        <span className="text-xs text-ink-muted">— حرّك الخريطة لوضع الدبوس</span>
-      </div>
-      <div className="relative mt-2 h-60 overflow-hidden rounded-2xl">
-        <MapView center={dropoffPos} onCenterChanged={setDropoffPos} className="h-full w-full" />
+      {/* الخريطة تحدّد النقطة النشطة */}
+      <p className="mb-2 mt-4 text-sm text-ink-soft">
+        حرّك الخريطة لتحديد {active === 'pickup' ? 'نقطة الإقلاع 🟢' : 'الوجهة 📍'}
+      </p>
+      <div className="relative h-56 overflow-hidden rounded-2xl">
+        <MapView center={activePos} onCenterChanged={setActivePos} className="h-full w-full" />
         <div className="pointer-events-none absolute inset-0 grid place-items-center">
-          <div className="-mt-6 text-4xl drop-shadow">📍</div>
+          <div className="-mt-6 text-4xl drop-shadow">{active === 'pickup' ? '🟢' : '📍'}</div>
         </div>
       </div>
-      <input
-        className="field mt-2"
-        value={dropoffAddr}
-        onChange={(e) => setDropoffAddr(e.target.value)}
-        placeholder="اسم الوجهة (اختياري)"
-      />
 
       {/* المسافة · المدة · السعر */}
       <div className="card mt-4 grid grid-cols-3 divide-x divide-x-reverse divide-hairline text-center">
