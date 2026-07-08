@@ -197,6 +197,22 @@ export async function updateDriverLocation(
   await supabase.rpc('update_driver_location', { p_ride: rideId, p_lat: lat, p_lng: lng })
 }
 
+// ---------- إشعارات Web Push ----------
+export async function savePushSubscription(sub: {
+  user_id: string
+  endpoint: string
+  p256dh: string
+  auth: string
+}): Promise<void> {
+  if (!isSupabaseConfigured) return
+  await supabase.from('push_subscriptions').upsert(sub, { onConflict: 'endpoint' })
+}
+
+export async function deletePushSubscription(endpoint: string): Promise<void> {
+  if (!isSupabaseConfigured) return
+  await supabase.from('push_subscriptions').delete().eq('endpoint', endpoint)
+}
+
 const demoRides: Ride[] = [
   {
     id: 'r1',

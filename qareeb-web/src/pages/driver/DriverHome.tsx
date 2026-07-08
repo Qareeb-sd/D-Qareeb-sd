@@ -7,6 +7,7 @@ import { useAuth } from '@/store/AuthContext'
 import { useDriver } from '@/store/DriverContext'
 import { getDriver, setDriverOnline, listAvailableRides, acceptRide } from '@/lib/api'
 import { subscribeToRides } from '@/lib/realtime'
+import { isPushConfigured, isPushEnabled, enablePush, disablePush } from '@/lib/push'
 import { getService } from '@/data/services'
 import { money } from '@/lib/format'
 import type { Driver, Ride } from '@/lib/types'
@@ -22,6 +23,8 @@ export default function DriverHome() {
   const [online, setOnline] = useState(false)
   const [rides, setRides] = useState<Ride[]>([])
   const [busyId, setBusyId] = useState<string | null>(null)
+  const [pushOn, setPushOn] = useState(false)
+  const [pushBusy, setPushBusy] = useState(false)
 
   useEffect(() => {
     void getDriver(userId).then((d) => {
@@ -29,6 +32,23 @@ export default function DriverHome() {
       setOnline(d?.is_online ?? false)
     })
   }, [userId])
+
+  useEffect(() => {
+    void isPushEnabled().then(setPushOn)
+  }, [])
+
+  const togglePush = async () => {
+    setPushBusy(true)
+    if (pushOn) {
+      await disablePush()
+      setPushOn(false)
+    } else {
+      const { error } = await enablePush(userId)
+      if (error) alert(error)
+      else setPushOn(true)
+    }
+    setPushBusy(false)
+  }
 
   useEffect(() => {
     if (!online) {
@@ -71,6 +91,20 @@ export default function DriverHome() {
           <p className="font-extrabold text-green">قريب · السائق</p>
           <p className="text-xs text-ink-muted">⭐ {driver?.rating ?? '—'}</p>
         </div>
+        {/* زر تفعيل الإشعارات (يظهر فقط عند تهيئتها) */}
+        {isPushConfigured && (
+          <button
+            onClick={togglePush}
+            disabled={pushBusy}
+            aria-label={pushOn ? 'إيقاف الإشعارات' : 'تفعيل الإشعارات'}
+            title={pushOn ? 'الإشعارات مفعّلة' : 'فعّل إشعارات الطلبات'}
+            className={`grid h-9 w-9 place-items-center rounded-full text-lg transition ${
+              pushOn ? 'bg-green-soft text-green' : 'bg-hairline text-ink-soft'
+            }`}
+          >
+            {pushOn ? '🔔' : '🔕'}
+          </button>
+        )}
         {/* مفتاح التوفّر */}
         <button
           onClick={toggleOnline}

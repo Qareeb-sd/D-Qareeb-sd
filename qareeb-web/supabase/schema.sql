@@ -78,6 +78,17 @@ alter table public.rides add column if not exists driver_lat    double precision
 alter table public.rides add column if not exists driver_lng    double precision;
 alter table public.rides add column if not exists driver_loc_at timestamptz;
 
+-- ---------- اشتراكات الإشعارات (Web Push) ----------
+create table if not exists public.push_subscriptions (
+  id         uuid primary key default gen_random_uuid(),
+  user_id    uuid not null references public.users(id) on delete cascade,
+  endpoint   text unique not null,
+  p256dh     text not null,
+  auth       text not null,
+  created_at timestamptz not null default now()
+);
+create index if not exists push_subs_user_idx on public.push_subscriptions(user_id);
+
 -- ---------- المحافظ ----------
 create table if not exists public.wallets (
   id         uuid primary key default gen_random_uuid(),
@@ -216,6 +227,12 @@ alter table public.settings     enable row level security;
 alter table public.service_pricing enable row level security;
 alter table public.commute_orders  enable row level security;
 alter table public.commute_members enable row level security;
+alter table public.push_subscriptions enable row level security;
+
+-- الإشعارات: كل مستخدم يدير اشتراكاته فقط (الإرسال يتم بدور service_role الذي يتجاوز RLS).
+drop policy if exists "own push subs" on public.push_subscriptions;
+create policy "own push subs" on public.push_subscriptions
+  for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
 
 -- هل المستخدم الحالي أدمن؟ (تُعرَّف مبكراً لأن السياسات أدناه تستخدمها)
 create or replace function public.is_admin()
