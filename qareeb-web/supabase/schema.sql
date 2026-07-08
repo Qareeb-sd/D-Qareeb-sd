@@ -65,13 +65,10 @@ create table if not exists public.rides (
   dropoff_lng    double precision,
   dropoff_address text,
   fare           numeric(12,2),
-  passengers     int default 1,               -- عدد الركاب (للمطابقة ومعلومة السائق)
   payment_method payment_method not null default 'cash',
   rating         int check (rating between 1 and 5),
   created_at     timestamptz not null default now()
 );
--- ترقية للقواعد القائمة: أضِف العمود إن لم يوجد
-alter table public.rides add column if not exists passengers int default 1;
 create index if not exists rides_customer_idx on public.rides(customer_id);
 create index if not exists rides_driver_idx   on public.rides(driver_id);
 create index if not exists rides_status_idx   on public.rides(status);

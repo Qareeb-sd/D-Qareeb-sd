@@ -50,7 +50,6 @@ export interface Ride {
   dropoff_lng: number | null
   dropoff_address: string | null
   fare: number | null
-  passengers: number | null // عدد الركاب — للمطابقة ومعلومة السائق
   payment_method: PaymentMethod
   rating: number | null
   created_at: string
