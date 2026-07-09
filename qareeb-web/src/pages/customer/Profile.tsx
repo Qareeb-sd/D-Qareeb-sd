@@ -23,6 +23,7 @@ export default function Profile() {
   const [msg, setMsg] = useState('')
 
   const isDriver = profile?.role === 'driver'
+  const isAdmin = profile?.role === 'admin'
   // نتحقّق من حالة طلب التسجيل (إن وُجد) لغير السائقين.
   const { data: driverRow } = useQuery({
     queryKey: ['my-driver', profile?.id],
@@ -69,8 +70,23 @@ export default function Profile() {
           </div>
         </div>
 
+        {/* الأدمن: مدخل لوحة التحكم */}
+        {isAdmin && (
+          <button
+            onClick={() => navigate('/admin')}
+            className="card mt-4 flex w-full items-center gap-3 p-4 text-right"
+            style={{ border: '1.5px solid #C9A138' }}
+          >
+            <span className="text-2xl">🛠️</span>
+            <span className="flex-1 font-bold" style={{ color: '#A88528' }}>
+              لوحة تحكم قريب
+            </span>
+            <span style={{ color: '#A88528' }}>‹</span>
+          </button>
+        )}
+
         {/* السائق: مدخل واجهة السائق أو تسجيل/حالة الطلب */}
-        {isDriver ? (
+        {isAdmin ? null : isDriver ? (
           <button
             onClick={() => navigate('/driver')}
             className="card mt-4 flex w-full items-center gap-3 p-4 text-right"
