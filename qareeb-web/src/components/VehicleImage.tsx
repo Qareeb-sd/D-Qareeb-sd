@@ -5,6 +5,7 @@ import VehicleArt from './VehicleArt'
 /**
  * صورة المركبة: تعرض الصورة الفوتوغرافية الحقيقية من public/vehicles/ إن وُجدت،
  * وإلا تعرض رسم SVG مميّزاً لنوع المركبة (بديل أنيق بدل صورة عامّة).
+ * الحجم موحّد بـ aspect-ratio لضمان تناسق البطاقات.
  */
 export default function VehicleImage({
   service,
@@ -17,21 +18,25 @@ export default function VehicleImage({
 
   if (failed) {
     return (
-      <VehicleArt
-        art={service.art}
-        tint={service.tint}
-        className={`h-full w-full ${className ?? ''}`}
-      />
+      <div className={`flex items-center justify-center ${className ?? ''}`}>
+        <VehicleArt
+          art={service.art}
+          tint={service.tint}
+          className="h-full w-full"
+        />
+      </div>
     )
   }
 
   return (
-    <img
-      src={service.image}
-      alt={service.name}
-      loading="lazy"
-      onError={() => setFailed(true)}
-      className={`object-contain ${className ?? ''}`}
-    />
+    <div className={`relative flex items-center justify-center overflow-hidden ${className ?? ''}`}>
+      <img
+        src={service.image}
+        alt={service.name}
+        loading="lazy"
+        onError={() => setFailed(true)}
+        className="h-full w-full object-contain"
+      />
+    </div>
   )
 }
