@@ -1,48 +1,98 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useNavigate, Navigate } from 'react-router-dom'
 import Screen from '@/components/Screen'
 import MapView from '@/components/MapView'
 import SosButton from '@/components/SosButton'
 import { useDriver } from '@/store/DriverContext'
-import { settleRide, getSettings, updateDriverLocation } from '@/lib/api'
+import { useAuth } from '@/store/AuthContext'
+import {
+  settleRide,
+  setRideStatus,
+  cancelRide,
+  getSettings,
+  getActiveDriverRide,
+  updateDriverLocation,
+} from '@/lib/api'
+import { subscribeToRide } from '@/lib/realtime'
 import { getService } from '@/data/services'
 import { money } from '@/lib/format'
 
-// لا نبثّ الموقع أكثر من مرة كل هذه المدة (تقنين لتخفيف الكتابة — لا علاقة لقوقل).
-const BROADCAST_MS = 4000
+const paymentLabels: Record<string, string> = {
+  cash: 'كاش',
+  bank_transfer: 'تحويل بنكي',
+  wallet: 'محفظة قريب',
+}
+
+const statusLabels: Record<string, string> = {
+  accepted: 'في الطريق إلى الراكب',
+  arrived: 'وصلت — بانتظار الراكب',
+  in_progress: 'الرحلة جارية',
+}
 
 /** الرحلة الجارية للسائق — بيانات الرحلة، وإكمالها مع تسوية الأرباح (خصم العمولة). */
 export default function DriverTrip() {
   const navigate = useNavigate()
+  const { profile } = useAuth()
   const { activeRide, setActiveRide } = useDriver()
   const [rate, setRate] = useState(0.15)
   const [busy, setBusy] = useState(false)
-  const [myPos, setMyPos] = useState<google.maps.LatLngLiteral | null>(null)
-  const lastSent = useRef(0)
+  const [recovering, setRecovering] = useState(!activeRide)
 
   useEffect(() => {
     void getSettings().then((s) => setRate(s.commission_rate))
   }, [])
 
-  // تتبع مباشر: نقرأ GPS الجهاز (مجاناً) ونبثّه للراكب عبر Supabase بمعدّل مُقنَّن.
-  const rideId = activeRide?.id
+  // استرجاع الرحلة الجارية بعد تحديث الصفحة (تُفقد من الذاكرة).
   useEffect(() => {
-    if (!rideId || !('geolocation' in navigator)) return
+    if (activeRide || !profile?.id) {
+      setRecovering(false)
+      return
+    }
+    let alive = true
+    void getActiveDriverRide(profile.id).then((ride) => {
+      if (!alive) return
+      if (ride) setActiveRide(ride)
+      setRecovering(false)
+    })
+    return () => {
+      alive = false
+    }
+  }, [activeRide, profile?.id, setActiveRide])
+
+  // تحديث موقع السائق اللحظي للراكب طوال وجوده في شاشة الرحلة.
+  useEffect(() => {
+    const rid = activeRide?.id
+    if (!rid || !('geolocation' in navigator)) return
     const watchId = navigator.geolocation.watchPosition(
-      (p) => {
-        const pos = { lat: p.coords.latitude, lng: p.coords.longitude }
-        setMyPos(pos)
-        const now = Date.now()
-        if (now - lastSent.current >= BROADCAST_MS) {
-          lastSent.current = now
-          void updateDriverLocation(rideId, pos.lat, pos.lng)
-        }
-      },
-      () => {},
-      { enableHighAccuracy: true, maximumAge: 2000, timeout: 10000 },
+      (p) => void updateDriverLocation(rid, p.coords.latitude, p.coords.longitude),
+      undefined,
+      { enableHighAccuracy: true, maximumAge: 5000, timeout: 15000 },
     )
     return () => navigator.geolocation.clearWatch(watchId)
-  }, [rideId])
+  }, [activeRide?.id])
+
+  // Realtime: إن ألغى الراكب الرحلة، أبلغ السائق وأعده لقائمة الطلبات.
+  useEffect(() => {
+    if (!activeRide?.id) return
+    const unsub = subscribeToRide(activeRide.id, (ride) => {
+      if (ride.status === 'cancelled') {
+        setActiveRide(null)
+        alert('ألغى الراكب الرحلة.')
+        navigate('/driver')
+      }
+    })
+    return unsub
+  }, [activeRide?.id, setActiveRide, navigate])
+
+  if (recovering) {
+    return (
+      <Screen title="الرحلة الجارية">
+        <div className="flex justify-center py-24">
+          <div className="h-10 w-10 animate-spin rounded-full border-4 border-green-soft border-t-green" />
+        </div>
+      </Screen>
+    )
+  }
 
   if (!activeRide) return <Navigate to="/driver" replace />
 
@@ -50,6 +100,15 @@ export default function DriverTrip() {
   const fare = activeRide.fare ?? 0
   const commission = Math.round(fare * rate)
   const net = fare - commission
+  const isCash = activeRide.payment_method !== 'wallet'
+
+  const advance = async (status: 'arrived' | 'in_progress') => {
+    setBusy(true)
+    const { error } = await setRideStatus(activeRide.id, status)
+    setBusy(false)
+    if (error) return alert(error)
+    setActiveRide({ ...activeRide, status })
+  }
 
   const complete = async () => {
     setBusy(true)
@@ -60,12 +119,22 @@ export default function DriverTrip() {
     navigate('/driver/wallet')
   }
 
+  const release = async () => {
+    if (!confirm('التخلّي عن هذه الرحلة؟ ستعود متاحة لسائق آخر.')) return
+    setBusy(true)
+    const { error } = await cancelRide(activeRide.id)
+    setBusy(false)
+    if (error) return alert(error)
+    setActiveRide(null)
+    navigate('/driver')
+  }
+
   return (
     <Screen title="الرحلة الجارية" bare>
+      <SosButton rideId={activeRide.id} role="driver" />
       <div className="flex h-full flex-col">
         <MapView
-          center={myPos ?? { lat: activeRide.pickup_lat, lng: activeRide.pickup_lng }}
-          driver={myPos ?? undefined}
+          center={{ lat: activeRide.pickup_lat, lng: activeRide.pickup_lng }}
           marker={
             activeRide.dropoff_lat && activeRide.dropoff_lng
               ? { lat: activeRide.dropoff_lat, lng: activeRide.dropoff_lng }
@@ -76,18 +145,20 @@ export default function DriverTrip() {
 
         <div className="flex-1 space-y-4 p-4">
           <div className="card p-4">
-            <p className="font-bold">{service?.name ?? activeRide.service_id}</p>
+            <div className="flex items-center justify-between">
+              <p className="font-bold">{service?.name ?? activeRide.service_id}</p>
+              <span className="chip bg-green-soft text-green">
+                {statusLabels[activeRide.status] ?? activeRide.status}
+              </span>
+            </div>
             <p className="mt-1 text-sm text-ink-soft">
               {activeRide.pickup_address} ← {activeRide.dropoff_address}
-            </p>
-            <p className="mt-2 flex items-center gap-1.5 text-xs font-bold text-green">
-              <span className="h-2 w-2 animate-pulse rounded-full bg-green" />
-              {myPos ? 'يُشارَك موقعك مع الراكب مباشرة' : 'جارٍ تحديد موقعك…'}
             </p>
           </div>
 
           {/* تفصيل الأرباح */}
           <div className="card divide-y divide-hairline p-0">
+            <Row label="طريقة الدفع" value={paymentLabels[activeRide.payment_method]} />
             <Row label="الأجرة" value={money(fare)} />
             <Row
               label={`عمولة المنصة (${Math.round(rate * 100)}%)`}
@@ -96,16 +167,46 @@ export default function DriverTrip() {
             />
             <Row label="صافي أرباحك" value={money(net)} strong />
           </div>
+
+          {isCash && (
+            <p className="text-center text-xs text-ink-muted">
+              تستلم الأجرة من الراكب مباشرة، وتُخصم العمولة ({money(commission)}) من محفظتك.
+            </p>
+          )}
         </div>
 
         <div className="border-t border-hairline p-4">
-          <button className="btn-primary w-full" onClick={complete} disabled={busy}>
-            {busy ? '…' : 'إنهاء وتسوية الرحلة'}
-          </button>
+          {activeRide.status === 'accepted' && (
+            <button className="btn-primary w-full" onClick={() => advance('arrived')} disabled={busy}>
+              {busy ? '…' : 'وصلت لموقع الراكب'}
+            </button>
+          )}
+          {activeRide.status === 'arrived' && (
+            <button className="btn-primary w-full" onClick={() => advance('in_progress')} disabled={busy}>
+              {busy ? '…' : 'بدء الرحلة'}
+            </button>
+          )}
+          {activeRide.status === 'in_progress' && (
+            <button className="btn-primary w-full" onClick={complete} disabled={busy}>
+              {busy ? '…' : 'إنهاء وتسوية الرحلة'}
+            </button>
+          )}
+          {!['accepted', 'arrived', 'in_progress'].includes(activeRide.status) && (
+            <button className="btn-primary w-full" onClick={complete} disabled={busy}>
+              {busy ? '…' : 'إنهاء وتسوية الرحلة'}
+            </button>
+          )}
+          {(activeRide.status === 'accepted' || activeRide.status === 'arrived') && (
+            <button
+              className="mt-2 w-full text-center text-sm text-danger"
+              onClick={release}
+              disabled={busy}
+            >
+              التخلّي عن الرحلة
+            </button>
+          )}
         </div>
       </div>
-
-      <SosButton rideId={activeRide.id} role="driver" />
     </Screen>
   )
 }

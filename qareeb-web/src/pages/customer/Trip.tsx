@@ -5,12 +5,19 @@ import MapView from '@/components/MapView'
 import VehicleImage from '@/components/VehicleImage'
 import SosButton from '@/components/SosButton'
 import { useRide } from '@/store/RideContext'
+import { useAuth } from '@/store/AuthContext'
 import { getService } from '@/data/services'
-import { getRide } from '@/lib/api'
 import { subscribeToRide } from '@/lib/realtime'
-import { estimateRoute } from '@/lib/pricing'
-import { km, mins, money } from '@/lib/format'
-import type { PaymentMethod, Ride } from '@/lib/types'
+import {
+  getRideDriver,
+  getActiveCustomerRide,
+  cancelRide,
+  getRide,
+  type RideDriverInfo,
+} from '@/lib/api'
+import { isSupabaseConfigured } from '@/lib/supabase'
+import { money } from '@/lib/format'
+import type { PaymentMethod, RideStatus } from '@/lib/types'
 
 const payments: { id: PaymentMethod; label: string; icon: string }[] = [
   { id: 'cash', label: 'كاش', icon: '💵' },
@@ -18,68 +25,112 @@ const payments: { id: PaymentMethod; label: string; icon: string }[] = [
   { id: 'wallet', label: 'محفظة قريب', icon: '👛' },
 ]
 
-const driverPosOf = (r: Ride | null): google.maps.LatLngLiteral | null =>
-  r && r.driver_lat != null && r.driver_lng != null
-    ? { lat: r.driver_lat, lng: r.driver_lng }
-    : null
+/** رسالة حالة الرحلة كما يراها الراكب. */
+const statusInfo: Partial<Record<RideStatus, { emoji: string; text: string }>> = {
+  accepted: { emoji: '🚗', text: 'السائق في الطريق إليك' },
+  arrived: { emoji: '📍', text: 'وصل السائق — بانتظارك' },
+  in_progress: { emoji: '🛣️', text: 'الرحلة جارية — في الطريق لوجهتك' },
+}
 
-/** شاشة الرحلة الجارية — تتبّع السائق المباشر، بيانات السائق، الوجهة، والدفع. */
+/** شاشة الرحلة الجارية — بيانات السائق، الوجهة، طريقة الدفع. */
 export default function Trip() {
   const navigate = useNavigate()
-  const { rideId, serviceId, pickup, dropoff, payment, setPayment, fare } = useRide()
+  const { profile } = useAuth()
+  const { rideId, serviceId, dropoff, payment, setPayment, fare, restore, reset } = useRide()
   const service = serviceId ? getService(serviceId) : undefined
   const total = fare ?? 0
-
+  const [driver, setDriver] = useState<RideDriverInfo | null>(null)
+  const [status, setStatus] = useState<RideStatus | null>(null)
   const [driverPos, setDriverPos] = useState<google.maps.LatLngLiteral | null>(null)
+  const [busy, setBusy] = useState(false)
 
-  // موقع مبدئي للسائق (إن وُجد) فور فتح الشاشة.
+  // استرجاع الرحلة الجارية بعد تحديث الصفحة (تُفقد الحالة من الذاكرة).
+  useEffect(() => {
+    if (rideId || !profile?.id) return
+    void getActiveCustomerRide(profile.id).then((ride) => {
+      if (ride) {
+        restore(ride)
+        setStatus(ride.status)
+      } else navigate('/home')
+    })
+  }, [rideId, profile?.id, restore, navigate])
+
+  // جلب بيانات السائق المُسنَد فعلياً.
+  useEffect(() => {
+    if (!rideId) return
+    void getRideDriver(rideId).then(setDriver)
+  }, [rideId])
+
+  // تهيئة حالة الرحلة أول مرة (قبل وصول أي حدث Realtime).
+  useEffect(() => {
+    if (status || !profile?.id) return
+    void getActiveCustomerRide(profile.id).then((r) => {
+      if (r) setStatus(r.status)
+    })
+  }, [status, profile?.id])
+
+  // موقع السائق الأولي على الخريطة (يُحدَّث بعدها لحظياً عبر صفّ الرحلة).
   useEffect(() => {
     if (!rideId) return
     void getRide(rideId).then((r) => {
-      const pos = driverPosOf(r)
-      if (pos) setDriverPos(pos)
+      if (r?.driver_lat != null && r?.driver_lng != null)
+        setDriverPos({ lat: r.driver_lat, lng: r.driver_lng })
     })
   }, [rideId])
 
-  // Realtime: يتحرّك دبوس السائق مع كل تحديث موقع (بلا أي طلب لخرائط قوقل)،
-  // والانتقال للتقييم لحظة إنهاء السائق للرحلة.
+  // Realtime: تابع تقدّم الرحلة وموقع السائق والانتقالات (اكتمال / تخلّي / إلغاء).
   useEffect(() => {
     const unsub = subscribeToRide(rideId ?? '', (ride) => {
-      const pos = driverPosOf(ride)
-      if (pos) setDriverPos(pos)
+      setStatus(ride.status)
+      if (ride.driver_lat != null && ride.driver_lng != null)
+        setDriverPos({ lat: ride.driver_lat, lng: ride.driver_lng })
       if (ride.status === 'completed') navigate('/rate')
+      else if (ride.status === 'searching') navigate('/find-driver') // تخلّى السائق → إعادة البحث
+      else if (ride.status === 'cancelled') {
+        reset()
+        navigate('/home')
+      }
     })
     return unsub
+    // reset مستقرّ سلوكياً (يعيد المسودّة للحالة الافتراضية) — نتجنّب إعادة الاشتراك كل render.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [rideId, navigate])
 
-  // مسافة/زمن تقديريان (Haversine مجاني) من السائق إليك.
-  const eta = driverPos ? estimateRoute(driverPos, pickup.pos) : null
+  const cancel = async () => {
+    setBusy(true)
+    if (rideId) {
+      const { error } = await cancelRide(rideId)
+      if (error) {
+        setBusy(false)
+        return alert(error)
+      }
+    }
+    reset()
+    navigate('/home')
+  }
+
+  const banner = status ? statusInfo[status] : undefined
+  const cancellable = status !== 'in_progress'
 
   return (
     <Screen title="رحلتك الآن" bare>
+      <SosButton rideId={rideId} role="customer" />
       <div className="flex h-full flex-col">
         <MapView
-          center={driverPos ?? dropoff?.pos ?? pickup.pos}
+          marker={dropoff?.pos}
           driver={driverPos ?? undefined}
-          marker={dropoff?.pos ?? pickup.pos}
-          line={driverPos ? [driverPos, pickup.pos] : undefined}
+          center={driverPos ?? dropoff?.pos}
           className="h-56 w-full"
         />
 
         <div className="flex-1 space-y-4 p-4">
-          {/* حالة التتبع */}
-          <div className="card flex items-center gap-3 p-3">
-            <span className="grid h-9 w-9 place-items-center rounded-full bg-green-soft">
-              📍
-            </span>
-            {driverPos ? (
-              <p className="flex-1 text-sm font-bold text-green">
-                السائق في الطريق إليك · {km(eta!.distanceKm)} · ~{mins(eta!.durationMin)}
-              </p>
-            ) : (
-              <p className="flex-1 text-sm text-ink-soft">في انتظار بدء تتبّع السائق…</p>
-            )}
-          </div>
+          {/* حالة الرحلة */}
+          {banner && (
+            <div className="flex items-center gap-3 rounded-2xl border border-green/25 bg-green-soft p-3.5">
+              <span className="text-2xl">{banner.emoji}</span>
+              <p className="font-bold text-green">{banner.text}</p>
+            </div>
+          )}
 
           {/* السائق */}
           <div className="card flex items-center gap-3 p-4">
@@ -87,12 +138,17 @@ export default function Trip() {
               🧑🏽‍✈️
             </div>
             <div className="flex-1">
-              <p className="font-bold">عثمان الطيب</p>
+              <p className="font-bold">{driver?.full_name ?? 'سائق قريب'}</p>
               <p className="text-sm text-ink-soft">
-                {service?.name} · ⭐ 4.9
+                {service?.name}
+                {driver?.rating != null ? ` · ⭐ ${driver.rating}` : ''}
+                {driver?.plate_number ? ` · ${driver.plate_number}` : ''}
               </p>
             </div>
-            <a href="tel:+249900000000" className="btn-ghost px-4 py-2 text-sm">
+            <a
+              href={`tel:${driver?.phone ?? ''}`}
+              className={`btn-ghost px-4 py-2 text-sm ${driver?.phone ? '' : 'pointer-events-none opacity-40'}`}
+            >
               اتصال
             </a>
           </div>
@@ -129,14 +185,29 @@ export default function Trip() {
           </div>
         </div>
 
-        <div className="border-t border-hairline p-4">
-          <button className="btn-primary w-full" onClick={() => navigate('/rate')}>
-            إنهاء الرحلة
-          </button>
+        <div className="space-y-2 border-t border-hairline p-4">
+          {isSupabaseConfigured ? (
+            <p className="text-center text-sm text-ink-soft">
+              {status === 'in_progress'
+                ? 'الرحلة جارية إلى وجهتك.'
+                : 'السائق في طريقه — يمكنك الإلغاء قبل بدء الرحلة.'}
+            </p>
+          ) : (
+            <button className="btn-primary w-full" onClick={() => navigate('/rate')}>
+              إنهاء الرحلة (معاينة)
+            </button>
+          )}
+          {cancellable && (
+            <button
+              className="btn-outline w-full text-danger"
+              onClick={cancel}
+              disabled={busy}
+            >
+              {busy ? '…' : 'إلغاء الرحلة'}
+            </button>
+          )}
         </div>
       </div>
-
-      <SosButton rideId={rideId} role="customer" />
     </Screen>
   )
 }

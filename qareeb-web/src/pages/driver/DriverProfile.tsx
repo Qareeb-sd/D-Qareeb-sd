@@ -1,6 +1,7 @@
 import { useNavigate } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import DriverNav from '@/components/DriverNav'
+import NotificationToggle from '@/components/NotificationToggle'
 import { useAuth } from '@/store/AuthContext'
 import { getDriver } from '@/lib/api'
 import { getService } from '@/data/services'
@@ -16,7 +17,7 @@ export default function DriverProfile() {
 
   const logout = async () => {
     await signOut()
-    navigate('/auth')
+    navigate('/driver/login')
   }
 
   return (
@@ -45,6 +46,8 @@ export default function DriverProfile() {
             <Row label="التقييم" value={`⭐ ${driver.rating ?? '—'}`} />
           </div>
         )}
+
+        <NotificationToggle userId={profile?.id ?? 'demo-user'} />
 
         <button onClick={logout} className="btn-outline mt-6 w-full text-danger">
           تسجيل الخروج

@@ -1,10 +1,10 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import Screen from '@/components/Screen'
 import { StarIcon } from '@/components/Icons'
 import { useRide } from '@/store/RideContext'
 import { getService } from '@/data/services'
-import { completeRide } from '@/lib/api'
+import { rateRide, getRideDriver } from '@/lib/api'
 import { money } from '@/lib/format'
 
 /** تقييم الرحلة + إيصال مختصر. */
@@ -15,13 +15,19 @@ export default function Rate() {
   const total = fare ?? 0
   const [stars, setStars] = useState(5)
   const [busy, setBusy] = useState(false)
+  const [driverName, setDriverName] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (!rideId) return
+    void getRideDriver(rideId).then((d) => setDriverName(d?.full_name ?? null))
+  }, [rideId])
 
   const paymentLabel =
     payment === 'cash' ? 'كاش' : payment === 'wallet' ? 'محفظة قريب' : 'تحويل بنكي'
 
   const finish = async () => {
     setBusy(true)
-    if (rideId) await completeRide(rideId, stars)
+    if (rideId) await rateRide(rideId, stars)
     reset()
     navigate('/home')
   }
@@ -31,7 +37,9 @@ export default function Rate() {
       <div className="flex flex-col items-center gap-2 py-6 text-center">
         <div className="text-5xl">✅</div>
         <p className="text-lg font-bold">وصلت بالسلامة!</p>
-        <p className="text-sm text-ink-soft">كيف كانت رحلتك مع عثمان؟</p>
+        <p className="text-sm text-ink-soft">
+          كيف كانت رحلتك{driverName ? ` مع ${driverName}` : ''}؟
+        </p>
       </div>
 
       <div className="flex justify-center gap-2 py-2">

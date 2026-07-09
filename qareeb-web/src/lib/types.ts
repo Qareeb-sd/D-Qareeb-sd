@@ -38,13 +38,8 @@ export interface Driver {
   plate_number: string | null
   is_online: boolean
   rating: number | null
-  status?: DriverStatus // حالة طلب التسجيل
+  status?: DriverStatus // حالة قديمة (نظام تسجيل مبسّط) — التسجيل الرسمي عبر driver_applications
   created_at: string
-}
-
-/** طلب تسجيل سائق كما يراه الأدمن (مع بيانات المستخدم). */
-export interface DriverApplication extends Driver {
-  users?: { full_name: string | null; phone: string } | null
 }
 
 export interface Ride {
@@ -153,6 +148,7 @@ export interface CommuteOrder {
   round_trip: boolean
   invite_code: string
   status: CommuteStatus
+  driver_id: string | null // السائق الذي قبِل الطلب
   created_at: string
 }
 
@@ -165,6 +161,45 @@ export interface CommuteMember {
   home_lng: number
   home_address: string | null
   is_organizer: boolean
+  created_at: string
+}
+
+// ---------- طلبات الانضمام كسائق (KYC) ----------
+export type DriverAppStatus = 'pending' | 'approved' | 'rejected'
+
+/** طلب انضمام سائق — بياناته ووثائقه وحالة اعتماده. */
+export interface DriverApplication {
+  id: string
+  user_id: string
+  full_name: string
+  phone: string
+  email: string | null
+  vehicle_type: string
+  plate_number: string
+  is_rented: boolean
+  residence: string | null
+  driving_license_url: string | null
+  vehicle_license_url: string | null
+  rental_contract_url: string | null
+  transport_permit_url: string | null
+  photo_front_url: string | null
+  photo_back_url: string | null
+  photo_side_url: string | null
+  photo_interior_url: string | null
+  status: DriverAppStatus
+  review_note: string | null
+  reviewed_by: string | null
+  created_at: string
+  updated_at: string
+}
+
+/** اشتراك Web Push مخزّن لمستخدم. */
+export interface PushSubscriptionRow {
+  id: string
+  user_id: string
+  endpoint: string
+  p256dh: string
+  auth: string
   created_at: string
 }
 
@@ -183,9 +218,75 @@ export interface Database {
       }
       topups: { Row: Topup; Insert: Partial<Topup>; Update: Partial<Topup> }
       settings: { Row: Settings; Insert: Partial<Settings>; Update: Partial<Settings> }
+      service_pricing: {
+        Row: ServicePricing
+        Insert: Partial<ServicePricing>
+        Update: Partial<ServicePricing>
+      }
+      commute_orders: {
+        Row: CommuteOrder
+        Insert: Partial<CommuteOrder>
+        Update: Partial<CommuteOrder>
+      }
+      commute_members: {
+        Row: CommuteMember
+        Insert: Partial<CommuteMember>
+        Update: Partial<CommuteMember>
+      }
+      driver_applications: {
+        Row: DriverApplication
+        Insert: Partial<DriverApplication>
+        Update: Partial<DriverApplication>
+      }
+      push_subscriptions: {
+        Row: PushSubscriptionRow
+        Insert: Partial<PushSubscriptionRow>
+        Update: Partial<PushSubscriptionRow>
+      }
+      sos_alerts: {
+        Row: SosAlert
+        Insert: Partial<SosAlert>
+        Update: Partial<SosAlert>
+      }
     }
     Views: Record<string, never>
-    Functions: Record<string, never>
+    Functions: {
+      approve_topup: { Args: { p_topup: string }; Returns: undefined }
+      reject_topup: { Args: { p_topup: string }; Returns: undefined }
+      settle_ride: { Args: { p_ride: string }; Returns: undefined }
+      set_ride_status: { Args: { p_ride: string; p_status: string }; Returns: undefined }
+      cancel_ride: { Args: { p_ride: string }; Returns: undefined }
+      update_driver_location: {
+        Args: { p_ride: string; p_lat: number; p_lng: number }
+        Returns: undefined
+      }
+      approve_driver_application: { Args: { p_app: string }; Returns: undefined }
+      reject_driver_application: {
+        Args: { p_app: string; p_note?: string | null }
+        Returns: undefined
+      }
+      admin_financial_summary: {
+        Args: Record<string, never>
+        Returns: {
+          platform_commission: number
+          total_topups: number
+          ride_payments: number
+          driver_earnings: number
+          completed_rides: number
+          wallet_liability: number
+        }[]
+      }
+      get_ride_driver: {
+        Args: { p_ride: string }
+        Returns: {
+          full_name: string | null
+          phone: string
+          rating: number | null
+          vehicle_type: string | null
+          plate_number: string | null
+        }[]
+      }
+    }
     Enums: Record<string, never>
   }
 }

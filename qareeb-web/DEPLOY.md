@@ -19,12 +19,16 @@
 4. تحقّق:
    - **Table Editor**: تظهر الجداول (`users, drivers, rides, wallets, transactions, topups, settings`).
    - **Storage**: يظهر bucket `topup-proofs` (خاص).
-5. **المصادقة بالهاتف (OTP):** **Authentication → Providers → Phone** → فعّلها،
-   واضبط مزوّد الرسائل (Twilio أو غيره). للتجربة يمكن استخدام
-   **Email OTP** بدلاً منها مؤقتاً.
-6. **تعيين أول أدمن** (بعد أول تسجيل دخول لك): في SQL Editor:
+5. **المصادقة:** التطبيق يدخل بـ **الهاتف + كلمة السر** (بلا مزوّد SMS) — يربط الرقم
+   بحساب عبر بريد اصطناعي داخلي. في **Authentication → Providers → Email** تأكّد أنه
+   مفعّل، و(للتجربة) عطّل **Confirm email** حتى تُنشأ الجلسة مباشرة عند التسجيل.
+6. **الأدوار** (بعد أول تسجيل دخول للحساب): في SQL Editor. الترقية محميّة بمشغّل
+   `prevent_role_change`، لذا عطّله مؤقتاً أثناء التعيين اليدوي:
    ```sql
-   update public.users set role = 'admin' where phone = '+2499XXXXXXXX';
+   alter table public.users disable trigger prevent_role_change;
+   update public.users set role = 'admin'  where regexp_replace(phone,'\D','','g') like '%9XXXXXXXX';
+   -- السائق: بعد اعتماد طلب انضمامه من اللوحة يصبح دوره driver تلقائياً.
+   alter table public.users enable trigger prevent_role_change;
    ```
 
 ---
@@ -52,10 +56,11 @@
    | **Framework preset** | `Vite` (أو None) |
    | **Build command** | `npm run build` |
    | **Build output directory** | `dist` |
-4. **Environment variables** (أضف الثلاثة):
+4. **Environment variables:**
    - `VITE_SUPABASE_URL`
    - `VITE_SUPABASE_ANON_KEY`
    - `VITE_GOOGLE_MAPS_API_KEY`
+   - `VITE_VAPID_PUBLIC_KEY` — (اختياري) لإشعارات Web Push، انظر القسم 4.
 5. **Save and Deploy**. بعد اكتمال البناء يظهر رابط `*.pages.dev`.
 6. **الدومين المخصّص:** **Custom domains → Set up a domain** واتبع تعليمات DNS.
 
@@ -63,15 +68,25 @@
 
 ---
 
+## 4) إشعارات Web Push (اختياري)
+
+الكود جاهز بالكامل؛ يبقى الإعداد (مفتاح VAPID + نشر دالة Edge + Webhooks).
+الخطوات التفصيلية والمفاتيح في **[`supabase/NOTIFICATIONS.md`](./supabase/NOTIFICATIONS.md)**
+ومختصرها في **[`PENDING.md`](./PENDING.md)**. يمكن تأجيله دون أن يتعطّل شيء
+(زر تفعيل الإشعارات يختفي تلقائياً حتى يُضبط `VITE_VAPID_PUBLIC_KEY`).
+
+---
+
 ## بعد النشر — قائمة تحقّق
 
-- [ ] فتح `*.pages.dev` يعرض الأونبوردنق.
-- [ ] التسجيل/الدخول يرسل OTP فعلياً.
+- [ ] فتح `*.pages.dev` يعرض الأونبوردنق (تطبيق العميل).
+- [ ] التسجيل/الدخول بالهاتف + كلمة السر ينشئ الحساب ويدخل.
 - [ ] الخريطة تظهر في "حدد الوجهة" (لا رسالة مفتاح ناقص).
 - [ ] إنشاء رحلة تجريبية → تظهر في جدول `rides` بـ Supabase.
-- [ ] طلب تعبئة مع صورة → يظهر في `/admin` ويُفتح الإثبات.
-- [ ] اعتماد التعبئة → يزيد رصيد المحفظة وتُسجَّل معاملة.
-- [ ] السائق (بعد `role='admin'`/`'driver'`) يستقبل الطلب ويكمله → تُخصم العمولة.
+- [ ] `/driver/login` → الانضمام كسائق (رفع الوثائق) → يظهر الطلب في `/admin`.
+- [ ] `/admin/login` بحساب أدمن → اعتماد طلب السائق → يصبح دوره `driver`.
+- [ ] السائق يقبل الطلب → وصل → بدأت → إنهاء → تُخصم العمولة وتُسوّى المحفظة.
+- [ ] طلب تعبئة مع صورة → يظهر في `/admin` ويُفتح الإثبات → الاعتماد يزيد الرصيد.
 
 ## تحديث لاحق
 

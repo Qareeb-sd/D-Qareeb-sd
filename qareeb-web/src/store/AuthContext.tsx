@@ -22,9 +22,9 @@ interface AuthValue {
     password: string,
     fullName?: string,
   ) => Promise<{ error?: string }>
-  signOut: () => Promise<void>
-  /** يعيد تحميل ملف المستخدم (بعد تعديل بيانات مثل جهات الطوارئ). */
+  /** يعيد تحميل ملف المستخدم (بعد ترقية الدور أو تعديل جهات الطوارئ). */
   refreshProfile: () => Promise<void>
+  signOut: () => Promise<void>
 }
 
 const AuthContext = createContext<AuthValue | null>(null)
@@ -122,16 +122,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       return {}
     },
 
-    async signOut() {
-      if (isSupabaseConfigured) await supabase.auth.signOut()
-      setSession(null)
-      setProfile(null)
-    },
-
     async refreshProfile() {
       if (!isSupabaseConfigured) return
       const uid = session?.user?.id
       if (uid) await loadProfile(uid)
+    },
+
+    async signOut() {
+      if (isSupabaseConfigured) await supabase.auth.signOut()
+      setSession(null)
+      setProfile(null)
     },
   }
 

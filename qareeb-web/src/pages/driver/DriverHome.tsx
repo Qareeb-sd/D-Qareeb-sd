@@ -131,6 +131,19 @@ export default function DriverHome() {
       </header>
 
       <main className="flex-1 px-4 pt-4 pb-24">
+        {/* السائق يطلب مشواراً لنفسه أو مساعدة عند التعطّل */}
+        <button
+          onClick={() => navigate('/home')}
+          className="card mb-4 flex w-full items-center gap-3 border border-green/25 bg-green-soft p-3.5 text-right"
+        >
+          <span className="text-2xl">🆘</span>
+          <div className="flex-1">
+            <p className="font-bold text-green">اطلب مشوار أو مساعدة</p>
+            <p className="text-xs text-ink-soft">تعطّلت سيارتك؟ اطلب سائقاً أو سحّابة كأي راكب.</p>
+          </div>
+          <span className="text-ink-muted">‹</span>
+        </button>
+
         {!online ? (
           <div className="flex flex-col items-center gap-3 py-24 text-center text-ink-soft">
             <div className="text-5xl">🚗💤</div>

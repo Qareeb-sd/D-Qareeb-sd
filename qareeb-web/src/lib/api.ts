@@ -7,6 +7,7 @@ import type {
   Topup,
   Driver,
   DriverApplication,
+  DriverAppStatus,
   ServicePricing,
   SosAlert,
   SosRole,
@@ -175,9 +176,50 @@ export async function createRide(ride: Partial<Ride>): Promise<{ id?: string; er
   return error ? { error: error.message } : { id: data?.id }
 }
 
-export async function completeRide(rideId: string, rating: number): Promise<void> {
+/**
+ * تقييم الرحلة من العميل (النجوم فقط) — لا يُنهي الرحلة ولا يسوّيها.
+ * الإنهاء والتسوية يتمّان عبر السائق (settleRide) لتفادي إكمال الرحلة دون دفع.
+ */
+export async function rateRide(rideId: string, rating: number): Promise<void> {
   if (!isSupabaseConfigured) return
-  await supabase.from('rides').update({ status: 'completed', rating }).eq('id', rideId)
+  await supabase.from('rides').update({ rating }).eq('id', rideId)
+}
+
+/** بيانات السائق المُسنَد لرحلة (اسم، تقييم، هاتف، مركبة) عبر دالة آمنة. */
+export interface RideDriverInfo {
+  full_name: string | null
+  phone: string
+  rating: number | null
+  vehicle_type: string | null
+  plate_number: string | null
+}
+
+const demoRideDriver: RideDriverInfo = {
+  full_name: 'عثمان الطيب',
+  phone: '+249900000000',
+  rating: 4.9,
+  vehicle_type: 'amjad',
+  plate_number: 'خ ط م ١٢٣٤',
+}
+
+export async function getRideDriver(rideId: string): Promise<RideDriverInfo | null> {
+  if (!isSupabaseConfigured) return demoRideDriver
+  const { data } = await supabase.rpc('get_ride_driver', { p_ride: rideId })
+  return (Array.isArray(data) ? data[0] : data) ?? null
+}
+
+/** رحلة العميل الجارية (لاسترجاع الحالة بعد تحديث الصفحة). */
+export async function getActiveCustomerRide(customerId: string): Promise<Ride | null> {
+  if (!isSupabaseConfigured) return null
+  const { data } = await supabase
+    .from('rides')
+    .select('*')
+    .eq('customer_id', customerId)
+    .in('status', ['requested', 'searching', 'accepted', 'arrived', 'in_progress'])
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle()
+  return data ?? null
 }
 
 /** يجلب رحلة واحدة (للحصول على الموقع المبدئي للسائق عند فتح شاشة التتبع). */
@@ -412,6 +454,76 @@ export async function getAdminStats(): Promise<AdminStats> {
   }
 }
 
+// ---------- الأدمن: قوائم مستقلة ----------
+export interface AdminDriverRow extends Driver {
+  users?: { full_name: string | null; phone: string } | null
+}
+
+const demoAdminDrivers: AdminDriverRow[] = [
+  {
+    id: 'd1',
+    user_id: 'u1',
+    vehicle_type: 'amjad',
+    plate_number: 'خ ط م ١٢٣٤',
+    is_online: true,
+    rating: 4.9,
+    created_at: new Date().toISOString(),
+    users: { full_name: 'عثمان الطيب', phone: '+249900000001' },
+  },
+  {
+    id: 'd2',
+    user_id: 'u2',
+    vehicle_type: 'hiace',
+    plate_number: 'خ ط م ٥٦٧٨',
+    is_online: false,
+    rating: 4.7,
+    created_at: new Date().toISOString(),
+    users: { full_name: 'مريم عبدالله', phone: '+249900000002' },
+  },
+]
+
+export async function listAllDrivers(): Promise<AdminDriverRow[]> {
+  if (!isSupabaseConfigured) return demoAdminDrivers
+  const { data } = await supabase
+    .from('drivers')
+    .select('*, users(full_name, phone)')
+    .order('is_online', { ascending: false })
+  return (data as AdminDriverRow[]) ?? []
+}
+
+export async function listAllRides(limit = 50): Promise<Ride[]> {
+  if (!isSupabaseConfigured) return demoRides
+  const { data } = await supabase
+    .from('rides')
+    .select('*')
+    .order('created_at', { ascending: false })
+    .limit(limit)
+  return data ?? []
+}
+
+export interface FinancialSummary {
+  platform_commission: number
+  total_topups: number
+  ride_payments: number
+  driver_earnings: number
+  completed_rides: number
+  wallet_liability: number
+}
+
+export async function getFinancialSummary(): Promise<FinancialSummary | null> {
+  if (!isSupabaseConfigured)
+    return {
+      platform_commission: 184500,
+      total_topups: 640000,
+      ride_payments: 210300,
+      driver_earnings: 1230000,
+      completed_rides: 342,
+      wallet_liability: 418200,
+    }
+  const { data } = await supabase.rpc('admin_financial_summary')
+  return (Array.isArray(data) ? data[0] : data) ?? null
+}
+
 export async function updateSettings(
   patch: Partial<Settings>,
 ): Promise<{ error?: string }> {
@@ -443,43 +555,103 @@ export async function getDriver(userId: string): Promise<Driver | null> {
   return data ?? null
 }
 
-// ---------- تسجيل السائق (تسجيل ذاتي + موافقة الأدمن) ----------
-/** يقدّم العميل طلب تسجيل كسائق (يبقى دوره customer حتى يعتمده الأدمن). */
-export async function applyAsDriver(input: {
-  user_id?: string
-  vehicle_type: string
-  plate_number: string
-}): Promise<{ error?: string }> {
+// ============================================================
+//  طلبات الانضمام كسائق (KYC + وثائق + اعتماد)
+// ============================================================
+const DRIVER_DOCS_BUCKET = 'driver-docs'
+
+/** نوع الوثيقة/الصورة — يُستخدم اسماً منطقياً في مسار الملف. */
+export type DriverDocKind =
+  | 'driving_license'
+  | 'vehicle_license'
+  | 'rental_contract'
+  | 'transport_permit'
+  | 'photo_front'
+  | 'photo_back'
+  | 'photo_side'
+  | 'photo_interior'
+
+/** يرفع وثيقة/صورة سائق إلى مجلد المستخدم ويرجّع مسارها داخل الـ bucket. */
+export async function uploadDriverDoc(
+  userId: string,
+  kind: DriverDocKind,
+  file: File,
+): Promise<{ path?: string; error?: string }> {
+  if (!isSupabaseConfigured) return { path: `demo/${kind}` }
+  const ext = file.name.split('.').pop()?.replace(/[^\w]+/g, '') || 'bin'
+  const path = `${userId}/${kind}-${Date.now()}.${ext}`
+  const { error } = await supabase.storage
+    .from(DRIVER_DOCS_BUCKET)
+    .upload(path, file, { upsert: true })
+  return error ? { error: error.message } : { path }
+}
+
+/** رابط موقّع مؤقت لعرض وثيقة السائق (الـ bucket خاص). */
+export async function getDriverDocUrl(path: string): Promise<string | null> {
+  if (!isSupabaseConfigured) return null
+  const { data } = await supabase.storage.from(DRIVER_DOCS_BUCKET).createSignedUrl(path, 3600)
+  return data?.signedUrl ?? null
+}
+
+export type DriverApplicationInput = Omit<
+  DriverApplication,
+  'id' | 'status' | 'review_note' | 'reviewed_by' | 'created_at' | 'updated_at'
+>
+
+/** يُنشئ طلب انضمام سائق (حالته pending حتى يعتمده الأدمن). */
+export async function submitDriverApplication(
+  input: DriverApplicationInput,
+): Promise<{ error?: string }> {
   if (!isSupabaseConfigured) return {}
-  const { error } = await supabase.from('drivers').insert({
-    user_id: input.user_id,
-    vehicle_type: input.vehicle_type,
-    plate_number: input.plate_number,
-    status: 'pending',
-  })
+  const { error } = await supabase
+    .from('driver_applications')
+    .insert({ ...input, status: 'pending' })
   return error ? { error: error.message } : {}
 }
 
-/** طلبات السائقين المعلّقة (للأدمن). */
-export async function listDriverApplications(): Promise<DriverApplication[]> {
+/** آخر طلب انضمام للمستخدم الحالي (لعرض حالته: قيد المراجعة/مرفوض/معتمد). */
+export async function getMyDriverApplication(
+  userId: string,
+): Promise<DriverApplication | null> {
+  if (!isSupabaseConfigured) return null
+  const { data } = await supabase
+    .from('driver_applications')
+    .select('*')
+    .eq('user_id', userId)
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle()
+  return data ?? null
+}
+
+// ---------- الأدمن: مراجعة الطلبات ----------
+export async function listDriverApplications(
+  status: DriverAppStatus = 'pending',
+): Promise<DriverApplication[]> {
   if (!isSupabaseConfigured) return []
   const { data } = await supabase
-    .from('drivers')
-    .select('*, users(full_name, phone)')
-    .eq('status', 'pending')
+    .from('driver_applications')
+    .select('*')
+    .eq('status', status)
     .order('created_at', { ascending: true })
-  return (data as DriverApplication[] | null) ?? []
+  return data ?? []
 }
 
-export async function approveDriver(driverId: string): Promise<{ error?: string }> {
+export async function approveDriverApplication(id: string): Promise<{ error?: string }> {
   if (!isSupabaseConfigured) return {}
-  const { error } = await supabase.rpc('approve_driver', { p_driver: driverId })
+  const { error } = await supabase.rpc('approve_driver_application', { p_app: id })
   return error ? { error: error.message } : {}
 }
 
-export async function rejectDriver(driverId: string): Promise<{ error?: string }> {
+export async function rejectDriverApplication(
+  id: string,
+  note?: string,
+): Promise<{ error?: string }> {
   if (!isSupabaseConfigured) return {}
-  const { error } = await supabase.rpc('reject_driver', { p_driver: driverId })
+  const { error } = await supabase.rpc('reject_driver_application', {
+    p_app: id,
+    p_note: note ?? null,
+  })
   return error ? { error: error.message } : {}
 }
 
@@ -533,6 +705,40 @@ export async function acceptRide(
     .from('rides')
     .update({ driver_id: driverUserId, status: 'accepted' })
     .eq('id', rideId)
+  return error ? { error: error.message } : {}
+}
+
+/** رحلة السائق الجارية (لاسترجاع شاشة الرحلة بعد تحديث الصفحة). */
+export async function getActiveDriverRide(driverUserId: string): Promise<Ride | null> {
+  if (!isSupabaseConfigured) return null
+  const { data } = await supabase
+    .from('rides')
+    .select('*')
+    .eq('driver_id', driverUserId)
+    .in('status', ['accepted', 'arrived', 'in_progress'])
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle()
+  return data ?? null
+}
+
+/** تقدّم الرحلة: السائق يعلّم الوصول (arrived) أو بدء الرحلة (in_progress). */
+export async function setRideStatus(
+  rideId: string,
+  status: 'arrived' | 'in_progress',
+): Promise<{ error?: string }> {
+  if (!isSupabaseConfigured) return {}
+  const { error } = await supabase.rpc('set_ride_status', { p_ride: rideId, p_status: status })
+  return error ? { error: error.message } : {}
+}
+
+/**
+ * إلغاء الرحلة عبر دالة آمنة:
+ *   • العميل → cancelled، • السائق → تعود searching بلا سائق.
+ */
+export async function cancelRide(rideId: string): Promise<{ error?: string }> {
+  if (!isSupabaseConfigured) return {}
+  const { error } = await supabase.rpc('cancel_ride', { p_ride: rideId })
   return error ? { error: error.message } : {}
 }
 

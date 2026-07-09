@@ -1,5 +1,5 @@
 import { createContext, useContext, useState, type ReactNode } from 'react'
-import type { PaymentMethod } from '@/lib/types'
+import type { PaymentMethod, Ride } from '@/lib/types'
 import { KHARTOUM } from '@/theme'
 
 interface Place {
@@ -23,6 +23,8 @@ interface RideContextValue extends RideDraft {
   setDropoff: (p: Place | null) => void
   setPayment: (m: PaymentMethod) => void
   setFare: (n: number) => void
+  /** يعيد بناء مسودّة الرحلة من صفّ rides (لاسترجاع الحالة بعد تحديث الصفحة). */
+  restore: (ride: Ride) => void
   reset: () => void
 }
 
@@ -48,6 +50,24 @@ export function RideProvider({ children }: { children: ReactNode }) {
     setDropoff: (dropoff) => setDraft((d) => ({ ...d, dropoff })),
     setPayment: (payment) => setDraft((d) => ({ ...d, payment })),
     setFare: (fare) => setDraft((d) => ({ ...d, fare })),
+    restore: (ride) =>
+      setDraft({
+        rideId: ride.id,
+        serviceId: ride.service_id,
+        pickup: {
+          pos: { lat: ride.pickup_lat, lng: ride.pickup_lng },
+          address: ride.pickup_address ?? 'نقطة الإقلاع',
+        },
+        dropoff:
+          ride.dropoff_lat != null && ride.dropoff_lng != null
+            ? {
+                pos: { lat: ride.dropoff_lat, lng: ride.dropoff_lng },
+                address: ride.dropoff_address ?? 'الوجهة',
+              }
+            : null,
+        payment: ride.payment_method,
+        fare: ride.fare,
+      }),
     reset: () => setDraft(defaultDraft),
   }
 

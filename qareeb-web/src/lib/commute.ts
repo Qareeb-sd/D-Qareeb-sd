@@ -62,6 +62,7 @@ export async function createCommuteOrder(
       round_trip: input.round_trip,
       invite_code: invite(),
       status: 'forming',
+      driver_id: null,
       created_at: new Date().toISOString(),
     }
     lsSet(LS_ORDERS, [...lsGet<CommuteOrder>(LS_ORDERS), order])
@@ -184,7 +185,27 @@ export async function dispatchCommuteOrder(id: string): Promise<{ error?: string
   return error ? { error: error.message } : {}
 }
 
-/** طلبات الترحيل المُرسَلة (لواجهة السائق). */
+/** السائق يقبل طلب ترحيل مُرسَلاً (dispatched → active) ويعيّن نفسه سائقاً. */
+export async function acceptCommuteOrder(
+  orderId: string,
+  driverId: string,
+): Promise<{ error?: string }> {
+  if (!isSupabaseConfigured) {
+    const orders = lsGet<CommuteOrder>(LS_ORDERS).map((o) =>
+      o.id === orderId ? { ...o, status: 'active' as const, driver_id: driverId } : o,
+    )
+    lsSet(LS_ORDERS, orders)
+    return {}
+  }
+  const { error } = await supabase
+    .from('commute_orders')
+    .update({ status: 'active', driver_id: driverId })
+    .eq('id', orderId)
+    .eq('status', 'dispatched')
+  return error ? { error: error.message } : {}
+}
+
+/** طلبات الترحيل المُرسَلة (المتاحة للقبول — لواجهة السائق). */
 export async function listDispatchedCommutes(): Promise<CommuteOrder[]> {
   if (!isSupabaseConfigured)
     return lsGet<CommuteOrder>(LS_ORDERS).filter((o) => o.status === 'dispatched')
@@ -192,6 +213,21 @@ export async function listDispatchedCommutes(): Promise<CommuteOrder[]> {
     .from('commute_orders')
     .select('*')
     .eq('status', 'dispatched')
+    .order('created_at', { ascending: false })
+  return (data as CommuteOrder[]) ?? []
+}
+
+/** رحلات الترحيل التي قبِلها السائق (active) — لواجهته. */
+export async function listDriverCommutes(driverId: string): Promise<CommuteOrder[]> {
+  if (!isSupabaseConfigured)
+    return lsGet<CommuteOrder>(LS_ORDERS).filter(
+      (o) => o.status === 'active' && o.driver_id === driverId,
+    )
+  const { data } = await supabase
+    .from('commute_orders')
+    .select('*')
+    .eq('driver_id', driverId)
+    .eq('status', 'active')
     .order('created_at', { ascending: false })
   return (data as CommuteOrder[]) ?? []
 }

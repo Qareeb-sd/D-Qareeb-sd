@@ -202,9 +202,12 @@ create table if not exists public.commute_orders (
   round_trip     boolean not null default true,
   invite_code    text not null unique default substr(md5(random()::text), 1, 6),
   status         commute_status not null default 'forming',
+  driver_id      uuid references public.users(id) on delete set null,  -- السائق الذي قبِل الطلب
   created_at     timestamptz not null default now()
 );
 create index if not exists commute_orders_status_idx on public.commute_orders(status);
+-- ترقية القواعد القديمة (إن كان الجدول موجوداً بدون عمود السائق)
+alter table public.commute_orders add column if not exists driver_id uuid references public.users(id) on delete set null;
 
 create table if not exists public.commute_members (
   id           uuid primary key default gen_random_uuid(),
@@ -282,6 +285,11 @@ drop policy if exists "update own commute orders" on public.commute_orders;
 create policy "update own commute orders" on public.commute_orders
   for update using (auth.uid() = organizer_id or public.is_admin());
 
+-- ترحيل: السائق يقبل طلباً مُرسَلاً (dispatched → active) ويعيّن نفسه سائقاً.
+drop policy if exists "driver accept commute" on public.commute_orders;
+create policy "driver accept commute" on public.commute_orders
+  for update using (status = 'dispatched') with check (auth.uid() = driver_id);
+
 -- ترحيل: الأعضاء يُقرؤون ويُضافون من قِبل المصادَق عليهم.
 drop policy if exists "read commute members" on public.commute_members;
 create policy "read commute members" on public.commute_members
@@ -344,6 +352,42 @@ create policy "admin read wallets" on public.wallets
 drop policy if exists "admin read topups" on public.topups;
 create policy "admin read topups" on public.topups
   for select using (public.is_admin());
+
+-- الأدمن يقرأ كل السائقين والرحلات والمعاملات (للقوائم والملخّص المالي)
+drop policy if exists "admin read drivers" on public.drivers;
+create policy "admin read drivers" on public.drivers
+  for select using (public.is_admin());
+
+drop policy if exists "admin read rides" on public.rides;
+create policy "admin read rides" on public.rides
+  for select using (public.is_admin());
+
+drop policy if exists "admin read transactions" on public.transactions;
+create policy "admin read transactions" on public.transactions
+  for select using (public.is_admin());
+
+-- ملخّص مالي للمنصة (أدمن فقط) — إجماليات من جدول المعاملات والمحافظ.
+create or replace function public.admin_financial_summary()
+returns table (
+  platform_commission numeric,   -- إجمالي عمولة المنصة
+  total_topups        numeric,   -- إجمالي التعبئات المعتمدة
+  ride_payments       numeric,   -- إجمالي ما دفعه العملاء (محفظة)
+  driver_earnings     numeric,   -- إجمالي أرباح السائقين (إجمالي الأجرة)
+  completed_rides     bigint,    -- عدد الرحلات المكتملة
+  wallet_liability    numeric    -- مجموع أرصدة كل المحافظ
+) language plpgsql stable security definer set search_path = public as $$
+begin
+  if not public.is_admin() then raise exception 'غير مصرّح'; end if;
+  return query
+    select
+      coalesce(-sum(t.amount) filter (where t.type = 'commission'), 0),
+      coalesce( sum(t.amount) filter (where t.type = 'topup'), 0),
+      coalesce(-sum(t.amount) filter (where t.type = 'ride_payment'), 0),
+      coalesce( sum(t.amount) filter (where t.type = 'ride_earning'), 0),
+      (select count(*) from public.rides where status = 'completed'),
+      coalesce((select sum(balance) from public.wallets), 0)
+    from public.transactions t;
+end $$;
 
 -- الطوارئ: المستخدم يُطلق تنبيهه، ويقرؤه هو أو الأدمن، والأدمن يعالجه.
 drop policy if exists "raise own sos" on public.sos_alerts;
@@ -416,6 +460,37 @@ end $$;
 -- ملاحظة: لتعيين أول أدمن:  update public.users set role = 'admin' where phone = '+249...';
 
 -- ============================================================
+--  منع ترقية الدور ذاتياً (يسدّ ثغرة سياسة "own profile" للكتابة)
+--  يُسمح بتغيير users.role فقط للأدمن — عبر لوحة الأدمن أو دوال
+--  الاعتماد الآمنة (approve_driver_application) التي تعمل بسياق الأدمن.
+-- ============================================================
+create or replace function public.prevent_role_change()
+returns trigger language plpgsql security definer set search_path = public as $$
+begin
+  if new.role is distinct from old.role and not public.is_admin() then
+    raise exception 'تغيير الدور غير مسموح';
+  end if;
+  return new;
+end $$;
+
+-- أزل أي مشغّل قديم يستدعي هذه الدالة (بأي اسم) لتفادي التكرار، ثم أنشئ القياسي.
+do $$
+declare t text;
+begin
+  for t in
+    select tgname from pg_trigger
+    where tgrelid = 'public.users'::regclass and not tgisinternal
+      and tgfoid = 'public.prevent_role_change'::regproc
+  loop
+    execute format('drop trigger %I on public.users', t);
+  end loop;
+end $$;
+
+create trigger prevent_role_change
+  before update of role on public.users
+  for each row execute function public.prevent_role_change();
+
+-- ============================================================
 --  السائق: قبول الرحلات وتسوية الأرباح (خصم العمولة)
 -- ============================================================
 
@@ -429,18 +504,7 @@ drop policy if exists "admin read drivers" on public.drivers;
 create policy "admin read drivers" on public.drivers
   for select using (public.is_admin());
 
--- أمان: يمنع أي مستخدم من ترقية دوره بنفسه (الدور يتغيّر فقط عبر دوال الأدمن الآمنة).
-create or replace function public.prevent_role_change()
-returns trigger language plpgsql security definer set search_path = public as $$
-begin
-  if new.role is distinct from old.role and not public.is_admin() then
-    raise exception 'تغيير الدور غير مسموح';
-  end if;
-  return new;
-end $$;
-drop trigger if exists trg_prevent_role_change on public.users;
-create trigger trg_prevent_role_change before update on public.users
-  for each row execute function public.prevent_role_change();
+-- (منع ترقية الدور ذاتياً مُعرّف أعلاه — trigger واحد يكفي.)
 
 -- الأدمن يعتمد طلب سائق: يجعل الصفّ approved ويمنح دور driver — معاً.
 create or replace function public.approve_driver(p_driver uuid)
@@ -487,21 +551,28 @@ begin
      and status in ('accepted', 'arrived', 'in_progress');
 end $$;
 
--- تسوية رحلة عند اكتمالها: يُقيَّد للسائق (الأجرة − العمولة)، وتُسجَّل
--- معاملتان (أرباح إجمالية + عمولة سالبة) بحيث يتطابق مجموعهما مع صافي الرصيد.
+-- تسوية رحلة عند اكتمالها — مسار موحّد للإنهاء (يستدعيه السائق أو الأدمن):
+--   • دفع بمحفظة قريب: تُخصم الأجرة من محفظة العميل، ويُقيَّد للسائق (الأجرة − العمولة).
+--     (المنصة تحصّل الأجرة وتحتفظ بالعمولة.)
+--   • كاش/تحويل بنكي: يستلم السائق الأجرة مباشرة، فتُخصم العمولة فقط من محفظته
+--     (السائق يدين للمنصة بالعمولة).
 create or replace function public.settle_ride(p_ride uuid)
 returns void language plpgsql security definer set search_path = public as $$
 declare
   v_driver_user uuid;
+  v_customer    uuid;
   v_fare        numeric;
   v_status      ride_status;
+  v_payment     payment_method;
   v_rate        numeric;
-  v_wallet      uuid;
   v_commission  numeric;
   v_net         numeric;
+  v_dwallet     uuid;
+  v_cwallet     uuid;
+  v_cbalance    numeric;
 begin
-  select driver_id, fare, status
-    into v_driver_user, v_fare, v_status
+  select driver_id, customer_id, fare, status, payment_method
+    into v_driver_user, v_customer, v_fare, v_status, v_payment
     from public.rides where id = p_ride for update;
 
   if v_driver_user is null then raise exception 'الرحلة بلا سائق'; end if;
@@ -509,23 +580,120 @@ begin
     raise exception 'غير مصرّح';
   end if;
   if v_status = 'completed' then raise exception 'الرحلة مسوّاة مسبقاً'; end if;
+  if v_status = 'cancelled' then raise exception 'الرحلة ملغاة'; end if;
 
   select commission_rate into v_rate from public.settings where id = 1;
-  v_commission := round(coalesce(v_fare, 0) * coalesce(v_rate, 0));
-  v_net        := coalesce(v_fare, 0) - v_commission;
+  v_fare       := coalesce(v_fare, 0);
+  v_commission := round(v_fare * coalesce(v_rate, 0));
+  v_net        := v_fare - v_commission;
+
+  -- خصم من العميل عند الدفع بالمحفظة (الكاش/التحويل يُدفع للسائق مباشرة).
+  if v_payment = 'wallet' then
+    select id, balance into v_cwallet, v_cbalance
+      from public.wallets where user_id = v_customer for update;
+    if v_cwallet is null then raise exception 'محفظة العميل غير موجودة'; end if;
+    if v_cbalance < v_fare then raise exception 'رصيد محفظة العميل غير كافٍ'; end if;
+    update public.wallets
+      set balance = balance - v_fare, updated_at = now()
+      where id = v_cwallet;
+    insert into public.transactions (wallet_id, type, amount, ride_id, note)
+      values (v_cwallet, 'ride_payment', -v_fare, p_ride, 'دفع رحلة');
+  end if;
 
   update public.rides set status = 'completed' where id = p_ride;
 
-  select id into v_wallet from public.wallets where user_id = v_driver_user;
-  if v_wallet is not null then
-    update public.wallets
-      set balance = balance + v_net, updated_at = now()
-      where id = v_wallet;
-    insert into public.transactions (wallet_id, type, amount, ride_id, note) values
-      (v_wallet, 'ride_earning', coalesce(v_fare, 0), p_ride, 'أرباح رحلة (إجمالي)'),
-      (v_wallet, 'commission',   -v_commission,       p_ride, 'عمولة المنصة');
+  -- تسوية محفظة السائق.
+  select id into v_dwallet from public.wallets where user_id = v_driver_user for update;
+  if v_dwallet is not null then
+    if v_payment = 'wallet' then
+      -- المنصة حصّلت الأجرة → تُقيَّد للسائق (الأجرة إيداعاً والعمولة خصماً).
+      update public.wallets
+        set balance = balance + v_net, updated_at = now()
+        where id = v_dwallet;
+      insert into public.transactions (wallet_id, type, amount, ride_id, note) values
+        (v_dwallet, 'ride_earning', v_fare,        p_ride, 'أرباح رحلة (إجمالي)'),
+        (v_dwallet, 'commission',   -v_commission, p_ride, 'عمولة المنصة');
+    else
+      -- الكاش/التحويل: السائق حصّل الأجرة مباشرة ويدين للمنصة بالعمولة.
+      update public.wallets
+        set balance = balance - v_commission, updated_at = now()
+        where id = v_dwallet;
+      insert into public.transactions (wallet_id, type, amount, ride_id, note) values
+        (v_dwallet, 'commission', -v_commission, p_ride, 'عمولة المنصة (نقدي/تحويل)');
+    end if;
   end if;
 end $$;
+
+-- تقدّم الرحلة: السائق يعلّم "وصل" (arrived) أو "بدأت" (in_progress).
+-- (الإكمال يتم حصراً عبر settle_ride لضمان الدفع.)
+create or replace function public.set_ride_status(p_ride uuid, p_status ride_status)
+returns void language plpgsql security definer set search_path = public as $$
+declare
+  v_driver uuid;
+  v_cur    ride_status;
+begin
+  if p_status not in ('arrived', 'in_progress') then
+    raise exception 'حالة غير مسموحة';
+  end if;
+  select driver_id, status into v_driver, v_cur
+    from public.rides where id = p_ride for update;
+  if v_driver is null then raise exception 'الرحلة بلا سائق'; end if;
+  if auth.uid() <> v_driver and not public.is_admin() then
+    raise exception 'غير مصرّح';
+  end if;
+  if v_cur not in ('accepted', 'arrived', 'in_progress') then
+    raise exception 'لا يمكن تغيير حالة هذه الرحلة';
+  end if;
+  update public.rides set status = p_status where id = p_ride;
+end $$;
+
+-- إلغاء الرحلة:
+--   • العميل يلغيها (قبل بدء الرحلة) → cancelled.
+--   • السائق يتخلّى عنها (بعد القبول/الوصول) → تعود searching بلا سائق.
+create or replace function public.cancel_ride(p_ride uuid)
+returns void language plpgsql security definer set search_path = public as $$
+declare
+  v_customer uuid;
+  v_driver   uuid;
+  v_status   ride_status;
+begin
+  select customer_id, driver_id, status
+    into v_customer, v_driver, v_status
+    from public.rides where id = p_ride for update;
+
+  if v_customer is null then raise exception 'الرحلة غير موجودة'; end if;
+  if v_status in ('completed', 'cancelled') then
+    raise exception 'لا يمكن إلغاء هذه الرحلة';
+  end if;
+
+  if auth.uid() = v_customer then
+    if v_status not in ('requested', 'searching', 'accepted', 'arrived') then
+      raise exception 'لا يمكن الإلغاء بعد بدء الرحلة';
+    end if;
+    update public.rides set status = 'cancelled' where id = p_ride;
+  elsif auth.uid() = v_driver then
+    if v_status not in ('accepted', 'arrived') then
+      raise exception 'لا يمكن التخلّي عن الرحلة الآن';
+    end if;
+    update public.rides set status = 'searching', driver_id = null where id = p_ride;
+  else
+    raise exception 'غير مصرّح';
+  end if;
+end $$;
+
+-- ============================================================
+--  بيانات السائق المُسنَد لرحلة (يقرؤها العميل/السائق/الأدمن فقط)
+-- ============================================================
+create or replace function public.get_ride_driver(p_ride uuid)
+returns table (full_name text, phone text, rating numeric, vehicle_type text, plate_number text)
+language sql stable security definer set search_path = public as $$
+  select u.full_name, u.phone, d.rating, d.vehicle_type, d.plate_number
+  from public.rides r
+  join public.users u on u.id = r.driver_id
+  left join public.drivers d on d.user_id = r.driver_id
+  where r.id = p_ride
+    and (auth.uid() = r.customer_id or auth.uid() = r.driver_id or public.is_admin());
+$$;
 
 -- ============================================================
 --  التخزين: إثباتات التحويل (bucket خاص topup-proofs)
@@ -554,6 +722,119 @@ create policy "read own or admin proof" on storage.objects
   );
 
 -- ============================================================
+--  طلبات الانضمام كسائق (KYC) + وثائقها + اعتمادها من الأدمن
+-- ============================================================
+do $$ begin
+  create type driver_app_status as enum ('pending', 'approved', 'rejected');
+exception when duplicate_object then null; end $$;
+
+create table if not exists public.driver_applications (
+  id                   uuid primary key default gen_random_uuid(),
+  user_id              uuid not null references public.users(id) on delete cascade,
+  full_name            text not null,
+  phone                text not null,
+  email                text,
+  vehicle_type         text not null,               -- من كتالوج الخدمات
+  plate_number         text not null,               -- لوحة السيارة
+  is_rented            boolean not null default false,
+  residence            text,                         -- السكن / العنوان
+  -- الوثائق والصور (مسارات داخل bucket خاص "driver-docs")
+  driving_license_url  text,                         -- رخصة القيادة
+  vehicle_license_url  text,                         -- رخصة/استمارة السيارة
+  rental_contract_url  text,                         -- عقد الإيجار (إن كانت مستأجرة)
+  transport_permit_url text,                         -- تصريح النقل
+  photo_front_url      text,                         -- صورة أمامية
+  photo_back_url       text,                         -- صورة خلفية
+  photo_side_url       text,                         -- صورة جانبية (الأطراف)
+  photo_interior_url   text,                         -- صورة داخلية
+  status               driver_app_status not null default 'pending',
+  review_note          text,                         -- سبب الرفض (اختياري)
+  reviewed_by          uuid references public.users(id) on delete set null,
+  created_at           timestamptz not null default now(),
+  updated_at           timestamptz not null default now()
+);
+create index if not exists driver_apps_status_idx on public.driver_applications(status);
+create index if not exists driver_apps_user_idx on public.driver_applications(user_id);
+
+alter table public.driver_applications enable row level security;
+
+-- المستخدم ينشئ/يقرأ/يحدّث طلبه فقط
+drop policy if exists "own driver application" on public.driver_applications;
+create policy "own driver application" on public.driver_applications
+  for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
+
+-- الأدمن يقرأ كل الطلبات (الاعتماد/الرفض عبر دوال security definer أدناه)
+drop policy if exists "admin read driver apps" on public.driver_applications;
+create policy "admin read driver apps" on public.driver_applications
+  for select using (public.is_admin());
+
+-- اعتماد طلب سائق: يعلّمه approved، يُنشئ/يحدّث صفّ السائق، ويرقّي الدور — ذرّياً.
+create or replace function public.approve_driver_application(p_app uuid)
+returns void language plpgsql security definer set search_path = public as $$
+declare
+  v_user   uuid;
+  v_vtype  text;
+  v_plate  text;
+  v_status driver_app_status;
+  v_driver uuid;
+begin
+  if not public.is_admin() then raise exception 'غير مصرّح'; end if;
+
+  select user_id, vehicle_type, plate_number, status
+    into v_user, v_vtype, v_plate, v_status
+    from public.driver_applications where id = p_app for update;
+
+  if v_user is null then raise exception 'الطلب غير موجود'; end if;
+  if v_status <> 'pending' then raise exception 'الطلب روجع مسبقاً'; end if;
+
+  update public.driver_applications
+    set status = 'approved', reviewed_by = auth.uid(), updated_at = now()
+    where id = p_app;
+
+  select id into v_driver from public.drivers where user_id = v_user;
+  if v_driver is null then
+    insert into public.drivers (user_id, vehicle_type, plate_number)
+      values (v_user, v_vtype, v_plate);
+  else
+    update public.drivers set vehicle_type = v_vtype, plate_number = v_plate
+      where id = v_driver;
+  end if;
+
+  update public.users set role = 'driver' where id = v_user;
+end $$;
+
+-- رفض طلب سائق (مع سبب اختياري)
+create or replace function public.reject_driver_application(p_app uuid, p_note text default null)
+returns void language plpgsql security definer set search_path = public as $$
+begin
+  if not public.is_admin() then raise exception 'غير مصرّح'; end if;
+  update public.driver_applications
+    set status = 'rejected', review_note = p_note, reviewed_by = auth.uid(), updated_at = now()
+    where id = p_app and status = 'pending';
+end $$;
+
+-- التخزين: وثائق السائق (bucket خاص driver-docs)
+insert into storage.buckets (id, name, public)
+  values ('driver-docs', 'driver-docs', false)
+  on conflict (id) do nothing;
+
+drop policy if exists "upload own driver doc" on storage.objects;
+create policy "upload own driver doc" on storage.objects
+  for insert to authenticated
+  with check (
+    bucket_id = 'driver-docs'
+    and (storage.foldername(name))[1] = auth.uid()::text
+  );
+
+drop policy if exists "read own or admin driver doc" on storage.objects;
+create policy "read own or admin driver doc" on storage.objects
+  for select to authenticated
+  using (
+    bucket_id = 'driver-docs'
+    and ((storage.foldername(name))[1] = auth.uid()::text or public.is_admin())
+  );
+
+-- ============================================================
 --  Realtime: تفعيل النشر على جدول الرحلات
 --  (يمكّن اشتراكات العميل/السائق اللحظية على تغيّرات rides)
 -- ============================================================
@@ -562,7 +843,7 @@ declare
   t text;
 begin
   if exists (select 1 from pg_publication where pubname = 'supabase_realtime') then
-    foreach t in array array['rides', 'commute_orders', 'commute_members', 'sos_alerts'] loop
+    foreach t in array array['rides', 'commute_orders', 'commute_members', 'driver_applications', 'sos_alerts'] loop
       if not exists (
         select 1 from pg_publication_tables
         where pubname = 'supabase_realtime' and schemaname = 'public' and tablename = t

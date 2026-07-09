@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react'
-import { Navigate, useNavigate } from 'react-router-dom'
+import { Navigate } from 'react-router-dom'
 import { useAuth } from '@/store/AuthContext'
 import { isSupabaseConfigured } from '@/lib/supabase'
 import Logo from './Logo'
@@ -17,7 +17,7 @@ export default function AdminRoute({ children }: { children: ReactNode }) {
   // وضع معاينة: لا يوجد backend، نسمح بالوصول للتجربة فقط.
   if (!isSupabaseConfigured) return <>{children}</>
 
-  if (!session) return <Navigate to="/auth" replace />
+  if (!session) return <Navigate to="/admin/login" replace />
 
   // الجلسة موجودة لكن الملف لم يُحمّل بعد.
   if (!profile) return <Spinner />
@@ -36,15 +36,15 @@ function Spinner() {
 }
 
 function NotAuthorized() {
-  const navigate = useNavigate()
+  const { signOut } = useAuth()
   return (
     <div className="screen items-center justify-center gap-4 p-8 text-center">
       <Logo size={72} rounded={20} />
       <div className="text-4xl">🔒</div>
       <h1 className="text-xl font-extrabold text-green">صفحة الإدارة</h1>
       <p className="text-ink-soft">هذه اللوحة مخصّصة للإدارة فقط. حسابك لا يملك صلاحية الوصول.</p>
-      <button className="btn-primary" onClick={() => navigate('/home')}>
-        العودة للرئيسية
+      <button className="btn-outline text-danger" onClick={() => void signOut()}>
+        تسجيل الخروج
       </button>
     </div>
   )
