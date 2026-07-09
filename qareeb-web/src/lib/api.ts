@@ -378,6 +378,38 @@ export async function getDriver(userId: string): Promise<Driver | null> {
   return data ?? null
 }
 
+/**
+ * تسجيل المستخدم كسائق: يُنشئ/يحدّث صفّ السائق (نوع المركبة + اللوحة) ويرقّي الدور.
+ * يعتمد على سياسات RLS: "own driver row" و "own profile" (المستخدم يدير بياناته).
+ */
+export async function registerDriver(
+  userId: string,
+  vehicleType: string,
+  plateNumber: string,
+): Promise<{ error?: string }> {
+  if (!isSupabaseConfigured) return {}
+
+  const existing = await getDriver(userId)
+  if (existing) {
+    const { error } = await supabase
+      .from('drivers')
+      .update({ vehicle_type: vehicleType, plate_number: plateNumber })
+      .eq('id', existing.id)
+    if (error) return { error: error.message }
+  } else {
+    const { error } = await supabase
+      .from('drivers')
+      .insert({ user_id: userId, vehicle_type: vehicleType, plate_number: plateNumber })
+    if (error) return { error: error.message }
+  }
+
+  const { error: roleError } = await supabase
+    .from('users')
+    .update({ role: 'driver' })
+    .eq('id', userId)
+  return roleError ? { error: roleError.message } : {}
+}
+
 export async function setDriverOnline(
   driverId: string,
   online: boolean,

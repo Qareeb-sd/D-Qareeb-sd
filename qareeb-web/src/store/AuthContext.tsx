@@ -22,6 +22,8 @@ interface AuthValue {
     password: string,
     fullName?: string,
   ) => Promise<{ error?: string }>
+  /** يعيد تحميل ملف المستخدم (مثلاً بعد ترقية الدور إلى سائق). */
+  refreshProfile: () => Promise<void>
   signOut: () => Promise<void>
 }
 
@@ -118,6 +120,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         if (retry.error) return { error: retry.error.message }
       }
       return {}
+    },
+
+    async refreshProfile() {
+      if (!isSupabaseConfigured) {
+        setProfile((p) => (p ? { ...p, role: 'driver' } : p))
+        return
+      }
+      const uid = session?.user?.id
+      if (uid) await loadProfile(uid)
     },
 
     async signOut() {

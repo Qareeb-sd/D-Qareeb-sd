@@ -52,6 +52,25 @@ export default function Profile() {
           ))}
         </div>
 
+        {/* السائق: تسجيل كسائق أو الدخول لواجهة السائق */}
+        <button
+          onClick={() => navigate(profile?.role === 'driver' ? '/driver' : '/become-driver')}
+          className="card mt-4 flex w-full items-center gap-3 border border-green/30 bg-green-soft p-4 text-right"
+        >
+          <span className="text-2xl">🧑🏽‍✈️</span>
+          <div className="flex-1">
+            <p className="font-bold text-green">
+              {profile?.role === 'driver' ? 'واجهة السائق' : 'كن سائقاً مع قريب'}
+            </p>
+            <p className="text-xs text-ink-soft">
+              {profile?.role === 'driver'
+                ? 'استقبل الطلبات وتابع أرباحك'
+                : 'سجّل مركبتك وابدأ كسب الدخل'}
+            </p>
+          </div>
+          <span className="text-ink-muted">‹</span>
+        </button>
+
         <button onClick={logout} className="btn-outline mt-6 w-full text-danger">
           تسجيل الخروج
         </button>

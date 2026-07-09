@@ -20,6 +20,7 @@ import CommuteOrder from '@/pages/customer/CommuteOrder'
 import CommuteJoin from '@/pages/customer/CommuteJoin'
 import Rides from '@/pages/customer/Rides'
 import Profile from '@/pages/customer/Profile'
+import BecomeDriver from '@/pages/customer/BecomeDriver'
 
 // السائق
 import DriverHome from '@/pages/driver/DriverHome'
@@ -63,6 +64,7 @@ export default function App() {
           <Route path="/commute/:id" element={guard(<CommuteOrder />)} />
           <Route path="/rides" element={guard(<Rides />)} />
           <Route path="/profile" element={guard(<Profile />)} />
+          <Route path="/become-driver" element={guard(<BecomeDriver />)} />
 
           {/* السائق (محمي بدور driver) */}
           <Route path="/driver" element={driverGuard(<DriverHome />)} />
