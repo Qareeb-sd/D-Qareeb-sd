@@ -367,6 +367,37 @@ end $$;
 -- ملاحظة: لتعيين أول أدمن:  update public.users set role = 'admin' where phone = '+249...';
 
 -- ============================================================
+--  منع ترقية الدور ذاتياً (يسدّ ثغرة سياسة "own profile" للكتابة)
+--  يُسمح بتغيير users.role فقط للأدمن — عبر لوحة الأدمن أو دوال
+--  الاعتماد الآمنة (approve_driver_application) التي تعمل بسياق الأدمن.
+-- ============================================================
+create or replace function public.prevent_role_change()
+returns trigger language plpgsql security definer set search_path = public as $$
+begin
+  if new.role is distinct from old.role and not public.is_admin() then
+    raise exception 'تغيير الدور غير مسموح';
+  end if;
+  return new;
+end $$;
+
+-- أزل أي مشغّل قديم يستدعي هذه الدالة (بأي اسم) لتفادي التكرار، ثم أنشئ القياسي.
+do $$
+declare t text;
+begin
+  for t in
+    select tgname from pg_trigger
+    where tgrelid = 'public.users'::regclass and not tgisinternal
+      and tgfoid = 'public.prevent_role_change'::regproc
+  loop
+    execute format('drop trigger %I on public.users', t);
+  end loop;
+end $$;
+
+create trigger prevent_role_change
+  before update of role on public.users
+  for each row execute function public.prevent_role_change();
+
+-- ============================================================
 --  السائق: قبول الرحلات وتسوية الأرباح (خصم العمولة)
 -- ============================================================
 
