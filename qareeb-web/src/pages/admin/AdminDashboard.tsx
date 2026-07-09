@@ -13,10 +13,14 @@ import {
   updateServicePricing,
   listSosAlerts,
   resolveSos,
+  listDriverApplications,
+  approveDriver,
+  rejectDriver,
   type AdminStats,
 } from '@/lib/api'
 import { subscribeToSos } from '@/lib/realtime'
-import type { Settings, Topup, ServicePricing, SosAlert } from '@/lib/types'
+import { getService } from '@/data/services'
+import type { Settings, Topup, ServicePricing, SosAlert, DriverApplication } from '@/lib/types'
 
 /**
  * لوحة الأدمن: إحصاءات + اعتماد التعبئات + إعدادات المنصة (عمولة/Surge/شرائح/بنك)
@@ -31,21 +35,32 @@ export default function AdminDashboard() {
   const [savedMsg, setSavedMsg] = useState('')
   const [priceMsg, setPriceMsg] = useState('')
   const [sos, setSos] = useState<SosAlert[]>([])
+  const [apps, setApps] = useState<DriverApplication[]>([])
 
   useEffect(() => {
     void (async () => {
-      const [s, t, cfg, pr] = await Promise.all([
+      const [s, t, cfg, pr, ap] = await Promise.all([
         getAdminStats(),
         listPendingTopups(),
         getSettings(),
         listServicePricing(),
+        listDriverApplications(),
       ])
       setStats(s)
       setTopups(t)
       setSettings(cfg)
       setPricing(pr)
+      setApps(ap)
     })()
   }, [])
+
+  const reviewDriver = async (id: string, approve: boolean) => {
+    setBusyId(id)
+    const { error } = approve ? await approveDriver(id) : await rejectDriver(id)
+    setBusyId(null)
+    if (error) return alert(error)
+    setApps((cur) => cur.filter((a) => a.id !== id))
+  }
 
   // تنبيهات الطوارئ — تحميل أوّلي + متابعة لحظية.
   useEffect(() => {
@@ -210,6 +225,42 @@ export default function AdminDashboard() {
                   <button
                     onClick={() => review(t.id, false)}
                     disabled={busyId === t.id}
+                    className="btn-outline px-3 py-1.5 text-sm text-danger"
+                  >
+                    رفض
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* طلبات تسجيل السائقين */}
+        <div className="card p-4">
+          <p className="mb-3 font-bold">طلبات تسجيل السائقين</p>
+          {apps.length === 0 ? (
+            <p className="py-4 text-center text-sm text-ink-muted">لا توجد طلبات معلّقة</p>
+          ) : (
+            <div className="divide-y divide-hairline">
+              {apps.map((a) => (
+                <div key={a.id} className="flex items-center gap-3 py-3">
+                  <div className="flex-1">
+                    <p className="font-bold">{a.users?.full_name ?? 'سائق'}</p>
+                    <p className="text-xs text-ink-muted">
+                      <span dir="ltr">{a.users?.phone ?? '—'}</span> ·{' '}
+                      {getService(a.vehicle_type)?.name ?? a.vehicle_type} · لوحة {a.plate_number ?? '—'}
+                    </p>
+                  </div>
+                  <button
+                    onClick={() => reviewDriver(a.id, true)}
+                    disabled={busyId === a.id}
+                    className="btn-primary px-3 py-1.5 text-sm"
+                  >
+                    اعتماد
+                  </button>
+                  <button
+                    onClick={() => reviewDriver(a.id, false)}
+                    disabled={busyId === a.id}
                     className="btn-outline px-3 py-1.5 text-sm text-danger"
                   >
                     رفض

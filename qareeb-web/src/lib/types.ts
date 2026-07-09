@@ -29,6 +29,8 @@ export interface AppUser {
   created_at: string
 }
 
+export type DriverStatus = 'pending' | 'approved' | 'rejected'
+
 export interface Driver {
   id: string
   user_id: string
@@ -36,7 +38,13 @@ export interface Driver {
   plate_number: string | null
   is_online: boolean
   rating: number | null
+  status?: DriverStatus // حالة طلب التسجيل
   created_at: string
+}
+
+/** طلب تسجيل سائق كما يراه الأدمن (مع بيانات المستخدم). */
+export interface DriverApplication extends Driver {
+  users?: { full_name: string | null; phone: string } | null
 }
 
 export interface Ride {

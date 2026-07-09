@@ -6,6 +6,7 @@ import type {
   Ride,
   Topup,
   Driver,
+  DriverApplication,
   ServicePricing,
   SosAlert,
   SosRole,
@@ -438,8 +439,48 @@ const demoDriver: Driver = {
 
 export async function getDriver(userId: string): Promise<Driver | null> {
   if (!isSupabaseConfigured) return demoDriver
-  const { data } = await supabase.from('drivers').select('*').eq('user_id', userId).single()
+  const { data } = await supabase.from('drivers').select('*').eq('user_id', userId).maybeSingle()
   return data ?? null
+}
+
+// ---------- تسجيل السائق (تسجيل ذاتي + موافقة الأدمن) ----------
+/** يقدّم العميل طلب تسجيل كسائق (يبقى دوره customer حتى يعتمده الأدمن). */
+export async function applyAsDriver(input: {
+  user_id?: string
+  vehicle_type: string
+  plate_number: string
+}): Promise<{ error?: string }> {
+  if (!isSupabaseConfigured) return {}
+  const { error } = await supabase.from('drivers').insert({
+    user_id: input.user_id,
+    vehicle_type: input.vehicle_type,
+    plate_number: input.plate_number,
+    status: 'pending',
+  })
+  return error ? { error: error.message } : {}
+}
+
+/** طلبات السائقين المعلّقة (للأدمن). */
+export async function listDriverApplications(): Promise<DriverApplication[]> {
+  if (!isSupabaseConfigured) return []
+  const { data } = await supabase
+    .from('drivers')
+    .select('*, users(full_name, phone)')
+    .eq('status', 'pending')
+    .order('created_at', { ascending: true })
+  return (data as DriverApplication[] | null) ?? []
+}
+
+export async function approveDriver(driverId: string): Promise<{ error?: string }> {
+  if (!isSupabaseConfigured) return {}
+  const { error } = await supabase.rpc('approve_driver', { p_driver: driverId })
+  return error ? { error: error.message } : {}
+}
+
+export async function rejectDriver(driverId: string): Promise<{ error?: string }> {
+  if (!isSupabaseConfigured) return {}
+  const { error } = await supabase.rpc('reject_driver', { p_driver: driverId })
+  return error ? { error: error.message } : {}
 }
 
 export async function setDriverOnline(

@@ -55,6 +55,8 @@ create table if not exists public.drivers (
   created_at   timestamptz not null default now()
 );
 create index if not exists drivers_online_idx on public.drivers(is_online);
+-- حالة طلب السائق: pending / approved / rejected (تسجيل ذاتي بموافقة الأدمن)
+alter table public.drivers add column if not exists status text not null default 'pending';
 
 -- ---------- الرحلات ----------
 create table if not exists public.rides (
@@ -417,10 +419,47 @@ end $$;
 --  السائق: قبول الرحلات وتسوية الأرباح (خصم العمولة)
 -- ============================================================
 
--- السائق يدير صفّه في drivers
+-- السائق يدير صفّه في drivers (وينشئ طلب التسجيل)
 drop policy if exists "own driver row" on public.drivers;
 create policy "own driver row" on public.drivers
   for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
+
+-- الأدمن يقرأ كل السائقين (لعرض طلبات التسجيل واعتمادها)
+drop policy if exists "admin read drivers" on public.drivers;
+create policy "admin read drivers" on public.drivers
+  for select using (public.is_admin());
+
+-- أمان: يمنع أي مستخدم من ترقية دوره بنفسه (الدور يتغيّر فقط عبر دوال الأدمن الآمنة).
+create or replace function public.prevent_role_change()
+returns trigger language plpgsql security definer set search_path = public as $$
+begin
+  if new.role is distinct from old.role and not public.is_admin() then
+    raise exception 'تغيير الدور غير مسموح';
+  end if;
+  return new;
+end $$;
+drop trigger if exists trg_prevent_role_change on public.users;
+create trigger trg_prevent_role_change before update on public.users
+  for each row execute function public.prevent_role_change();
+
+-- الأدمن يعتمد طلب سائق: يجعل الصفّ approved ويمنح دور driver — معاً.
+create or replace function public.approve_driver(p_driver uuid)
+returns void language plpgsql security definer set search_path = public as $$
+declare v_user uuid;
+begin
+  if not public.is_admin() then raise exception 'غير مصرّح'; end if;
+  select user_id into v_user from public.drivers where id = p_driver;
+  if v_user is null then raise exception 'الطلب غير موجود'; end if;
+  update public.drivers set status = 'approved' where id = p_driver;
+  update public.users   set role = 'driver'   where id = v_user;
+end $$;
+
+create or replace function public.reject_driver(p_driver uuid)
+returns void language plpgsql security definer set search_path = public as $$
+begin
+  if not public.is_admin() then raise exception 'غير مصرّح'; end if;
+  update public.drivers set status = 'rejected' where id = p_driver;
+end $$;
 
 -- السائق يرى الرحلات المنتظرة سائقاً
 drop policy if exists "drivers see open rides" on public.rides;

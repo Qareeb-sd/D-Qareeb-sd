@@ -1,8 +1,9 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { useQuery } from '@tanstack/react-query'
 import BottomNav from '@/components/BottomNav'
 import { useAuth } from '@/store/AuthContext'
-import { updateEmergencyContacts } from '@/lib/api'
+import { updateEmergencyContacts, getDriver } from '@/lib/api'
 
 const links = [
   { label: 'رحلاتي السابقة', icon: '🧾', to: '/rides' },
@@ -20,6 +21,16 @@ export default function Profile() {
   const [c2, setC2] = useState(profile?.sos_contact2 ?? '')
   const [busy, setBusy] = useState(false)
   const [msg, setMsg] = useState('')
+
+  const isDriver = profile?.role === 'driver'
+  // نتحقّق من حالة طلب التسجيل (إن وُجد) لغير السائقين.
+  const { data: driverRow } = useQuery({
+    queryKey: ['my-driver', profile?.id],
+    queryFn: () => getDriver(profile?.id ?? ''),
+    enabled: Boolean(profile?.id) && !isDriver,
+  })
+  const pending = driverRow?.status === 'pending'
+  const rejected = driverRow?.status === 'rejected'
 
   const logout = async () => {
     await signOut()
@@ -57,6 +68,41 @@ export default function Profile() {
             </p>
           </div>
         </div>
+
+        {/* السائق: مدخل واجهة السائق أو تسجيل/حالة الطلب */}
+        {isDriver ? (
+          <button
+            onClick={() => navigate('/driver')}
+            className="card mt-4 flex w-full items-center gap-3 p-4 text-right"
+            style={{ border: '1.5px solid #1B6B3F' }}
+          >
+            <span className="text-2xl">🚗</span>
+            <span className="flex-1 font-bold text-green">الدخول إلى واجهة السائق</span>
+            <span className="text-green">‹</span>
+          </button>
+        ) : pending ? (
+          <div className="card mt-4 flex items-center gap-3 p-4">
+            <span className="text-2xl">⏳</span>
+            <div>
+              <p className="font-bold">طلبك كسائق قيد المراجعة</p>
+              <p className="text-xs text-ink-muted">سنفعّل حسابك فور اعتماد الإدارة.</p>
+            </div>
+          </div>
+        ) : (
+          <button
+            onClick={() => navigate('/become-driver')}
+            className="card mt-4 flex w-full items-center gap-3 p-4 text-right"
+          >
+            <span className="text-2xl">🧑🏽‍✈️</span>
+            <span className="flex-1">
+              <span className="block font-bold">كن سائقاً في قريب</span>
+              <span className="block text-xs text-ink-muted">
+                {rejected ? 'طلبك السابق مرفوض — يمكنك إعادة التقديم' : 'سجّل مركبتك وابدأ الكسب'}
+              </span>
+            </span>
+            <span className="text-ink-muted">‹</span>
+          </button>
+        )}
 
         {/* جهات الطوارئ */}
         <div className="card mt-4 p-4">
