@@ -547,6 +547,16 @@ export async function getActiveDriverRide(driverUserId: string): Promise<Ride | 
   return data ?? null
 }
 
+/** تقدّم الرحلة: السائق يعلّم الوصول (arrived) أو بدء الرحلة (in_progress). */
+export async function setRideStatus(
+  rideId: string,
+  status: 'arrived' | 'in_progress',
+): Promise<{ error?: string }> {
+  if (!isSupabaseConfigured) return {}
+  const { error } = await supabase.rpc('set_ride_status', { p_ride: rideId, p_status: status })
+  return error ? { error: error.message } : {}
+}
+
 /** تسوية الرحلة عند اكتمالها: يُقيَّد للسائق (الأجرة − العمولة) عبر دالة آمنة. */
 export async function settleRide(rideId: string): Promise<{ error?: string }> {
   if (!isSupabaseConfigured) return {}

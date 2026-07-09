@@ -490,6 +490,29 @@ begin
   end if;
 end $$;
 
+-- تقدّم الرحلة: السائق يعلّم "وصل" (arrived) أو "بدأت" (in_progress).
+-- (الإكمال يتم حصراً عبر settle_ride لضمان الدفع.)
+create or replace function public.set_ride_status(p_ride uuid, p_status ride_status)
+returns void language plpgsql security definer set search_path = public as $$
+declare
+  v_driver uuid;
+  v_cur    ride_status;
+begin
+  if p_status not in ('arrived', 'in_progress') then
+    raise exception 'حالة غير مسموحة';
+  end if;
+  select driver_id, status into v_driver, v_cur
+    from public.rides where id = p_ride for update;
+  if v_driver is null then raise exception 'الرحلة بلا سائق'; end if;
+  if auth.uid() <> v_driver and not public.is_admin() then
+    raise exception 'غير مصرّح';
+  end if;
+  if v_cur not in ('accepted', 'arrived', 'in_progress') then
+    raise exception 'لا يمكن تغيير حالة هذه الرحلة';
+  end if;
+  update public.rides set status = p_status where id = p_ride;
+end $$;
+
 -- ============================================================
 --  بيانات السائق المُسنَد لرحلة (يقرؤها العميل/السائق/الأدمن فقط)
 -- ============================================================

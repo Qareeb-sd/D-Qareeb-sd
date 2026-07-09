@@ -10,13 +10,20 @@ import { subscribeToRide } from '@/lib/realtime'
 import { getRideDriver, getActiveCustomerRide, type RideDriverInfo } from '@/lib/api'
 import { isSupabaseConfigured } from '@/lib/supabase'
 import { money } from '@/lib/format'
-import type { PaymentMethod } from '@/lib/types'
+import type { PaymentMethod, RideStatus } from '@/lib/types'
 
 const payments: { id: PaymentMethod; label: string; icon: string }[] = [
   { id: 'cash', label: 'كاش', icon: '💵' },
   { id: 'bank_transfer', label: 'تحويل بنكي', icon: '🏦' },
   { id: 'wallet', label: 'محفظة قريب', icon: '👛' },
 ]
+
+/** رسالة حالة الرحلة كما يراها الراكب. */
+const statusInfo: Partial<Record<RideStatus, { emoji: string; text: string }>> = {
+  accepted: { emoji: '🚗', text: 'السائق في الطريق إليك' },
+  arrived: { emoji: '📍', text: 'وصل السائق — بانتظارك' },
+  in_progress: { emoji: '🛣️', text: 'الرحلة جارية — في الطريق لوجهتك' },
+}
 
 /** شاشة الرحلة الجارية — بيانات السائق، الوجهة، طريقة الدفع. */
 export default function Trip() {
@@ -26,13 +33,16 @@ export default function Trip() {
   const service = serviceId ? getService(serviceId) : undefined
   const total = fare ?? 0
   const [driver, setDriver] = useState<RideDriverInfo | null>(null)
+  const [status, setStatus] = useState<RideStatus | null>(null)
 
   // استرجاع الرحلة الجارية بعد تحديث الصفحة (تُفقد الحالة من الذاكرة).
   useEffect(() => {
     if (rideId || !profile?.id) return
     void getActiveCustomerRide(profile.id).then((ride) => {
-      if (ride) restore(ride)
-      else navigate('/home')
+      if (ride) {
+        restore(ride)
+        setStatus(ride.status)
+      } else navigate('/home')
     })
   }, [rideId, profile?.id, restore, navigate])
 
@@ -42,13 +52,24 @@ export default function Trip() {
     void getRideDriver(rideId).then(setDriver)
   }, [rideId])
 
-  // Realtime: انتقل للتقييم لحظة إنهاء السائق للرحلة (تسويتها).
+  // تهيئة حالة الرحلة أول مرة (قبل وصول أي حدث Realtime).
+  useEffect(() => {
+    if (status || !profile?.id) return
+    void getActiveCustomerRide(profile.id).then((r) => {
+      if (r) setStatus(r.status)
+    })
+  }, [status, profile?.id])
+
+  // Realtime: تابع تقدّم الرحلة، وانتقل للتقييم لحظة إنهاء السائق لها.
   useEffect(() => {
     const unsub = subscribeToRide(rideId ?? '', (ride) => {
+      setStatus(ride.status)
       if (ride.status === 'completed') navigate('/rate')
     })
     return unsub
   }, [rideId, navigate])
+
+  const banner = status ? statusInfo[status] : undefined
 
   return (
     <Screen title="رحلتك الآن" bare>
@@ -56,6 +77,14 @@ export default function Trip() {
         <MapView marker={dropoff?.pos} className="h-56 w-full" />
 
         <div className="flex-1 space-y-4 p-4">
+          {/* حالة الرحلة */}
+          {banner && (
+            <div className="flex items-center gap-3 rounded-2xl border border-green/25 bg-green-soft p-3.5">
+              <span className="text-2xl">{banner.emoji}</span>
+              <p className="font-bold text-green">{banner.text}</p>
+            </div>
+          )}
+
           {/* السائق */}
           <div className="card flex items-center gap-3 p-4">
             <div className="grid h-12 w-12 place-items-center rounded-full bg-green-soft text-xl">

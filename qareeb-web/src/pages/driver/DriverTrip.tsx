@@ -4,7 +4,7 @@ import Screen from '@/components/Screen'
 import MapView from '@/components/MapView'
 import { useDriver } from '@/store/DriverContext'
 import { useAuth } from '@/store/AuthContext'
-import { settleRide, getSettings, getActiveDriverRide } from '@/lib/api'
+import { settleRide, setRideStatus, getSettings, getActiveDriverRide } from '@/lib/api'
 import { getService } from '@/data/services'
 import { money } from '@/lib/format'
 
@@ -12,6 +12,12 @@ const paymentLabels: Record<string, string> = {
   cash: 'كاش',
   bank_transfer: 'تحويل بنكي',
   wallet: 'محفظة قريب',
+}
+
+const statusLabels: Record<string, string> = {
+  accepted: 'في الطريق إلى الراكب',
+  arrived: 'وصلت — بانتظار الراكب',
+  in_progress: 'الرحلة جارية',
 }
 
 /** الرحلة الجارية للسائق — بيانات الرحلة، وإكمالها مع تسوية الأرباح (خصم العمولة). */
@@ -62,6 +68,14 @@ export default function DriverTrip() {
   const net = fare - commission
   const isCash = activeRide.payment_method !== 'wallet'
 
+  const advance = async (status: 'arrived' | 'in_progress') => {
+    setBusy(true)
+    const { error } = await setRideStatus(activeRide.id, status)
+    setBusy(false)
+    if (error) return alert(error)
+    setActiveRide({ ...activeRide, status })
+  }
+
   const complete = async () => {
     setBusy(true)
     const { error } = await settleRide(activeRide.id)
@@ -86,7 +100,12 @@ export default function DriverTrip() {
 
         <div className="flex-1 space-y-4 p-4">
           <div className="card p-4">
-            <p className="font-bold">{service?.name ?? activeRide.service_id}</p>
+            <div className="flex items-center justify-between">
+              <p className="font-bold">{service?.name ?? activeRide.service_id}</p>
+              <span className="chip bg-green-soft text-green">
+                {statusLabels[activeRide.status] ?? activeRide.status}
+              </span>
+            </div>
             <p className="mt-1 text-sm text-ink-soft">
               {activeRide.pickup_address} ← {activeRide.dropoff_address}
             </p>
@@ -112,9 +131,26 @@ export default function DriverTrip() {
         </div>
 
         <div className="border-t border-hairline p-4">
-          <button className="btn-primary w-full" onClick={complete} disabled={busy}>
-            {busy ? '…' : 'إنهاء وتسوية الرحلة'}
-          </button>
+          {activeRide.status === 'accepted' && (
+            <button className="btn-primary w-full" onClick={() => advance('arrived')} disabled={busy}>
+              {busy ? '…' : 'وصلت لموقع الراكب'}
+            </button>
+          )}
+          {activeRide.status === 'arrived' && (
+            <button className="btn-primary w-full" onClick={() => advance('in_progress')} disabled={busy}>
+              {busy ? '…' : 'بدء الرحلة'}
+            </button>
+          )}
+          {activeRide.status === 'in_progress' && (
+            <button className="btn-primary w-full" onClick={complete} disabled={busy}>
+              {busy ? '…' : 'إنهاء وتسوية الرحلة'}
+            </button>
+          )}
+          {!['accepted', 'arrived', 'in_progress'].includes(activeRide.status) && (
+            <button className="btn-primary w-full" onClick={complete} disabled={busy}>
+              {busy ? '…' : 'إنهاء وتسوية الرحلة'}
+            </button>
+          )}
         </div>
       </div>
     </Screen>

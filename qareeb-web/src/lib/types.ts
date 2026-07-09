@@ -209,6 +209,7 @@ export interface Database {
       approve_topup: { Args: { p_topup: string }; Returns: undefined }
       reject_topup: { Args: { p_topup: string }; Returns: undefined }
       settle_ride: { Args: { p_ride: string }; Returns: undefined }
+      set_ride_status: { Args: { p_ride: string; p_status: string }; Returns: undefined }
       approve_driver_application: { Args: { p_app: string }; Returns: undefined }
       reject_driver_application: {
         Args: { p_app: string; p_note?: string | null }

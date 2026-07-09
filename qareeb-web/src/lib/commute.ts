@@ -205,7 +205,7 @@ export async function acceptCommuteOrder(
   return error ? { error: error.message } : {}
 }
 
-/** طلبات الترحيل المُرسَلة (لواجهة السائق). */
+/** طلبات الترحيل المُرسَلة (المتاحة للقبول — لواجهة السائق). */
 export async function listDispatchedCommutes(): Promise<CommuteOrder[]> {
   if (!isSupabaseConfigured)
     return lsGet<CommuteOrder>(LS_ORDERS).filter((o) => o.status === 'dispatched')
@@ -213,6 +213,21 @@ export async function listDispatchedCommutes(): Promise<CommuteOrder[]> {
     .from('commute_orders')
     .select('*')
     .eq('status', 'dispatched')
+    .order('created_at', { ascending: false })
+  return (data as CommuteOrder[]) ?? []
+}
+
+/** رحلات الترحيل التي قبِلها السائق (active) — لواجهته. */
+export async function listDriverCommutes(driverId: string): Promise<CommuteOrder[]> {
+  if (!isSupabaseConfigured)
+    return lsGet<CommuteOrder>(LS_ORDERS).filter(
+      (o) => o.status === 'active' && o.driver_id === driverId,
+    )
+  const { data } = await supabase
+    .from('commute_orders')
+    .select('*')
+    .eq('driver_id', driverId)
+    .eq('status', 'active')
     .order('created_at', { ascending: false })
   return (data as CommuteOrder[]) ?? []
 }
