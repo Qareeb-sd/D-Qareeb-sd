@@ -16,7 +16,7 @@ export default function DriverRoute({ children }: { children: ReactNode }) {
 
   if (!isSupabaseConfigured) return <>{children}</>
 
-  if (!session) return <Navigate to="/auth" replace />
+  if (!session) return <Navigate to="/driver/login" replace />
 
   if (!profile) return <Spinner />
 

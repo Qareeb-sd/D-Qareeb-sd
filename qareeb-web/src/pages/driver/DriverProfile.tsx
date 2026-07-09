@@ -17,7 +17,7 @@ export default function DriverProfile() {
 
   const logout = async () => {
     await signOut()
-    navigate('/auth')
+    navigate('/driver/login')
   }
 
   return (

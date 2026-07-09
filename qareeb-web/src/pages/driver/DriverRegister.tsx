@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { Navigate, useNavigate } from 'react-router-dom'
 import Screen from '@/components/Screen'
 import VehicleImage from '@/components/VehicleImage'
 import { useAuth } from '@/store/AuthContext'
+import { isSupabaseConfigured } from '@/lib/supabase'
 import { services } from '@/data/services'
 import {
   submitDriverApplication,
@@ -40,7 +41,7 @@ const urlKey: Record<DriverDocKind, keyof DriverApplication> = {
  */
 export default function DriverRegister() {
   const navigate = useNavigate()
-  const { profile, refreshProfile } = useAuth()
+  const { session, profile, refreshProfile } = useAuth()
   const userId = profile?.id ?? 'demo-user'
 
   const [app, setApp] = useState<DriverApplication | null>(null)
@@ -127,6 +128,9 @@ export default function DriverRegister() {
       setBusy(false)
     }
   }
+
+  // غير مسجّل → لدخول السائق (تطبيق منفصل عن العميل).
+  if (isSupabaseConfigured && !session) return <Navigate to="/driver/login" replace />
 
   if (loading) {
     return (

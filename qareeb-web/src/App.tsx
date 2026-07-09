@@ -22,6 +22,7 @@ import Rides from '@/pages/customer/Rides'
 import Profile from '@/pages/customer/Profile'
 
 // السائق
+import DriverLogin from '@/pages/driver/DriverLogin'
 import DriverRegister from '@/pages/driver/DriverRegister'
 import DriverHome from '@/pages/driver/DriverHome'
 import DriverTrip from '@/pages/driver/DriverTrip'
@@ -30,6 +31,7 @@ import DriverCommute from '@/pages/driver/DriverCommute'
 import DriverProfile from '@/pages/driver/DriverProfile'
 
 // الأدمن
+import AdminLogin from '@/pages/admin/AdminLogin'
 import AdminDashboard from '@/pages/admin/AdminDashboard'
 
 /** يلفّ مسارات العميل بحارس المصادقة. */
@@ -65,17 +67,18 @@ export default function App() {
           <Route path="/rides" element={guard(<Rides />)} />
           <Route path="/profile" element={guard(<Profile />)} />
 
-          {/* تسجيل الانضمام كسائق — متاح لأي مستخدم مسجّل (قبل اعتماد الدور) */}
-          <Route path="/driver/register" element={guard(<DriverRegister />)} />
-
-          {/* السائق (محمي بدور driver) */}
+          {/* ===== تطبيق السائق (مستقل عن العميل) ===== */}
+          <Route path="/driver/login" element={<DriverLogin />} />
+          {/* التسجيل يحمي نفسه: يوجّه غير المسجّل إلى /driver/login */}
+          <Route path="/driver/register" element={<DriverRegister />} />
           <Route path="/driver" element={driverGuard(<DriverHome />)} />
           <Route path="/driver/trip" element={driverGuard(<DriverTrip />)} />
           <Route path="/driver/commute" element={driverGuard(<DriverCommute />)} />
           <Route path="/driver/wallet" element={driverGuard(<DriverWallet />)} />
           <Route path="/driver/profile" element={driverGuard(<DriverProfile />)} />
 
-          {/* الأدمن (محمي بدور admin) */}
+          {/* ===== لوحة الإدارة (مستقلة) ===== */}
+          <Route path="/admin/login" element={<AdminLogin />} />
           <Route
             path="/admin"
             element={
