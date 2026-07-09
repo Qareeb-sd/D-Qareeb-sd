@@ -172,9 +172,50 @@ export async function createRide(ride: Partial<Ride>): Promise<{ id?: string; er
   return error ? { error: error.message } : { id: data?.id }
 }
 
-export async function completeRide(rideId: string, rating: number): Promise<void> {
+/**
+ * تقييم الرحلة من العميل (النجوم فقط) — لا يُنهي الرحلة ولا يسوّيها.
+ * الإنهاء والتسوية يتمّان عبر السائق (settleRide) لتفادي إكمال الرحلة دون دفع.
+ */
+export async function rateRide(rideId: string, rating: number): Promise<void> {
   if (!isSupabaseConfigured) return
-  await supabase.from('rides').update({ status: 'completed', rating }).eq('id', rideId)
+  await supabase.from('rides').update({ rating }).eq('id', rideId)
+}
+
+/** بيانات السائق المُسنَد لرحلة (اسم، تقييم، هاتف، مركبة) عبر دالة آمنة. */
+export interface RideDriverInfo {
+  full_name: string | null
+  phone: string
+  rating: number | null
+  vehicle_type: string | null
+  plate_number: string | null
+}
+
+const demoRideDriver: RideDriverInfo = {
+  full_name: 'عثمان الطيب',
+  phone: '+249900000000',
+  rating: 4.9,
+  vehicle_type: 'amjad',
+  plate_number: 'خ ط م ١٢٣٤',
+}
+
+export async function getRideDriver(rideId: string): Promise<RideDriverInfo | null> {
+  if (!isSupabaseConfigured) return demoRideDriver
+  const { data } = await supabase.rpc('get_ride_driver', { p_ride: rideId })
+  return (Array.isArray(data) ? data[0] : data) ?? null
+}
+
+/** رحلة العميل الجارية (لاسترجاع الحالة بعد تحديث الصفحة). */
+export async function getActiveCustomerRide(customerId: string): Promise<Ride | null> {
+  if (!isSupabaseConfigured) return null
+  const { data } = await supabase
+    .from('rides')
+    .select('*')
+    .eq('customer_id', customerId)
+    .in('status', ['requested', 'searching', 'accepted', 'arrived', 'in_progress'])
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle()
+  return data ?? null
 }
 
 const demoRides: Ride[] = [
@@ -388,6 +429,20 @@ export async function acceptRide(
     .update({ driver_id: driverUserId, status: 'accepted' })
     .eq('id', rideId)
   return error ? { error: error.message } : {}
+}
+
+/** رحلة السائق الجارية (لاسترجاع شاشة الرحلة بعد تحديث الصفحة). */
+export async function getActiveDriverRide(driverUserId: string): Promise<Ride | null> {
+  if (!isSupabaseConfigured) return null
+  const { data } = await supabase
+    .from('rides')
+    .select('*')
+    .eq('driver_id', driverUserId)
+    .in('status', ['accepted', 'arrived', 'in_progress'])
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle()
+  return data ?? null
 }
 
 /** تسوية الرحلة عند اكتمالها: يُقيَّد للسائق (الأجرة − العمولة) عبر دالة آمنة. */

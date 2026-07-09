@@ -1,11 +1,14 @@
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import Screen from '@/components/Screen'
 import MapView from '@/components/MapView'
 import VehicleImage from '@/components/VehicleImage'
 import { useRide } from '@/store/RideContext'
+import { useAuth } from '@/store/AuthContext'
 import { getService } from '@/data/services'
 import { subscribeToRide } from '@/lib/realtime'
+import { getRideDriver, getActiveCustomerRide, type RideDriverInfo } from '@/lib/api'
+import { isSupabaseConfigured } from '@/lib/supabase'
 import { money } from '@/lib/format'
 import type { PaymentMethod } from '@/lib/types'
 
@@ -15,12 +18,29 @@ const payments: { id: PaymentMethod; label: string; icon: string }[] = [
   { id: 'wallet', label: 'محفظة قريب', icon: '👛' },
 ]
 
-/** شاشة الرحلة الجارية — بيانات السائق، الوجهة، طريقة الدفع، والإنهاء. */
+/** شاشة الرحلة الجارية — بيانات السائق، الوجهة، طريقة الدفع. */
 export default function Trip() {
   const navigate = useNavigate()
-  const { rideId, serviceId, dropoff, payment, setPayment, fare } = useRide()
+  const { profile } = useAuth()
+  const { rideId, serviceId, dropoff, payment, setPayment, fare, restore } = useRide()
   const service = serviceId ? getService(serviceId) : undefined
   const total = fare ?? 0
+  const [driver, setDriver] = useState<RideDriverInfo | null>(null)
+
+  // استرجاع الرحلة الجارية بعد تحديث الصفحة (تُفقد الحالة من الذاكرة).
+  useEffect(() => {
+    if (rideId || !profile?.id) return
+    void getActiveCustomerRide(profile.id).then((ride) => {
+      if (ride) restore(ride)
+      else navigate('/home')
+    })
+  }, [rideId, profile?.id, restore, navigate])
+
+  // جلب بيانات السائق المُسنَد فعلياً.
+  useEffect(() => {
+    if (!rideId) return
+    void getRideDriver(rideId).then(setDriver)
+  }, [rideId])
 
   // Realtime: انتقل للتقييم لحظة إنهاء السائق للرحلة (تسويتها).
   useEffect(() => {
@@ -42,12 +62,17 @@ export default function Trip() {
               🧑🏽‍✈️
             </div>
             <div className="flex-1">
-              <p className="font-bold">عثمان الطيب</p>
+              <p className="font-bold">{driver?.full_name ?? 'سائق قريب'}</p>
               <p className="text-sm text-ink-soft">
-                {service?.name} · ⭐ 4.9
+                {service?.name}
+                {driver?.rating != null ? ` · ⭐ ${driver.rating}` : ''}
+                {driver?.plate_number ? ` · ${driver.plate_number}` : ''}
               </p>
             </div>
-            <a href="tel:+249900000000" className="btn-ghost px-4 py-2 text-sm">
+            <a
+              href={`tel:${driver?.phone ?? ''}`}
+              className={`btn-ghost px-4 py-2 text-sm ${driver?.phone ? '' : 'pointer-events-none opacity-40'}`}
+            >
               اتصال
             </a>
           </div>
@@ -85,9 +110,15 @@ export default function Trip() {
         </div>
 
         <div className="border-t border-hairline p-4">
-          <button className="btn-primary w-full" onClick={() => navigate('/rate')}>
-            إنهاء الرحلة
-          </button>
+          {isSupabaseConfigured ? (
+            <p className="text-center text-sm text-ink-soft">
+              الرحلة جارية — سيُنهيها السائق عند الوصول.
+            </p>
+          ) : (
+            <button className="btn-primary w-full" onClick={() => navigate('/rate')}>
+              إنهاء الرحلة (معاينة)
+            </button>
+          )}
         </div>
       </div>
     </Screen>

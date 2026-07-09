@@ -123,6 +123,7 @@ export interface CommuteOrder {
   round_trip: boolean
   invite_code: string
   status: CommuteStatus
+  driver_id: string | null // السائق الذي قبِل الطلب
   created_at: string
 }
 
@@ -153,9 +154,38 @@ export interface Database {
       }
       topups: { Row: Topup; Insert: Partial<Topup>; Update: Partial<Topup> }
       settings: { Row: Settings; Insert: Partial<Settings>; Update: Partial<Settings> }
+      service_pricing: {
+        Row: ServicePricing
+        Insert: Partial<ServicePricing>
+        Update: Partial<ServicePricing>
+      }
+      commute_orders: {
+        Row: CommuteOrder
+        Insert: Partial<CommuteOrder>
+        Update: Partial<CommuteOrder>
+      }
+      commute_members: {
+        Row: CommuteMember
+        Insert: Partial<CommuteMember>
+        Update: Partial<CommuteMember>
+      }
     }
     Views: Record<string, never>
-    Functions: Record<string, never>
+    Functions: {
+      approve_topup: { Args: { p_topup: string }; Returns: undefined }
+      reject_topup: { Args: { p_topup: string }; Returns: undefined }
+      settle_ride: { Args: { p_ride: string }; Returns: undefined }
+      get_ride_driver: {
+        Args: { p_ride: string }
+        Returns: {
+          full_name: string | null
+          phone: string
+          rating: number | null
+          vehicle_type: string | null
+          plate_number: string | null
+        }[]
+      }
+    }
     Enums: Record<string, never>
   }
 }

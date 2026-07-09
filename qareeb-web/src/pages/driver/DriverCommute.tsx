@@ -1,16 +1,19 @@
 import { useCallback, useEffect, useState } from 'react'
 import Logo from '@/components/Logo'
 import DriverNav from '@/components/DriverNav'
+import { useAuth } from '@/store/AuthContext'
 import { getService } from '@/data/services'
-import { listDispatchedCommutes, listCommuteMembers } from '@/lib/commute'
+import { listDispatchedCommutes, listCommuteMembers, acceptCommuteOrder } from '@/lib/commute'
 import { subscribeToCommuteOrders } from '@/lib/realtime'
 import type { CommuteOrder, CommuteMember } from '@/lib/types'
 
 /** واجهة السائق لطلبات الترحيل المجمّعة (كل المنازل + مكان العمل + الوقت). */
 export default function DriverCommute() {
+  const { profile } = useAuth()
   const [orders, setOrders] = useState<CommuteOrder[]>([])
   const [membersByOrder, setMembersByOrder] = useState<Record<string, CommuteMember[]>>({})
   const [loading, setLoading] = useState(true)
+  const [busyId, setBusyId] = useState<string | null>(null)
 
   const load = useCallback(async () => {
     const os = await listDispatchedCommutes()
@@ -21,6 +24,15 @@ export default function DriverCommute() {
     setMembersByOrder(Object.fromEntries(entries))
     setLoading(false)
   }, [])
+
+  const accept = async (orderId: string) => {
+    setBusyId(orderId)
+    const { error } = await acceptCommuteOrder(orderId, profile?.id ?? 'demo-user')
+    setBusyId(null)
+    if (error) return alert(error)
+    // الطلب يغادر قائمة "المُرسَلة" فور قبوله.
+    setOrders((os) => os.filter((o) => o.id !== orderId))
+  }
 
   useEffect(() => {
     void load()
@@ -77,7 +89,13 @@ export default function DriverCommute() {
                     </ol>
                   </div>
 
-                  <button className="btn-primary mt-3 w-full">قبول الترحيل</button>
+                  <button
+                    onClick={() => accept(o.id)}
+                    disabled={busyId === o.id}
+                    className="btn-primary mt-3 w-full"
+                  >
+                    {busyId === o.id ? '…' : 'قبول الترحيل'}
+                  </button>
                 </div>
               )
             })}

@@ -3,20 +3,56 @@ import { useNavigate, Navigate } from 'react-router-dom'
 import Screen from '@/components/Screen'
 import MapView from '@/components/MapView'
 import { useDriver } from '@/store/DriverContext'
-import { settleRide, getSettings } from '@/lib/api'
+import { useAuth } from '@/store/AuthContext'
+import { settleRide, getSettings, getActiveDriverRide } from '@/lib/api'
 import { getService } from '@/data/services'
 import { money } from '@/lib/format'
+
+const paymentLabels: Record<string, string> = {
+  cash: 'كاش',
+  bank_transfer: 'تحويل بنكي',
+  wallet: 'محفظة قريب',
+}
 
 /** الرحلة الجارية للسائق — بيانات الرحلة، وإكمالها مع تسوية الأرباح (خصم العمولة). */
 export default function DriverTrip() {
   const navigate = useNavigate()
+  const { profile } = useAuth()
   const { activeRide, setActiveRide } = useDriver()
   const [rate, setRate] = useState(0.15)
   const [busy, setBusy] = useState(false)
+  const [recovering, setRecovering] = useState(!activeRide)
 
   useEffect(() => {
     void getSettings().then((s) => setRate(s.commission_rate))
   }, [])
+
+  // استرجاع الرحلة الجارية بعد تحديث الصفحة (تُفقد من الذاكرة).
+  useEffect(() => {
+    if (activeRide || !profile?.id) {
+      setRecovering(false)
+      return
+    }
+    let alive = true
+    void getActiveDriverRide(profile.id).then((ride) => {
+      if (!alive) return
+      if (ride) setActiveRide(ride)
+      setRecovering(false)
+    })
+    return () => {
+      alive = false
+    }
+  }, [activeRide, profile?.id, setActiveRide])
+
+  if (recovering) {
+    return (
+      <Screen title="الرحلة الجارية">
+        <div className="flex justify-center py-24">
+          <div className="h-10 w-10 animate-spin rounded-full border-4 border-green-soft border-t-green" />
+        </div>
+      </Screen>
+    )
+  }
 
   if (!activeRide) return <Navigate to="/driver" replace />
 
@@ -24,6 +60,7 @@ export default function DriverTrip() {
   const fare = activeRide.fare ?? 0
   const commission = Math.round(fare * rate)
   const net = fare - commission
+  const isCash = activeRide.payment_method !== 'wallet'
 
   const complete = async () => {
     setBusy(true)
@@ -57,6 +94,7 @@ export default function DriverTrip() {
 
           {/* تفصيل الأرباح */}
           <div className="card divide-y divide-hairline p-0">
+            <Row label="طريقة الدفع" value={paymentLabels[activeRide.payment_method]} />
             <Row label="الأجرة" value={money(fare)} />
             <Row
               label={`عمولة المنصة (${Math.round(rate * 100)}%)`}
@@ -65,6 +103,12 @@ export default function DriverTrip() {
             />
             <Row label="صافي أرباحك" value={money(net)} strong />
           </div>
+
+          {isCash && (
+            <p className="text-center text-xs text-ink-muted">
+              تستلم الأجرة من الراكب مباشرة، وتُخصم العمولة ({money(commission)}) من محفظتك.
+            </p>
+          )}
         </div>
 
         <div className="border-t border-hairline p-4">

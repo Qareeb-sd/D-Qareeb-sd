@@ -165,9 +165,12 @@ create table if not exists public.commute_orders (
   round_trip     boolean not null default true,
   invite_code    text not null unique default substr(md5(random()::text), 1, 6),
   status         commute_status not null default 'forming',
+  driver_id      uuid references public.users(id) on delete set null,  -- السائق الذي قبِل الطلب
   created_at     timestamptz not null default now()
 );
 create index if not exists commute_orders_status_idx on public.commute_orders(status);
+-- ترقية القواعد القديمة (إن كان الجدول موجوداً بدون عمود السائق)
+alter table public.commute_orders add column if not exists driver_id uuid references public.users(id) on delete set null;
 
 create table if not exists public.commute_members (
   id           uuid primary key default gen_random_uuid(),
@@ -237,6 +240,11 @@ create policy "create commute orders" on public.commute_orders
 drop policy if exists "update own commute orders" on public.commute_orders;
 create policy "update own commute orders" on public.commute_orders
   for update using (auth.uid() = organizer_id or public.is_admin());
+
+-- ترحيل: السائق يقبل طلباً مُرسَلاً (dispatched → active) ويعيّن نفسه سائقاً.
+drop policy if exists "driver accept commute" on public.commute_orders;
+create policy "driver accept commute" on public.commute_orders
+  for update using (status = 'dispatched') with check (auth.uid() = driver_id);
 
 -- ترحيل: الأعضاء يُقرؤون ويُضافون من قِبل المصادَق عليهم.
 drop policy if exists "read commute members" on public.commute_members;
@@ -378,21 +386,28 @@ create policy "driver accept ride" on public.rides
   for update using (status in ('requested', 'searching'))
   with check (auth.uid() = driver_id);
 
--- تسوية رحلة عند اكتمالها: يُقيَّد للسائق (الأجرة − العمولة)، وتُسجَّل
--- معاملتان (أرباح إجمالية + عمولة سالبة) بحيث يتطابق مجموعهما مع صافي الرصيد.
+-- تسوية رحلة عند اكتمالها — مسار موحّد للإنهاء (يستدعيه السائق أو الأدمن):
+--   • دفع بمحفظة قريب: تُخصم الأجرة من محفظة العميل، ويُقيَّد للسائق (الأجرة − العمولة).
+--     (المنصة تحصّل الأجرة وتحتفظ بالعمولة.)
+--   • كاش/تحويل بنكي: يستلم السائق الأجرة مباشرة، فتُخصم العمولة فقط من محفظته
+--     (السائق يدين للمنصة بالعمولة).
 create or replace function public.settle_ride(p_ride uuid)
 returns void language plpgsql security definer set search_path = public as $$
 declare
   v_driver_user uuid;
+  v_customer    uuid;
   v_fare        numeric;
   v_status      ride_status;
+  v_payment     payment_method;
   v_rate        numeric;
-  v_wallet      uuid;
   v_commission  numeric;
   v_net         numeric;
+  v_dwallet     uuid;
+  v_cwallet     uuid;
+  v_cbalance    numeric;
 begin
-  select driver_id, fare, status
-    into v_driver_user, v_fare, v_status
+  select driver_id, customer_id, fare, status, payment_method
+    into v_driver_user, v_customer, v_fare, v_status, v_payment
     from public.rides where id = p_ride for update;
 
   if v_driver_user is null then raise exception 'الرحلة بلا سائق'; end if;
@@ -400,23 +415,63 @@ begin
     raise exception 'غير مصرّح';
   end if;
   if v_status = 'completed' then raise exception 'الرحلة مسوّاة مسبقاً'; end if;
+  if v_status = 'cancelled' then raise exception 'الرحلة ملغاة'; end if;
 
   select commission_rate into v_rate from public.settings where id = 1;
-  v_commission := round(coalesce(v_fare, 0) * coalesce(v_rate, 0));
-  v_net        := coalesce(v_fare, 0) - v_commission;
+  v_fare       := coalesce(v_fare, 0);
+  v_commission := round(v_fare * coalesce(v_rate, 0));
+  v_net        := v_fare - v_commission;
+
+  -- خصم من العميل عند الدفع بالمحفظة (الكاش/التحويل يُدفع للسائق مباشرة).
+  if v_payment = 'wallet' then
+    select id, balance into v_cwallet, v_cbalance
+      from public.wallets where user_id = v_customer for update;
+    if v_cwallet is null then raise exception 'محفظة العميل غير موجودة'; end if;
+    if v_cbalance < v_fare then raise exception 'رصيد محفظة العميل غير كافٍ'; end if;
+    update public.wallets
+      set balance = balance - v_fare, updated_at = now()
+      where id = v_cwallet;
+    insert into public.transactions (wallet_id, type, amount, ride_id, note)
+      values (v_cwallet, 'ride_payment', -v_fare, p_ride, 'دفع رحلة');
+  end if;
 
   update public.rides set status = 'completed' where id = p_ride;
 
-  select id into v_wallet from public.wallets where user_id = v_driver_user;
-  if v_wallet is not null then
-    update public.wallets
-      set balance = balance + v_net, updated_at = now()
-      where id = v_wallet;
-    insert into public.transactions (wallet_id, type, amount, ride_id, note) values
-      (v_wallet, 'ride_earning', coalesce(v_fare, 0), p_ride, 'أرباح رحلة (إجمالي)'),
-      (v_wallet, 'commission',   -v_commission,       p_ride, 'عمولة المنصة');
+  -- تسوية محفظة السائق.
+  select id into v_dwallet from public.wallets where user_id = v_driver_user for update;
+  if v_dwallet is not null then
+    if v_payment = 'wallet' then
+      -- المنصة حصّلت الأجرة → تُقيَّد للسائق (الأجرة إيداعاً والعمولة خصماً).
+      update public.wallets
+        set balance = balance + v_net, updated_at = now()
+        where id = v_dwallet;
+      insert into public.transactions (wallet_id, type, amount, ride_id, note) values
+        (v_dwallet, 'ride_earning', v_fare,        p_ride, 'أرباح رحلة (إجمالي)'),
+        (v_dwallet, 'commission',   -v_commission, p_ride, 'عمولة المنصة');
+    else
+      -- الكاش/التحويل: السائق حصّل الأجرة مباشرة ويدين للمنصة بالعمولة.
+      update public.wallets
+        set balance = balance - v_commission, updated_at = now()
+        where id = v_dwallet;
+      insert into public.transactions (wallet_id, type, amount, ride_id, note) values
+        (v_dwallet, 'commission', -v_commission, p_ride, 'عمولة المنصة (نقدي/تحويل)');
+    end if;
   end if;
 end $$;
+
+-- ============================================================
+--  بيانات السائق المُسنَد لرحلة (يقرؤها العميل/السائق/الأدمن فقط)
+-- ============================================================
+create or replace function public.get_ride_driver(p_ride uuid)
+returns table (full_name text, phone text, rating numeric, vehicle_type text, plate_number text)
+language sql stable security definer set search_path = public as $$
+  select u.full_name, u.phone, d.rating, d.vehicle_type, d.plate_number
+  from public.rides r
+  join public.users u on u.id = r.driver_id
+  left join public.drivers d on d.user_id = r.driver_id
+  where r.id = p_ride
+    and (auth.uid() = r.customer_id or auth.uid() = r.driver_id or public.is_admin());
+$$;
 
 -- ============================================================
 --  التخزين: إثباتات التحويل (bucket خاص topup-proofs)

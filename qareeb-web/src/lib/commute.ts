@@ -62,6 +62,7 @@ export async function createCommuteOrder(
       round_trip: input.round_trip,
       invite_code: invite(),
       status: 'forming',
+      driver_id: null,
       created_at: new Date().toISOString(),
     }
     lsSet(LS_ORDERS, [...lsGet<CommuteOrder>(LS_ORDERS), order])
@@ -181,6 +182,26 @@ export async function dispatchCommuteOrder(id: string): Promise<{ error?: string
     .from('commute_orders')
     .update({ status: 'dispatched' })
     .eq('id', id)
+  return error ? { error: error.message } : {}
+}
+
+/** السائق يقبل طلب ترحيل مُرسَلاً (dispatched → active) ويعيّن نفسه سائقاً. */
+export async function acceptCommuteOrder(
+  orderId: string,
+  driverId: string,
+): Promise<{ error?: string }> {
+  if (!isSupabaseConfigured) {
+    const orders = lsGet<CommuteOrder>(LS_ORDERS).map((o) =>
+      o.id === orderId ? { ...o, status: 'active' as const, driver_id: driverId } : o,
+    )
+    lsSet(LS_ORDERS, orders)
+    return {}
+  }
+  const { error } = await supabase
+    .from('commute_orders')
+    .update({ status: 'active', driver_id: driverId })
+    .eq('id', orderId)
+    .eq('status', 'dispatched')
   return error ? { error: error.message } : {}
 }
 
