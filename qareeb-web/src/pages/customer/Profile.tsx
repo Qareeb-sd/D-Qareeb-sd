@@ -1,5 +1,6 @@
 import { useNavigate } from 'react-router-dom'
 import BottomNav from '@/components/BottomNav'
+import NotificationToggle from '@/components/NotificationToggle'
 import { useAuth } from '@/store/AuthContext'
 
 const links = [
@@ -51,6 +52,8 @@ export default function Profile() {
             </button>
           ))}
         </div>
+
+        <NotificationToggle userId={profile?.id ?? 'demo-user'} />
 
         <button onClick={logout} className="btn-outline mt-6 w-full text-danger">
           تسجيل الخروج

@@ -167,6 +167,30 @@ export async function createTopup(
   return error ? { error: error.message } : {}
 }
 
+// ---------- إشعارات Web Push ----------
+/** يحفظ/يحدّث اشتراك Push للمستخدم (مفتاح فريد: endpoint). */
+export async function savePushSubscription(
+  userId: string,
+  sub: PushSubscriptionJSON,
+): Promise<void> {
+  if (!isSupabaseConfigured || !sub.endpoint || !sub.keys) return
+  await supabase.from('push_subscriptions').upsert(
+    {
+      user_id: userId,
+      endpoint: sub.endpoint,
+      p256dh: sub.keys.p256dh,
+      auth: sub.keys.auth,
+    },
+    { onConflict: 'endpoint' },
+  )
+}
+
+/** يحذف اشتراك Push عند إلغاء التفعيل. */
+export async function deletePushSubscription(endpoint: string): Promise<void> {
+  if (!isSupabaseConfigured) return
+  await supabase.from('push_subscriptions').delete().eq('endpoint', endpoint)
+}
+
 // ---------- الرحلات ----------
 export async function createRide(ride: Partial<Ride>): Promise<{ id?: string; error?: string }> {
   if (!isSupabaseConfigured) return { id: 'demo-ride' }

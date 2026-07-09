@@ -168,6 +168,16 @@ export interface DriverApplication {
   updated_at: string
 }
 
+/** اشتراك Web Push مخزّن لمستخدم. */
+export interface PushSubscriptionRow {
+  id: string
+  user_id: string
+  endpoint: string
+  p256dh: string
+  auth: string
+  created_at: string
+}
+
 // نوع Database مبسّط لعميل supabase-js. وسّعه عند الحاجة.
 export interface Database {
   public: {
@@ -202,6 +212,11 @@ export interface Database {
         Row: DriverApplication
         Insert: Partial<DriverApplication>
         Update: Partial<DriverApplication>
+      }
+      push_subscriptions: {
+        Row: PushSubscriptionRow
+        Insert: Partial<PushSubscriptionRow>
+        Update: Partial<PushSubscriptionRow>
       }
     }
     Views: Record<string, never>
