@@ -1,24 +1,23 @@
-import { useEffect, useState } from 'react'
+import { useQuery } from '@tanstack/react-query'
 import Screen from '@/components/Screen'
 import { StarIcon } from '@/components/Icons'
 import { useAuth } from '@/store/AuthContext'
 import { listRides } from '@/lib/api'
 import { getService } from '@/data/services'
 import { money } from '@/lib/format'
-import type { Ride } from '@/lib/types'
 
 /** رحلاتي السابقة. */
 export default function Rides() {
   const { profile } = useAuth()
-  const [rides, setRides] = useState<Ride[] | null>(null)
-
-  useEffect(() => {
-    void listRides(profile?.id ?? 'demo-user').then(setRides)
-  }, [profile?.id])
+  const userId = profile?.id ?? 'demo-user'
+  const { data: rides } = useQuery({
+    queryKey: ['rides', userId],
+    queryFn: () => listRides(userId),
+  })
 
   return (
     <Screen title="رحلاتي السابقة" back>
-      {rides === null ? (
+      {rides === undefined ? (
         <div className="card h-24 animate-pulse" />
       ) : rides.length === 0 ? (
         <p className="card p-6 text-center text-sm text-ink-muted">لا توجد رحلات بعد</p>

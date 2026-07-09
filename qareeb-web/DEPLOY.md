@@ -71,8 +71,8 @@
 ## 4) إشعارات Web Push (اختياري)
 
 الكود جاهز بالكامل؛ يبقى الإعداد (مفتاح VAPID + نشر دالة Edge + Webhooks).
-الخطوات التفصيلية والمفاتيح في **[`PUSH.md`](./PUSH.md)** ومختصرها في
-**[`DEPLOYMENT-TODO.md`](./DEPLOYMENT-TODO.md)**. يمكن تأجيله دون أن يتعطّل شيء
+الخطوات التفصيلية والمفاتيح في **[`supabase/NOTIFICATIONS.md`](./supabase/NOTIFICATIONS.md)**
+ومختصرها في **[`PENDING.md`](./PENDING.md)**. يمكن تأجيله دون أن يتعطّل شيء
 (زر تفعيل الإشعارات يختفي تلقائياً حتى يُضبط `VITE_VAPID_PUBLIC_KEY`).
 
 ---

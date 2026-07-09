@@ -22,7 +22,7 @@ interface AuthValue {
     password: string,
     fullName?: string,
   ) => Promise<{ error?: string }>
-  /** يعيد تحميل ملف المستخدم (مثلاً بعد ترقية الدور إلى سائق). */
+  /** يعيد تحميل ملف المستخدم (بعد ترقية الدور أو تعديل جهات الطوارئ). */
   refreshProfile: () => Promise<void>
   signOut: () => Promise<void>
 }

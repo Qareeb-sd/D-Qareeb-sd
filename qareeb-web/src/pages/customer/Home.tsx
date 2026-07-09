@@ -2,7 +2,7 @@ import { useNavigate } from 'react-router-dom'
 import BottomNav from '@/components/BottomNav'
 import VehicleImage from '@/components/VehicleImage'
 import Logo from '@/components/Logo'
-import { PinIcon, ChevronLeftIcon } from '@/components/Icons'
+import { PinIcon } from '@/components/Icons'
 import { services } from '@/data/services'
 import { useRide } from '@/store/RideContext'
 
@@ -25,17 +25,15 @@ export default function Home() {
         </div>
       </header>
 
-      <main className="flex-1 px-4 pb-28">
-        {/* زر "وين ماشي؟" — مع سهم يوحي بالتفاعل */}
+      <main className="flex-1 px-4 pb-24">
         <button
           onClick={() => navigate('/select-location')}
-          className="card flex w-full items-center gap-3 p-4 text-right transition hover:shadow-lift active:scale-[0.99]"
+          className="card flex w-full items-center gap-3 p-4 text-right"
         >
-          <span className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-green-soft text-green">
+          <span className="grid h-10 w-10 place-items-center rounded-full bg-green-soft text-green">
             <PinIcon />
           </span>
           <span className="flex-1 text-ink-muted">وين ماشي؟</span>
-          <ChevronLeftIcon className="text-ink-muted" />
         </button>
 
         <h2 className="mb-3 mt-6 text-lg font-bold">اختر الخدمة</h2>
@@ -50,24 +48,24 @@ export default function Home() {
               <button
                 key={s.id}
                 onClick={() => chooseService(s.id)}
-                className="card relative flex flex-col items-center gap-2 p-4 text-center transition hover:shadow-lift active:scale-[0.97]"
+                className="card relative flex flex-col items-center gap-2 p-4 text-center transition hover:shadow-lift"
                 style={accent ? { border: `1.5px solid ${accent.border}`, backgroundColor: accent.bg } : undefined}
               >
                 {accent && (
                   <span
-                    className="chip absolute left-2 top-2 text-xs font-bold"
+                    className="chip absolute left-2 top-2"
                     style={{ backgroundColor: accent.border, color: '#fff' }}
                   >
                     {accent.badge}
                   </span>
                 )}
-                {/* حجم موحّد للصور */}
-                <VehicleImage service={s} className="aspect-[16/10] w-full" />
+                <VehicleImage service={s} className="h-16 w-full" />
                 <div>
-                  <p className="font-bold text-sm" style={accent ? { color: accent.title } : undefined}>
+                  <p className="font-bold" style={accent ? { color: accent.title } : undefined}>
                     {s.name}
                   </p>
-                  <p className="text-[11px] text-ink-muted leading-tight mt-0.5">{s.tagline}</p>
+                  <p className="text-xs text-ink-muted">{s.tagline}</p>
+                  <p className="mt-0.5 text-xs font-bold text-green">المقاعد {s.seats}</p>
                 </div>
               </button>
             )

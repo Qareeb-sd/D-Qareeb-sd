@@ -68,41 +68,16 @@ export function subscribeToCommuteMembers(
   }
 }
 
-export interface LatLng {
-  lat: number
-  lng: number
-}
-
-/**
- * بثّ موقع السائق أثناء الرحلة عبر قناة Broadcast (بلا كتابة في القاعدة).
- * يرجّع دالتي إرسال وإيقاف. لا شيء يحدث في وضع المعاينة.
- */
-export function createLocationBroadcaster(rideId: string): {
-  send: (pos: LatLng) => void
-  stop: () => void
-} {
-  if (!isSupabaseConfigured || !rideId) return { send: () => {}, stop: () => {} }
-  const channel = supabase.channel(`ride-loc:${rideId}`)
-  channel.subscribe()
-  return {
-    send: (pos) => {
-      void channel.send({ type: 'broadcast', event: 'loc', payload: pos })
-    },
-    stop: () => {
-      void supabase.removeChannel(channel)
-    },
-  }
-}
-
-/** يستمع لموقع السائق اللحظي (لجهة الراكب). */
-export function subscribeToDriverLocation(
-  rideId: string,
-  onLoc: (pos: LatLng) => void,
-): Unsubscribe {
-  if (!isSupabaseConfigured || !rideId) return () => {}
+/** يستمع لتنبيهات الطوارئ الجديدة (للوحة الأدمن). */
+export function subscribeToSos(onEvent: () => void): Unsubscribe {
+  if (!isSupabaseConfigured) return () => {}
   const channel = supabase
-    .channel(`ride-loc:${rideId}`)
-    .on('broadcast', { event: 'loc' }, ({ payload }) => onLoc(payload as LatLng))
+    .channel('sos:feed')
+    .on(
+      'postgres_changes',
+      { event: '*', schema: 'public', table: 'sos_alerts' },
+      () => onEvent(),
+    )
     .subscribe()
   return () => {
     void supabase.removeChannel(channel)

@@ -19,12 +19,15 @@ import {
   listAllDrivers,
   listAllRides,
   getFinancialSummary,
+  listSosAlerts,
+  resolveSos,
   type AdminStats,
   type AdminDriverRow,
   type FinancialSummary,
 } from '@/lib/api'
+import { subscribeToSos } from '@/lib/realtime'
 import { getService } from '@/data/services'
-import type { Settings, Topup, ServicePricing, DriverApplication, Ride } from '@/lib/types'
+import type { Settings, Topup, ServicePricing, DriverApplication, Ride, SosAlert } from '@/lib/types'
 
 type Tab = 'overview' | 'requests' | 'drivers' | 'rides' | 'settings'
 
@@ -62,6 +65,7 @@ export default function AdminDashboard() {
   const [driverApps, setDriverApps] = useState<DriverApplication[]>([])
   const [drivers, setDrivers] = useState<AdminDriverRow[] | null>(null)
   const [rides, setRides] = useState<Ride[] | null>(null)
+  const [sos, setSos] = useState<SosAlert[]>([])
 
   const [busyId, setBusyId] = useState<string | null>(null)
   const [savedMsg, setSavedMsg] = useState('')
@@ -91,6 +95,21 @@ export default function AdminDashboard() {
     if (tab === 'drivers' && drivers === null) void listAllDrivers().then(setDrivers)
     if (tab === 'rides' && rides === null) void listAllRides().then(setRides)
   }, [tab, drivers, rides])
+
+  // تنبيهات الطوارئ — تُحمَّل وتُتابَع لحظياً (تظهر فوق كل التبويبات).
+  useEffect(() => {
+    const load = () => listSosAlerts().then(setSos)
+    void load()
+    return subscribeToSos(load)
+  }, [])
+
+  const clearSos = async (id: string) => {
+    setBusyId(id)
+    const { error } = await resolveSos(id)
+    setBusyId(null)
+    if (error) return alert(error)
+    setSos((cur) => cur.filter((a) => a.id !== id))
+  }
 
   const viewDoc = async (path: string | null) => {
     if (!path) return alert('لا توجد وثيقة مرفقة')
@@ -192,6 +211,43 @@ export default function AdminDashboard() {
       </nav>
 
       <main className="flex-1 space-y-4 p-4">
+        {/* تنبيهات الطوارئ — دائمة الظهور فوق كل التبويبات */}
+        {sos.length > 0 && (
+          <div className="card border border-danger/40 bg-danger/5 p-4">
+            <p className="mb-2 font-bold text-danger">🚨 تنبيهات طوارئ ({sos.length})</p>
+            <div className="divide-y divide-hairline">
+              {sos.map((a) => (
+                <div key={a.id} className="flex items-center gap-3 py-2.5">
+                  <div className="flex-1 text-sm">
+                    <p className="font-bold">{a.role === 'driver' ? 'سائق' : 'راكب'}</p>
+                    <p className="text-xs text-ink-muted">
+                      {new Date(a.created_at).toLocaleString('ar-SD')}
+                      {a.lat != null && a.lng != null ? ' · موقع مرفق' : ''}
+                    </p>
+                  </div>
+                  {a.lat != null && a.lng != null && (
+                    <a
+                      href={`https://maps.google.com/?q=${a.lat},${a.lng}`}
+                      target="_blank"
+                      rel="noopener"
+                      className="text-sm text-info underline"
+                    >
+                      الموقع
+                    </a>
+                  )}
+                  <button
+                    onClick={() => clearSos(a.id)}
+                    disabled={busyId === a.id}
+                    className="btn-primary px-3 py-1.5 text-sm"
+                  >
+                    معالجة
+                  </button>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
         {tab === 'overview' && (
           <>
             <div className="grid grid-cols-3 gap-3">

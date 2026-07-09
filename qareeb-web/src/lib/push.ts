@@ -2,82 +2,85 @@ import { savePushSubscription, deletePushSubscription } from './api'
 import { isSupabaseConfigured } from './supabase'
 
 /**
- * إشعارات Web Push (خلفية) — تسجيل Service Worker والاشتراك/إلغاء الاشتراك.
- * يتطلّب مفتاح VAPID العام في VITE_VAPID_PUBLIC_KEY ودالة Edge للإرسال
- * (انظر supabase/functions/push و PUSH.md).
+ * اشتراك إشعارات Web Push (أصلي — بلا طرف ثالث).
+ * يعمل فقط إذا ضُبط مفتاح VAPID العام ودعم المتصفح الـ Push.
+ * كل الدوال تتحمّل غياب الدعم/الإعداد بهدوء (لا تكسر التطبيق).
  */
 
-const VAPID_PUBLIC = import.meta.env.VITE_VAPID_PUBLIC_KEY as string | undefined
+export const VAPID_PUBLIC_KEY = (import.meta.env.VITE_VAPID_PUBLIC_KEY as string) ?? ''
 
-export type PushState = 'unsupported' | 'unconfigured' | 'default' | 'granted' | 'denied'
+export const isPushConfigured =
+  Boolean(VAPID_PUBLIC_KEY) &&
+  typeof window !== 'undefined' &&
+  'serviceWorker' in navigator &&
+  'PushManager' in window &&
+  'Notification' in window
 
-/** هل يدعم المتصفح الإشعارات الخلفية؟ */
-export function pushSupported(): boolean {
-  return (
-    typeof navigator !== 'undefined' &&
-    'serviceWorker' in navigator &&
-    'PushManager' in window &&
-    'Notification' in window
-  )
+export type PushPermission = 'unsupported' | 'default' | 'denied' | 'granted'
+
+export function pushPermission(): PushPermission {
+  if (!isPushConfigured) return 'unsupported'
+  return Notification.permission as PushPermission
 }
 
-/** حالة الإشعارات الحالية (لعرض زر التفعيل المناسب). */
-export function pushState(): PushState {
-  if (!pushSupported()) return 'unsupported'
-  if (!VAPID_PUBLIC || !isSupabaseConfigured) return 'unconfigured'
-  return Notification.permission as 'default' | 'granted' | 'denied'
+function urlBase64ToUint8Array(base64String: string): Uint8Array {
+  const padding = '='.repeat((4 - (base64String.length % 4)) % 4)
+  const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/')
+  const raw = atob(base64)
+  const out = new Uint8Array(raw.length)
+  for (let i = 0; i < raw.length; i++) out[i] = raw.charCodeAt(i)
+  return out
 }
 
-/** يسجّل الـ Service Worker (يُستدعى مرّة عند إقلاع التطبيق). */
-export async function registerServiceWorker(): Promise<void> {
-  if (!('serviceWorker' in navigator)) return
+async function registration(): Promise<ServiceWorkerRegistration | null> {
+  if (!('serviceWorker' in navigator)) return null
+  return navigator.serviceWorker.ready
+}
+
+/** هل المستخدم مشترك فعلاً في هذا الجهاز؟ */
+export async function isPushEnabled(): Promise<boolean> {
+  if (!isPushConfigured) return false
+  const reg = await registration()
+  const sub = await reg?.pushManager.getSubscription()
+  return Boolean(sub)
+}
+
+/** يطلب الإذن ويشترك ويحفظ الاشتراك في Supabase. يُرجع خطأً واضحاً عند الفشل. */
+export async function enablePush(userId: string): Promise<{ error?: string }> {
+  if (!isPushConfigured) return { error: 'الإشعارات غير مهيّأة على هذا الجهاز' }
   try {
-    await navigator.serviceWorker.register('/sw.js')
-  } catch {
-    /* تجاهل — الإشعارات اختيارية */
-  }
-}
+    const permission = await Notification.requestPermission()
+    if (permission !== 'granted') return { error: 'لم يتم السماح بالإشعارات' }
 
-function urlBase64ToUint8Array(base64: string): Uint8Array<ArrayBuffer> {
-  const padding = '='.repeat((4 - (base64.length % 4)) % 4)
-  const b64 = (base64 + padding).replace(/-/g, '+').replace(/_/g, '/')
-  const raw = atob(b64)
-  const arr = new Uint8Array(new ArrayBuffer(raw.length))
-  for (let i = 0; i < raw.length; i++) arr[i] = raw.charCodeAt(i)
-  return arr
-}
-
-/** يطلب الإذن ويشترك في الإشعارات ويحفظ الاشتراك في القاعدة. */
-export async function enablePush(userId: string): Promise<{ ok: boolean; error?: string }> {
-  if (!pushSupported()) return { ok: false, error: 'المتصفح لا يدعم الإشعارات' }
-  if (!VAPID_PUBLIC || !isSupabaseConfigured) return { ok: false, error: 'الإشعارات غير مهيّأة بعد' }
-
-  const permission = await Notification.requestPermission()
-  if (permission !== 'granted') return { ok: false, error: 'لم يُسمح بالإشعارات' }
-
-  try {
     const reg = await navigator.serviceWorker.ready
-    const existing = await reg.pushManager.getSubscription()
-    const sub =
-      existing ??
-      (await reg.pushManager.subscribe({
+    let sub = await reg.pushManager.getSubscription()
+    if (!sub) {
+      sub = await reg.pushManager.subscribe({
         userVisibleOnly: true,
-        applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC),
-      }))
-    await savePushSubscription(userId, sub.toJSON())
-    return { ok: true }
+        applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY) as BufferSource,
+      })
+    }
+
+    const json = sub.toJSON()
+    if (isSupabaseConfigured && json.keys?.p256dh && json.keys?.auth) {
+      await savePushSubscription({
+        user_id: userId,
+        endpoint: sub.endpoint,
+        p256dh: json.keys.p256dh,
+        auth: json.keys.auth,
+      })
+    }
+    return {}
   } catch (e) {
-    return { ok: false, error: e instanceof Error ? e.message : 'تعذّر تفعيل الإشعارات' }
+    return { error: (e as Error).message }
   }
 }
 
-/** يلغي الاشتراك ويزيله من القاعدة. */
+/** يلغي الاشتراك على هذا الجهاز ويحذفه من Supabase. */
 export async function disablePush(): Promise<void> {
-  if (!pushSupported()) return
-  const reg = await navigator.serviceWorker.ready
-  const sub = await reg.pushManager.getSubscription()
-  if (sub) {
-    await deletePushSubscription(sub.endpoint)
-    await sub.unsubscribe()
-  }
+  const reg = await registration()
+  const sub = await reg?.pushManager.getSubscription()
+  if (!sub) return
+  await deletePushSubscription(sub.endpoint)
+  await sub.unsubscribe().catch(() => {})
 }

@@ -1,20 +1,14 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { useJsApiLoader } from '@react-google-maps/api'
 import Screen from '@/components/Screen'
 import MapView from '@/components/MapView'
 import { useRide } from '@/store/RideContext'
 import { useAuth } from '@/store/AuthContext'
+import { useMaps } from '@/store/MapsContext'
 import { DEFAULT_SERVICE_ID, getService } from '@/data/services'
 import { createRide, getServicePricing, getSettings } from '@/lib/api'
 import { estimateFare, estimateRoute } from '@/lib/pricing'
-import {
-  fetchRoute,
-  GOOGLE_MAPS_API_KEY,
-  MAPS_LIBRARIES,
-  MAPS_LOADER_ID,
-  isMapsConfigured,
-} from '@/lib/maps'
+import { fetchRoute, isMapsConfigured } from '@/lib/maps'
 import { km, mins, money } from '@/lib/format'
 import { KHARTOUM } from '@/theme'
 import type { Settings, ServicePricing } from '@/lib/types'
@@ -56,11 +50,7 @@ export default function SelectLocation() {
   const [quote, setQuote] = useState<Quote | null>(null)
   const [busy, setBusy] = useState(false)
 
-  const { isLoaded } = useJsApiLoader({
-    id: MAPS_LOADER_ID,
-    googleMapsApiKey: GOOGLE_MAPS_API_KEY,
-    libraries: MAPS_LIBRARIES,
-  })
+  const { isLoaded } = useMaps()
 
   const useMyLocation = () => {
     if (!navigator.geolocation) {
@@ -110,8 +100,12 @@ export default function SelectLocation() {
   useEffect(() => {
     if (!pricing || !settings) return
     let alive = true
+    // توفير رسوم قوقل: لا نطلب Directions إلا بعد أن يحدّد العميل النقطتين فعلاً؛
+    // قبل ذلك نكتفي بتقدير Haversine المجاني. ومهلة أطول تقلّل الطلبات أثناء التحريك.
+    const bothPlaced = pickupSet && dropoffSet
     const t = setTimeout(async () => {
-      const real = isLoaded && isMapsConfigured ? await fetchRoute(pickupPos, dropoffPos) : null
+      const real =
+        bothPlaced && isLoaded && isMapsConfigured ? await fetchRoute(pickupPos, dropoffPos) : null
       const route = real ?? estimateRoute(pickupPos, dropoffPos)
       if (!alive) return
       const fare = estimateFare({
@@ -121,12 +115,12 @@ export default function SelectLocation() {
         settings,
       }).total
       setQuote({ ...route, fare, real: Boolean(real) })
-    }, 500)
+    }, 700)
     return () => {
       alive = false
       clearTimeout(t)
     }
-  }, [pickupPos, dropoffPos, pricing, settings, isLoaded])
+  }, [pickupPos, dropoffPos, pickupSet, dropoffSet, pricing, settings, isLoaded])
 
   const activePos = active === 'pickup' ? pickupPos : dropoffPos
   const setActivePos = active === 'pickup' ? setPickupPos : setDropoffPos

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import Logo from '@/components/Logo'
 import DriverNav from '@/components/DriverNav'
@@ -7,6 +7,12 @@ import { useAuth } from '@/store/AuthContext'
 import { useDriver } from '@/store/DriverContext'
 import { getDriver, setDriverOnline, listAvailableRides, acceptRide } from '@/lib/api'
 import { subscribeToRides } from '@/lib/realtime'
+import {
+  notificationsSupported,
+  notificationsGranted,
+  enableNotifications,
+  alertNewRide,
+} from '@/lib/notifications'
 import { getService } from '@/data/services'
 import { money } from '@/lib/format'
 import type { Driver, Ride } from '@/lib/types'
@@ -22,6 +28,7 @@ export default function DriverHome() {
   const [online, setOnline] = useState(false)
   const [rides, setRides] = useState<Ride[]>([])
   const [busyId, setBusyId] = useState<string | null>(null)
+  const [notifOn, setNotifOn] = useState(notificationsGranted())
 
   useEffect(() => {
     void getDriver(userId).then((d) => {
@@ -30,13 +37,38 @@ export default function DriverHome() {
     })
   }, [userId])
 
+  const toggleNotif = async () => {
+    const ok = await enableNotifications()
+    setNotifOn(ok)
+    if (!ok) alert('فعّل إذن الإشعارات من إعدادات المتصفح لتصلك تنبيهات الطلبات.')
+  }
+
+  const seen = useRef<Set<string>>(new Set())
+  const primed = useRef(false)
+
   useEffect(() => {
     if (!online) {
       setRides([])
       return
     }
     let alive = true
-    const load = () => listAvailableRides().then((r) => alive && setRides(r))
+    // نبدأ من جديد عند كل اتصال حتى لا ننبّه على طلبات قديمة.
+    seen.current = new Set()
+    primed.current = false
+
+    const load = () =>
+      listAvailableRides().then((r) => {
+        if (!alive) return
+        setRides(r)
+        // بعد أول تحميل: نبّه على أي طلب جديد لم نره من قبل.
+        if (primed.current) {
+          const fresh = r.some((x) => !seen.current.has(x.id))
+          if (fresh) void alertNewRide()
+        }
+        r.forEach((x) => seen.current.add(x.id))
+        primed.current = true
+      })
+
     void load()
     // Realtime: أعِد الجلب فور أي تغيّر على الرحلات + استطلاع احتياطي بطيء.
     const unsub = subscribeToRides(load)
@@ -71,6 +103,19 @@ export default function DriverHome() {
           <p className="font-extrabold text-green">قريب · السائق</p>
           <p className="text-xs text-ink-muted">⭐ {driver?.rating ?? '—'}</p>
         </div>
+        {/* زر تفعيل تنبيهات الطلبات (صوت + إشعار) */}
+        {notificationsSupported && (
+          <button
+            onClick={toggleNotif}
+            aria-label={notifOn ? 'التنبيهات مفعّلة' : 'تفعيل التنبيهات'}
+            title={notifOn ? 'تنبيهات الطلبات مفعّلة' : 'فعّل تنبيهات الطلبات'}
+            className={`grid h-9 w-9 place-items-center rounded-full text-lg transition ${
+              notifOn ? 'bg-green-soft text-green' : 'bg-hairline text-ink-soft'
+            }`}
+          >
+            {notifOn ? '🔔' : '🔕'}
+          </button>
+        )}
         {/* مفتاح التوفّر */}
         <button
           onClick={toggleOnline}

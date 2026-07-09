@@ -3,11 +3,18 @@ import { useNavigate } from 'react-router-dom'
 import Screen from '@/components/Screen'
 import MapView from '@/components/MapView'
 import VehicleImage from '@/components/VehicleImage'
+import SosButton from '@/components/SosButton'
 import { useRide } from '@/store/RideContext'
 import { useAuth } from '@/store/AuthContext'
 import { getService } from '@/data/services'
-import { subscribeToRide, subscribeToDriverLocation } from '@/lib/realtime'
-import { getRideDriver, getActiveCustomerRide, cancelRide, type RideDriverInfo } from '@/lib/api'
+import { subscribeToRide } from '@/lib/realtime'
+import {
+  getRideDriver,
+  getActiveCustomerRide,
+  cancelRide,
+  getRide,
+  type RideDriverInfo,
+} from '@/lib/api'
 import { isSupabaseConfigured } from '@/lib/supabase'
 import { money } from '@/lib/format'
 import type { PaymentMethod, RideStatus } from '@/lib/types'
@@ -62,17 +69,21 @@ export default function Trip() {
     })
   }, [status, profile?.id])
 
-  // موقع السائق اللحظي على الخريطة.
+  // موقع السائق الأولي على الخريطة (يُحدَّث بعدها لحظياً عبر صفّ الرحلة).
   useEffect(() => {
     if (!rideId) return
-    const unsub = subscribeToDriverLocation(rideId, setDriverPos)
-    return unsub
+    void getRide(rideId).then((r) => {
+      if (r?.driver_lat != null && r?.driver_lng != null)
+        setDriverPos({ lat: r.driver_lat, lng: r.driver_lng })
+    })
   }, [rideId])
 
-  // Realtime: تابع تقدّم الرحلة والانتقالات (اكتمال / تخلّي السائق / إلغاء).
+  // Realtime: تابع تقدّم الرحلة وموقع السائق والانتقالات (اكتمال / تخلّي / إلغاء).
   useEffect(() => {
     const unsub = subscribeToRide(rideId ?? '', (ride) => {
       setStatus(ride.status)
+      if (ride.driver_lat != null && ride.driver_lng != null)
+        setDriverPos({ lat: ride.driver_lat, lng: ride.driver_lng })
       if (ride.status === 'completed') navigate('/rate')
       else if (ride.status === 'searching') navigate('/find-driver') // تخلّى السائق → إعادة البحث
       else if (ride.status === 'cancelled') {
@@ -103,6 +114,7 @@ export default function Trip() {
 
   return (
     <Screen title="رحلتك الآن" bare>
+      <SosButton rideId={rideId} role="customer" />
       <div className="flex h-full flex-col">
         <MapView
           marker={dropoff?.pos}

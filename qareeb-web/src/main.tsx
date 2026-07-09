@@ -2,8 +2,14 @@ import React from 'react'
 import ReactDOM from 'react-dom/client'
 import { BrowserRouter } from 'react-router-dom'
 import App from './App'
-import { registerServiceWorker } from './lib/push'
 import './index.css'
+
+// Service Worker: تخزين مؤقت (فتح سريع على شبكة ضعيفة) + استقبال إشعارات Push.
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    void navigator.serviceWorker.register('/sw.js').catch(() => {})
+  })
+}
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
@@ -12,6 +18,3 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
     </BrowserRouter>
   </React.StrictMode>,
 )
-
-// تسجيل Service Worker للإشعارات الخلفية (اختياري — يفشل بهدوء إن لم يُدعم).
-void registerServiceWorker()

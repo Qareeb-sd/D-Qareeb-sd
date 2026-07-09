@@ -1,44 +1,128 @@
-/* Service Worker لتطبيق قريب — إشعارات Web Push الخلفية. */
+/* Service Worker لتطبيق «قريب»
+ * دوران في آنٍ واحد:
+ *  1) تخزين مؤقت (PWA) — فتح سريع حتى على شبكة ضعيفة/منقطعة (مهم للسودان).
+ *  2) استقبال إشعارات Web Push وعرضها والنقر عليها.
+ *
+ * استراتيجية التخزين:
+ *  - التنقّل (HTML): الشبكة أولاً ثم الكاش (يمنع بقاء نسخة قديمة).
+ *  - أصول Vite المُبصَمة (/assets/*) والأيقونات: الكاش أولاً (ثابتة وآمنة).
+ *  - أي شيء آخر (Supabase/قوقل/الخطوط): لا نتدخّل — يذهب للشبكة مباشرة.
+ */
 
-self.addEventListener('install', () => self.skipWaiting())
-self.addEventListener('activate', (event) => event.waitUntil(self.clients.claim()))
+const CACHE = 'qareeb-v1'
+const SHELL = [
+  '/',
+  '/index.html',
+  '/manifest.webmanifest',
+  '/favicon.svg',
+  '/icon-192.png',
+  '/icon-512.png',
+]
 
-// استقبال إشعار الدفع وعرضه.
-self.addEventListener('push', (event) => {
-  let data = {}
-  try {
-    data = event.data ? event.data.json() : {}
-  } catch {
-    data = { body: event.data ? event.data.text() : '' }
-  }
-
-  const title = data.title || 'قريب'
-  const options = {
-    body: data.body || '',
-    icon: '/icon-192.png',
-    badge: '/icon-192.png',
-    dir: 'rtl',
-    lang: 'ar',
-    tag: data.tag,
-    renotify: Boolean(data.tag),
-    data: { url: data.url || '/' },
-  }
-  event.waitUntil(self.registration.showNotification(title, options))
+self.addEventListener('install', (event) => {
+  event.waitUntil(
+    caches.open(CACHE).then((c) => c.addAll(SHELL)).catch(() => {}),
+  )
+  self.skipWaiting()
 })
 
-// النقر على الإشعار يفتح/يركّز نافذة التطبيق على المسار المطلوب.
+self.addEventListener('activate', (event) => {
+  event.waitUntil(
+    caches
+      .keys()
+      .then((keys) => Promise.all(keys.filter((k) => k !== CACHE).map((k) => caches.delete(k))))
+      .then(() => self.clients.claim()),
+  )
+})
+
+function isStaticAsset(url) {
+  return (
+    url.pathname.startsWith('/assets/') ||
+    url.pathname.startsWith('/vehicles/') ||
+    /\.(?:js|css|png|jpg|jpeg|webp|svg|woff2?)$/.test(url.pathname)
+  )
+}
+
+self.addEventListener('fetch', (event) => {
+  const { request } = event
+  if (request.method !== 'GET') return
+
+  const url = new URL(request.url)
+  // نتدخّل فقط في نفس النطاق — لا نلمس Supabase/قوقل/الخطوط.
+  if (url.origin !== self.location.origin) return
+
+  // التنقّل: الشبكة أولاً، وعند فشلها نُرجع نسخة الصفحة المخزّنة (تشغيل دون اتصال).
+  if (request.mode === 'navigate') {
+    event.respondWith(
+      fetch(request)
+        .then((res) => {
+          const copy = res.clone()
+          caches.open(CACHE).then((c) => c.put('/index.html', copy)).catch(() => {})
+          return res
+        })
+        .catch(() => caches.match('/index.html').then((r) => r || caches.match('/'))),
+    )
+    return
+  }
+
+  // الأصول المُبصَمة: الكاش أولاً ثم الشبكة (وتُخزَّن للمرّات القادمة).
+  if (isStaticAsset(url)) {
+    event.respondWith(
+      caches.match(request).then(
+        (cached) =>
+          cached ||
+          fetch(request).then((res) => {
+            const copy = res.clone()
+            caches.open(CACHE).then((c) => c.put(request, copy)).catch(() => {})
+            return res
+          }),
+      ),
+    )
+  }
+})
+
+/* ---------------- إشعارات Web Push ---------------- */
+
+self.addEventListener('push', (event) => {
+  // نرسل إشعارات بلا حمولة (أخفّ وأكثر موثوقية)، فنعرض رسالة السائق الافتراضية.
+  let data = {
+    title: '🚗 طلب رحلة جديد',
+    body: 'يوجد راكب قريب منك — افتح «قريب» لقبول الطلب',
+    url: '/driver',
+  }
+  try {
+    if (event.data) data = { ...data, ...event.data.json() }
+  } catch {
+    /* حمولة غير JSON — نُبقي الافتراضي */
+  }
+
+  event.waitUntil(
+    self.registration.showNotification(data.title, {
+      body: data.body,
+      icon: '/icon-192.png',
+      badge: '/icon-192.png',
+      dir: 'rtl',
+      lang: 'ar',
+      tag: data.tag || 'qareeb-ride',
+      renotify: true,
+      vibrate: [120, 60, 120],
+      data: { url: data.url || '/' },
+    }),
+  )
+})
+
 self.addEventListener('notificationclick', (event) => {
   event.notification.close()
-  const url = (event.notification.data && event.notification.data.url) || '/'
+  const target = (event.notification.data && event.notification.data.url) || '/driver'
   event.waitUntil(
-    self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clients) => {
-      for (const client of clients) {
+    self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((list) => {
+      for (const client of list) {
         if ('focus' in client) {
-          if ('navigate' in client) client.navigate(url)
+          client.navigate(target).catch(() => {})
           return client.focus()
         }
       }
-      if (self.clients.openWindow) return self.clients.openWindow(url)
+      return self.clients.openWindow(target)
     }),
   )
 })

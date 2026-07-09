@@ -1,7 +1,9 @@
+import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import BottomNav from '@/components/BottomNav'
 import NotificationToggle from '@/components/NotificationToggle'
 import { useAuth } from '@/store/AuthContext'
+import { updateEmergencyContacts } from '@/lib/api'
 
 const links = [
   { label: 'رحلاتي السابقة', icon: '🧾', to: '/rides' },
@@ -13,11 +15,29 @@ const links = [
 
 export default function Profile() {
   const navigate = useNavigate()
-  const { profile, signOut } = useAuth()
+  const { profile, signOut, refreshProfile } = useAuth()
+
+  const [c1, setC1] = useState(profile?.sos_contact1 ?? '')
+  const [c2, setC2] = useState(profile?.sos_contact2 ?? '')
+  const [busy, setBusy] = useState(false)
+  const [msg, setMsg] = useState('')
 
   const logout = async () => {
     await signOut()
     navigate('/auth')
+  }
+
+  const saveContacts = async () => {
+    setBusy(true)
+    setMsg('')
+    const { error } = await updateEmergencyContacts(
+      profile?.id ?? '',
+      c1.trim() || null,
+      c2.trim() || null,
+    )
+    await refreshProfile()
+    setBusy(false)
+    setMsg(error ? `خطأ: ${error}` : 'تم حفظ جهات الطوارئ ✓')
   }
 
   return (
@@ -37,6 +57,37 @@ export default function Profile() {
               {profile?.phone ?? '—'}
             </p>
           </div>
+        </div>
+
+        {/* جهات الطوارئ */}
+        <div className="card mt-4 p-4">
+          <div className="mb-1 flex items-center gap-2">
+            <span className="text-xl">🆘</span>
+            <p className="font-bold">جهات الطوارئ</p>
+          </div>
+          <p className="mb-3 text-xs text-ink-muted">
+            رقمان يصلهما تنبيه فيه موقعك عند ضغطك زر الطوارئ أثناء الرحلة.
+          </p>
+          <input
+            className="field text-left"
+            dir="ltr"
+            inputMode="tel"
+            placeholder="رقم جهة الطوارئ الأولى"
+            value={c1}
+            onChange={(e) => setC1(e.target.value)}
+          />
+          <input
+            className="field mt-2 text-left"
+            dir="ltr"
+            inputMode="tel"
+            placeholder="رقم جهة الطوارئ الثانية (اختياري)"
+            value={c2}
+            onChange={(e) => setC2(e.target.value)}
+          />
+          {msg && <p className="mt-2 text-sm text-green">{msg}</p>}
+          <button onClick={saveContacts} disabled={busy} className="btn-primary mt-3 w-full">
+            {busy ? '…' : 'حفظ جهات الطوارئ'}
+          </button>
         </div>
 
         <div className="card mt-4 divide-y divide-hairline p-0">

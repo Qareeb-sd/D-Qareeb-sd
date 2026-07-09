@@ -27,7 +27,7 @@ export interface Service {
 export const services: Service[] = [
   {
     id: 'standard',
-    name: 'قريب عادي',
+    name: 'قريب',
     tagline: 'سيارة عادية · اقتصادي وسريع',
     image: '/vehicles/salon_original.webp',
     art: 'sedan',
@@ -59,11 +59,11 @@ export const services: Service[] = [
   {
     id: 'hiace',
     name: 'هايس',
-    tagline: '14 راكب · للمجموعات',
+    tagline: '11 راكب · للمجموعات',
     image: '/vehicles/hais_original.jpg',
     art: 'van',
     tint: '#CED2CE',
-    seats: 14,
+    seats: 11,
     sharable: true,
   },
   {

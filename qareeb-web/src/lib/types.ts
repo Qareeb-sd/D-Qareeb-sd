@@ -24,8 +24,12 @@ export interface AppUser {
   phone: string
   full_name: string | null
   role: 'customer' | 'driver' | 'admin'
+  sos_contact1?: string | null // جهة طوارئ 1 (يضبطها العميل)
+  sos_contact2?: string | null // جهة طوارئ 2
   created_at: string
 }
+
+export type DriverStatus = 'pending' | 'approved' | 'rejected'
 
 export interface Driver {
   id: string
@@ -34,6 +38,7 @@ export interface Driver {
   plate_number: string | null
   is_online: boolean
   rating: number | null
+  status?: DriverStatus // حالة قديمة (نظام تسجيل مبسّط) — التسجيل الرسمي عبر driver_applications
   created_at: string
 }
 
@@ -50,6 +55,9 @@ export interface Ride {
   dropoff_lng: number | null
   dropoff_address: string | null
   fare: number | null
+  driver_lat?: number | null // آخر موقع مباشر للسائق (تتبع)
+  driver_lng?: number | null
+  driver_loc_at?: string | null
   payment_method: PaymentMethod
   rating: number | null
   created_at: string
@@ -105,6 +113,23 @@ export interface ServicePricing {
   sort_order: number
   active: boolean
   updated_at: string
+}
+
+// ---------- الطوارئ (SOS) ----------
+export type SosRole = 'customer' | 'driver'
+export type SosStatus = 'open' | 'resolved'
+
+/** تنبيه طوارئ من راكب أو سائق أثناء رحلة — يظهر للأدمن لحظياً. */
+export interface SosAlert {
+  id: string
+  ride_id: string | null
+  user_id: string
+  role: SosRole
+  lat: number | null
+  lng: number | null
+  note: string | null
+  status: SosStatus
+  created_at: string
 }
 
 // ---------- ترحيل (المشاركة اليومية) ----------
@@ -218,6 +243,11 @@ export interface Database {
         Insert: Partial<PushSubscriptionRow>
         Update: Partial<PushSubscriptionRow>
       }
+      sos_alerts: {
+        Row: SosAlert
+        Insert: Partial<SosAlert>
+        Update: Partial<SosAlert>
+      }
     }
     Views: Record<string, never>
     Functions: {
@@ -226,6 +256,10 @@ export interface Database {
       settle_ride: { Args: { p_ride: string }; Returns: undefined }
       set_ride_status: { Args: { p_ride: string; p_status: string }; Returns: undefined }
       cancel_ride: { Args: { p_ride: string }; Returns: undefined }
+      update_driver_location: {
+        Args: { p_ride: string; p_lat: number; p_lng: number }
+        Returns: undefined
+      }
       approve_driver_application: { Args: { p_app: string }; Returns: undefined }
       reject_driver_application: {
         Args: { p_app: string; p_note?: string | null }

@@ -1,7 +1,11 @@
 import { Routes, Route, Navigate } from 'react-router-dom'
+import { QueryClientProvider } from '@tanstack/react-query'
+import { queryClient } from '@/lib/queryClient'
 import { AuthProvider } from '@/store/AuthContext'
 import { RideProvider } from '@/store/RideContext'
 import { DriverProvider } from '@/store/DriverContext'
+import { MapsProvider } from '@/store/MapsContext'
+import ErrorBoundary from '@/components/ErrorBoundary'
 import ProtectedRoute from '@/components/ProtectedRoute'
 import AdminRoute from '@/components/AdminRoute'
 import DriverRoute from '@/components/DriverRoute'
@@ -46,9 +50,12 @@ function driverGuard(el: React.ReactNode) {
 
 export default function App() {
   return (
-    <AuthProvider>
-      <RideProvider>
-        <DriverProvider>
+    <ErrorBoundary>
+      <QueryClientProvider client={queryClient}>
+        <MapsProvider>
+          <AuthProvider>
+            <RideProvider>
+              <DriverProvider>
         <Routes>
           {/* عامّة */}
           <Route path="/" element={<Onboarding />} />
@@ -90,8 +97,11 @@ export default function App() {
 
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
-        </DriverProvider>
-      </RideProvider>
-    </AuthProvider>
+              </DriverProvider>
+            </RideProvider>
+          </AuthProvider>
+        </MapsProvider>
+      </QueryClientProvider>
+    </ErrorBoundary>
   )
 }

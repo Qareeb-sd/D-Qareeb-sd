@@ -167,7 +167,8 @@ qareeb-web/
 
 إشعارات خلفية للسائق (طلب جديد) والراكب (تغيّر حالة الرحلة) واعتماد السائق
 والترحيل — عبر Service Worker + جدول `push_subscriptions` + دالة Edge `push`.
-خطوات الإعداد والنشر ومفاتيح VAPID في **[`PUSH.md`](./PUSH.md)**.
+خطوات الإعداد والنشر ومفاتيح VAPID في **[`supabase/NOTIFICATIONS.md`](./supabase/NOTIFICATIONS.md)**
+(والمهام المؤجّلة في **[`PENDING.md`](./PENDING.md)**).
 
 ## تتبّع موقع السائق لحظياً (اكتمل)
 

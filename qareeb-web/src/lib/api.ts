@@ -6,9 +6,11 @@ import type {
   Ride,
   Topup,
   Driver,
-  ServicePricing,
   DriverApplication,
   DriverAppStatus,
+  ServicePricing,
+  SosAlert,
+  SosRole,
 } from './types'
 
 /**
@@ -167,30 +169,6 @@ export async function createTopup(
   return error ? { error: error.message } : {}
 }
 
-// ---------- إشعارات Web Push ----------
-/** يحفظ/يحدّث اشتراك Push للمستخدم (مفتاح فريد: endpoint). */
-export async function savePushSubscription(
-  userId: string,
-  sub: PushSubscriptionJSON,
-): Promise<void> {
-  if (!isSupabaseConfigured || !sub.endpoint || !sub.keys) return
-  await supabase.from('push_subscriptions').upsert(
-    {
-      user_id: userId,
-      endpoint: sub.endpoint,
-      p256dh: sub.keys.p256dh,
-      auth: sub.keys.auth,
-    },
-    { onConflict: 'endpoint' },
-  )
-}
-
-/** يحذف اشتراك Push عند إلغاء التفعيل. */
-export async function deletePushSubscription(endpoint: string): Promise<void> {
-  if (!isSupabaseConfigured) return
-  await supabase.from('push_subscriptions').delete().eq('endpoint', endpoint)
-}
-
 // ---------- الرحلات ----------
 export async function createRide(ride: Partial<Ride>): Promise<{ id?: string; error?: string }> {
   if (!isSupabaseConfigured) return { id: 'demo-ride' }
@@ -242,6 +220,109 @@ export async function getActiveCustomerRide(customerId: string): Promise<Ride | 
     .limit(1)
     .maybeSingle()
   return data ?? null
+}
+
+/** يجلب رحلة واحدة (للحصول على الموقع المبدئي للسائق عند فتح شاشة التتبع). */
+export async function getRide(rideId: string): Promise<Ride | null> {
+  if (!isSupabaseConfigured || !rideId) return null
+  const { data } = await supabase.from('rides').select('*').eq('id', rideId).single()
+  return data ?? null
+}
+
+/**
+ * تتبع مباشر: يبثّ السائق موقعه عبر دالة آمنة (Supabase) — بلا أي طلب لخرائط قوقل.
+ * يُستدعى بمعدّل مُقنَّن من جهاز السائق أثناء الرحلة.
+ */
+export async function updateDriverLocation(
+  rideId: string,
+  lat: number,
+  lng: number,
+): Promise<void> {
+  if (!isSupabaseConfigured || !rideId) return
+  await supabase.rpc('update_driver_location', { p_ride: rideId, p_lat: lat, p_lng: lng })
+}
+
+// ---------- إشعارات Web Push ----------
+export async function savePushSubscription(sub: {
+  user_id: string
+  endpoint: string
+  p256dh: string
+  auth: string
+}): Promise<void> {
+  if (!isSupabaseConfigured) return
+  await supabase.from('push_subscriptions').upsert(sub, { onConflict: 'endpoint' })
+}
+
+export async function deletePushSubscription(endpoint: string): Promise<void> {
+  if (!isSupabaseConfigured) return
+  await supabase.from('push_subscriptions').delete().eq('endpoint', endpoint)
+}
+
+// ---------- الطوارئ (SOS) ----------
+/** يُطلق تنبيه طوارئ (يُخزَّن ويظهر للأدمن لحظياً). يتحمّل غياب الموقع. */
+export async function raiseSos(alert: {
+  user_id?: string
+  ride_id?: string | null
+  role: SosRole
+  lat?: number | null
+  lng?: number | null
+  note?: string | null
+}): Promise<{ error?: string }> {
+  if (!isSupabaseConfigured) return {}
+  const { error } = await supabase.from('sos_alerts').insert({
+    user_id: alert.user_id,
+    ride_id: alert.ride_id ?? null,
+    role: alert.role,
+    lat: alert.lat ?? null,
+    lng: alert.lng ?? null,
+    note: alert.note ?? null,
+    status: 'open',
+  })
+  return error ? { error: error.message } : {}
+}
+
+const demoSosAlerts: SosAlert[] = [
+  {
+    id: 'sos-demo',
+    ride_id: null,
+    user_id: 'c-88',
+    role: 'customer',
+    lat: 15.5007,
+    lng: 32.5599,
+    note: null,
+    status: 'open',
+    created_at: new Date().toISOString(),
+  },
+]
+
+export async function listSosAlerts(): Promise<SosAlert[]> {
+  if (!isSupabaseConfigured) return demoSosAlerts
+  const { data } = await supabase
+    .from('sos_alerts')
+    .select('*')
+    .eq('status', 'open')
+    .order('created_at', { ascending: false })
+  return data ?? []
+}
+
+export async function resolveSos(id: string): Promise<{ error?: string }> {
+  if (!isSupabaseConfigured) return {}
+  const { error } = await supabase.from('sos_alerts').update({ status: 'resolved' }).eq('id', id)
+  return error ? { error: error.message } : {}
+}
+
+/** يحفظ رقمَي جهات الطوارئ في ملف العميل. */
+export async function updateEmergencyContacts(
+  userId: string,
+  contact1: string | null,
+  contact2: string | null,
+): Promise<{ error?: string }> {
+  if (!isSupabaseConfigured) return {}
+  const { error } = await supabase
+    .from('users')
+    .update({ sos_contact1: contact1, sos_contact2: contact2 })
+    .eq('id', userId)
+  return error ? { error: error.message } : {}
 }
 
 const demoRides: Ride[] = [
@@ -470,7 +551,7 @@ const demoDriver: Driver = {
 
 export async function getDriver(userId: string): Promise<Driver | null> {
   if (!isSupabaseConfigured) return demoDriver
-  const { data } = await supabase.from('drivers').select('*').eq('user_id', userId).single()
+  const { data } = await supabase.from('drivers').select('*').eq('user_id', userId).maybeSingle()
   return data ?? null
 }
 

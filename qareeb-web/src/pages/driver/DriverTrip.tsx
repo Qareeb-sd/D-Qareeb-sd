@@ -2,10 +2,18 @@ import { useEffect, useState } from 'react'
 import { useNavigate, Navigate } from 'react-router-dom'
 import Screen from '@/components/Screen'
 import MapView from '@/components/MapView'
+import SosButton from '@/components/SosButton'
 import { useDriver } from '@/store/DriverContext'
 import { useAuth } from '@/store/AuthContext'
-import { settleRide, setRideStatus, cancelRide, getSettings, getActiveDriverRide } from '@/lib/api'
-import { subscribeToRide, createLocationBroadcaster } from '@/lib/realtime'
+import {
+  settleRide,
+  setRideStatus,
+  cancelRide,
+  getSettings,
+  getActiveDriverRide,
+  updateDriverLocation,
+} from '@/lib/api'
+import { subscribeToRide } from '@/lib/realtime'
 import { getService } from '@/data/services'
 import { money } from '@/lib/format'
 
@@ -51,19 +59,16 @@ export default function DriverTrip() {
     }
   }, [activeRide, profile?.id, setActiveRide])
 
-  // بثّ موقع السائق اللحظي للراكب طوال وجوده في شاشة الرحلة.
+  // تحديث موقع السائق اللحظي للراكب طوال وجوده في شاشة الرحلة.
   useEffect(() => {
-    if (!activeRide?.id || !('geolocation' in navigator)) return
-    const broadcaster = createLocationBroadcaster(activeRide.id)
+    const rid = activeRide?.id
+    if (!rid || !('geolocation' in navigator)) return
     const watchId = navigator.geolocation.watchPosition(
-      (p) => broadcaster.send({ lat: p.coords.latitude, lng: p.coords.longitude }),
+      (p) => void updateDriverLocation(rid, p.coords.latitude, p.coords.longitude),
       undefined,
       { enableHighAccuracy: true, maximumAge: 5000, timeout: 15000 },
     )
-    return () => {
-      navigator.geolocation.clearWatch(watchId)
-      broadcaster.stop()
-    }
+    return () => navigator.geolocation.clearWatch(watchId)
   }, [activeRide?.id])
 
   // Realtime: إن ألغى الراكب الرحلة، أبلغ السائق وأعده لقائمة الطلبات.
@@ -126,6 +131,7 @@ export default function DriverTrip() {
 
   return (
     <Screen title="الرحلة الجارية" bare>
+      <SosButton rideId={activeRide.id} role="driver" />
       <div className="flex h-full flex-col">
         <MapView
           center={{ lat: activeRide.pickup_lat, lng: activeRide.pickup_lng }}

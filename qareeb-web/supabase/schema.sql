@@ -36,8 +36,13 @@ create table if not exists public.users (
   phone      text unique not null,
   full_name  text,
   role       user_role not null default 'customer',
+  sos_contact1 text,                           -- جهة طوارئ 1 (يضبطها العميل)
+  sos_contact2 text,                           -- جهة طوارئ 2
   created_at timestamptz not null default now()
 );
+-- ترقية للقواعد القائمة
+alter table public.users add column if not exists sos_contact1 text;
+alter table public.users add column if not exists sos_contact2 text;
 
 -- ---------- السائقون ----------
 create table if not exists public.drivers (
@@ -50,6 +55,8 @@ create table if not exists public.drivers (
   created_at   timestamptz not null default now()
 );
 create index if not exists drivers_online_idx on public.drivers(is_online);
+-- حالة طلب السائق: pending / approved / rejected (تسجيل ذاتي بموافقة الأدمن)
+alter table public.drivers add column if not exists status text not null default 'pending';
 
 -- ---------- الرحلات ----------
 create table if not exists public.rides (
@@ -72,6 +79,36 @@ create table if not exists public.rides (
 create index if not exists rides_customer_idx on public.rides(customer_id);
 create index if not exists rides_driver_idx   on public.rides(driver_id);
 create index if not exists rides_status_idx   on public.rides(status);
+
+-- تتبع مباشر: آخر موقع للسائق (يُبثّ عبر Realtime على صفّ الرحلة نفسه)
+alter table public.rides add column if not exists driver_lat    double precision;
+alter table public.rides add column if not exists driver_lng    double precision;
+alter table public.rides add column if not exists driver_loc_at timestamptz;
+
+-- ---------- اشتراكات الإشعارات (Web Push) ----------
+create table if not exists public.push_subscriptions (
+  id         uuid primary key default gen_random_uuid(),
+  user_id    uuid not null references public.users(id) on delete cascade,
+  endpoint   text unique not null,
+  p256dh     text not null,
+  auth       text not null,
+  created_at timestamptz not null default now()
+);
+create index if not exists push_subs_user_idx on public.push_subscriptions(user_id);
+
+-- ---------- تنبيهات الطوارئ (SOS) ----------
+create table if not exists public.sos_alerts (
+  id         uuid primary key default gen_random_uuid(),
+  ride_id    uuid references public.rides(id) on delete set null,
+  user_id    uuid not null references public.users(id) on delete cascade,
+  role       text not null default 'customer',  -- customer / driver
+  lat        double precision,
+  lng        double precision,
+  note       text,
+  status     text not null default 'open',       -- open / resolved
+  created_at timestamptz not null default now()
+);
+create index if not exists sos_open_idx on public.sos_alerts(status);
 
 -- ---------- المحافظ ----------
 create table if not exists public.wallets (
@@ -214,6 +251,13 @@ alter table public.settings     enable row level security;
 alter table public.service_pricing enable row level security;
 alter table public.commute_orders  enable row level security;
 alter table public.commute_members enable row level security;
+alter table public.push_subscriptions enable row level security;
+alter table public.sos_alerts enable row level security;
+
+-- الإشعارات: كل مستخدم يدير اشتراكاته فقط (الإرسال يتم بدور service_role الذي يتجاوز RLS).
+drop policy if exists "own push subs" on public.push_subscriptions;
+create policy "own push subs" on public.push_subscriptions
+  for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
 
 -- هل المستخدم الحالي أدمن؟ (تُعرَّف مبكراً لأن السياسات أدناه تستخدمها)
 create or replace function public.is_admin()
@@ -345,6 +389,19 @@ begin
     from public.transactions t;
 end $$;
 
+-- الطوارئ: المستخدم يُطلق تنبيهه، ويقرؤه هو أو الأدمن، والأدمن يعالجه.
+drop policy if exists "raise own sos" on public.sos_alerts;
+create policy "raise own sos" on public.sos_alerts
+  for insert to authenticated with check (auth.uid() = user_id);
+
+drop policy if exists "read sos" on public.sos_alerts;
+create policy "read sos" on public.sos_alerts
+  for select using (auth.uid() = user_id or public.is_admin());
+
+drop policy if exists "admin update sos" on public.sos_alerts;
+create policy "admin update sos" on public.sos_alerts
+  for update using (public.is_admin()) with check (public.is_admin());
+
 -- الأدمن يعدّل الإعدادات (العمولة + Surge + الشرائح + الحساب البنكي)
 drop policy if exists "admin write settings" on public.settings;
 create policy "admin write settings" on public.settings
@@ -437,10 +494,36 @@ create trigger prevent_role_change
 --  السائق: قبول الرحلات وتسوية الأرباح (خصم العمولة)
 -- ============================================================
 
--- السائق يدير صفّه في drivers
+-- السائق يدير صفّه في drivers (وينشئ طلب التسجيل)
 drop policy if exists "own driver row" on public.drivers;
 create policy "own driver row" on public.drivers
   for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
+
+-- الأدمن يقرأ كل السائقين (لعرض طلبات التسجيل واعتمادها)
+drop policy if exists "admin read drivers" on public.drivers;
+create policy "admin read drivers" on public.drivers
+  for select using (public.is_admin());
+
+-- (منع ترقية الدور ذاتياً مُعرّف أعلاه — trigger واحد يكفي.)
+
+-- الأدمن يعتمد طلب سائق: يجعل الصفّ approved ويمنح دور driver — معاً.
+create or replace function public.approve_driver(p_driver uuid)
+returns void language plpgsql security definer set search_path = public as $$
+declare v_user uuid;
+begin
+  if not public.is_admin() then raise exception 'غير مصرّح'; end if;
+  select user_id into v_user from public.drivers where id = p_driver;
+  if v_user is null then raise exception 'الطلب غير موجود'; end if;
+  update public.drivers set status = 'approved' where id = p_driver;
+  update public.users   set role = 'driver'   where id = v_user;
+end $$;
+
+create or replace function public.reject_driver(p_driver uuid)
+returns void language plpgsql security definer set search_path = public as $$
+begin
+  if not public.is_admin() then raise exception 'غير مصرّح'; end if;
+  update public.drivers set status = 'rejected' where id = p_driver;
+end $$;
 
 -- السائق يرى الرحلات المنتظرة سائقاً
 drop policy if exists "drivers see open rides" on public.rides;
@@ -452,6 +535,21 @@ drop policy if exists "driver accept ride" on public.rides;
 create policy "driver accept ride" on public.rides
   for update using (status in ('requested', 'searching'))
   with check (auth.uid() = driver_id);
+
+-- تتبع مباشر: السائق المرتبط بالرحلة يحدّث موقعه فقط (بلا استهلاك خرائط قوقل).
+-- عبر دالة آمنة حتى لا تتعارض مع سياسة الكتابة العامة على صفّ الرحلة.
+create or replace function public.update_driver_location(
+  p_ride uuid,
+  p_lat  double precision,
+  p_lng  double precision
+) returns void language plpgsql security definer set search_path = public as $$
+begin
+  update public.rides
+     set driver_lat = p_lat, driver_lng = p_lng, driver_loc_at = now()
+   where id = p_ride
+     and driver_id = auth.uid()
+     and status in ('accepted', 'arrived', 'in_progress');
+end $$;
 
 -- تسوية رحلة عند اكتمالها — مسار موحّد للإنهاء (يستدعيه السائق أو الأدمن):
 --   • دفع بمحفظة قريب: تُخصم الأجرة من محفظة العميل، ويُقيَّد للسائق (الأجرة − العمولة).
@@ -737,25 +835,6 @@ create policy "read own or admin driver doc" on storage.objects
   );
 
 -- ============================================================
---  اشتراكات Web Push (إشعارات خلفية) — تُدار من المستخدم، وتقرؤها
---  دالة Edge بمفتاح الخدمة لإرسال الإشعارات. انظر PUSH.md.
--- ============================================================
-create table if not exists public.push_subscriptions (
-  id         uuid primary key default gen_random_uuid(),
-  user_id    uuid not null references public.users(id) on delete cascade,
-  endpoint   text not null unique,
-  p256dh     text not null,
-  auth       text not null,
-  created_at timestamptz not null default now()
-);
-create index if not exists push_subs_user_idx on public.push_subscriptions(user_id);
-
-alter table public.push_subscriptions enable row level security;
-drop policy if exists "own push subs" on public.push_subscriptions;
-create policy "own push subs" on public.push_subscriptions
-  for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
-
--- ============================================================
 --  Realtime: تفعيل النشر على جدول الرحلات
 --  (يمكّن اشتراكات العميل/السائق اللحظية على تغيّرات rides)
 -- ============================================================
@@ -764,7 +843,7 @@ declare
   t text;
 begin
   if exists (select 1 from pg_publication where pubname = 'supabase_realtime') then
-    foreach t in array array['rides', 'commute_orders', 'commute_members', 'driver_applications'] loop
+    foreach t in array array['rides', 'commute_orders', 'commute_members', 'driver_applications', 'sos_alerts'] loop
       if not exists (
         select 1 from pg_publication_tables
         where pubname = 'supabase_realtime' and schemaname = 'public' and tablename = t

@@ -1,19 +1,25 @@
 import { useRef } from 'react'
-import { useJsApiLoader, GoogleMap, MarkerF } from '@react-google-maps/api'
-import {
-  GOOGLE_MAPS_API_KEY,
-  MAPS_LIBRARIES,
-  MAPS_LOADER_ID,
-  MAP_OPTIONS,
-  isMapsConfigured,
-} from '@/lib/maps'
+import { GoogleMap, MarkerF, PolylineF } from '@react-google-maps/api'
+import { MAP_OPTIONS, isMapsConfigured } from '@/lib/maps'
+import { useMaps } from '@/store/MapsContext'
 import { KHARTOUM } from '@/theme'
+
+// أيقونة السائق (سيارة داخل دائرة خضراء) كـ data-URI — لا تُحمَّل من قوقل.
+const CAR_ICON =
+  'data:image/svg+xml;utf8,' +
+  encodeURIComponent(
+    `<svg xmlns="http://www.w3.org/2000/svg" width="46" height="46">` +
+      `<circle cx="23" cy="23" r="18" fill="#0F7B3F" stroke="#fff" stroke-width="3"/>` +
+      `<text x="23" y="30" font-size="20" text-anchor="middle">🚗</text></svg>`,
+  )
 
 interface MapViewProps {
   center?: google.maps.LatLngLiteral
   marker?: google.maps.LatLngLiteral
-  /** موقع السائق اللحظي (نقطة خضراء متحرّكة). */
+  /** موقع السائق المباشر — يُعرض بأيقونة سيارة مميّزة. */
   driver?: google.maps.LatLngLiteral
+  /** خط اتجاه مستقيم (مجاني) بين نقطتين، مثل السائق ← الوجهة. */
+  line?: [google.maps.LatLngLiteral, google.maps.LatLngLiteral]
   onCenterChanged?: (pos: google.maps.LatLngLiteral) => void
   /** يُستدعى عند سحب المستخدم للخريطة فعلياً (تفاعل حقيقي). */
   onUserDrag?: () => void
@@ -22,21 +28,19 @@ interface MapViewProps {
 
 /**
  * خريطة قوقل مغلّفة. تعرض بديلاً واضحاً إذا لم يُضبط مفتاح الـ API.
+ * تحريك العلامات (تتبّع السائق) لا يُكلّف طلبات إضافية من قوقل.
  */
 export default function MapView({
   center = KHARTOUM,
   marker,
   driver,
+  line,
   onCenterChanged,
   onUserDrag,
   className = 'h-64 w-full rounded-2xl',
 }: MapViewProps) {
   const mapRef = useRef<google.maps.Map | null>(null)
-  const { isLoaded } = useJsApiLoader({
-    id: MAPS_LOADER_ID,
-    googleMapsApiKey: GOOGLE_MAPS_API_KEY,
-    libraries: MAPS_LIBRARIES,
-  })
+  const { isLoaded } = useMaps()
 
   if (!isMapsConfigured) {
     return (
@@ -77,14 +81,28 @@ export default function MapView({
         {driver && (
           <MarkerF
             position={driver}
-            zIndex={999}
             icon={{
-              path: google.maps.SymbolPath.CIRCLE,
-              scale: 8,
-              fillColor: '#1B6B3F',
-              fillOpacity: 1,
-              strokeColor: '#ffffff',
-              strokeWeight: 3,
+              url: CAR_ICON,
+              scaledSize: new google.maps.Size(46, 46),
+              anchor: new google.maps.Point(23, 23),
+            }}
+            zIndex={999}
+          />
+        )}
+        {line && (
+          <PolylineF
+            path={line}
+            options={{
+              strokeColor: '#0F7B3F',
+              strokeOpacity: 0.6,
+              strokeWeight: 4,
+              icons: [
+                {
+                  icon: { path: 'M 0,-1 0,1', strokeOpacity: 1, scale: 3 },
+                  offset: '0',
+                  repeat: '14px',
+                },
+              ],
             }}
           />
         )}
