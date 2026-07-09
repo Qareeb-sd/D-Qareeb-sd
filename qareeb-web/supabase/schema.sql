@@ -549,6 +549,40 @@ begin
   update public.rides set status = p_status where id = p_ride;
 end $$;
 
+-- إلغاء الرحلة:
+--   • العميل يلغيها (قبل بدء الرحلة) → cancelled.
+--   • السائق يتخلّى عنها (بعد القبول/الوصول) → تعود searching بلا سائق.
+create or replace function public.cancel_ride(p_ride uuid)
+returns void language plpgsql security definer set search_path = public as $$
+declare
+  v_customer uuid;
+  v_driver   uuid;
+  v_status   ride_status;
+begin
+  select customer_id, driver_id, status
+    into v_customer, v_driver, v_status
+    from public.rides where id = p_ride for update;
+
+  if v_customer is null then raise exception 'الرحلة غير موجودة'; end if;
+  if v_status in ('completed', 'cancelled') then
+    raise exception 'لا يمكن إلغاء هذه الرحلة';
+  end if;
+
+  if auth.uid() = v_customer then
+    if v_status not in ('requested', 'searching', 'accepted', 'arrived') then
+      raise exception 'لا يمكن الإلغاء بعد بدء الرحلة';
+    end if;
+    update public.rides set status = 'cancelled' where id = p_ride;
+  elsif auth.uid() = v_driver then
+    if v_status not in ('accepted', 'arrived') then
+      raise exception 'لا يمكن التخلّي عن الرحلة الآن';
+    end if;
+    update public.rides set status = 'searching', driver_id = null where id = p_ride;
+  else
+    raise exception 'غير مصرّح';
+  end if;
+end $$;
+
 -- ============================================================
 --  بيانات السائق المُسنَد لرحلة (يقرؤها العميل/السائق/الأدمن فقط)
 -- ============================================================

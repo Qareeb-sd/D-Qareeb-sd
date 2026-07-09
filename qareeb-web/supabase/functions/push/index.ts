@@ -93,10 +93,21 @@ Deno.serve(async (req) => {
         tag: 'new-ride',
       }
     } else if (type === 'UPDATE' && record.status !== old_record.status) {
-      const m = rideStatusNotif[String(record.status)]
-      if (m && record.customer_id) {
-        recipients = [String(record.customer_id)]
-        payload = { ...m, url: '/trip', tag: `ride-${record.id}` }
+      if (record.status === 'cancelled' && record.driver_id) {
+        // ألغى الراكب رحلة مقبولة → أبلغ السائق.
+        recipients = [String(record.driver_id)]
+        payload = {
+          title: 'أُلغيت الرحلة',
+          body: 'ألغى الراكب الرحلة.',
+          url: '/driver',
+          tag: `ride-${record.id}`,
+        }
+      } else {
+        const m = rideStatusNotif[String(record.status)]
+        if (m && record.customer_id) {
+          recipients = [String(record.customer_id)]
+          payload = { ...m, url: '/trip', tag: `ride-${record.id}` }
+        }
       }
     }
   } else if (

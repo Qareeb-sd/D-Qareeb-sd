@@ -1,9 +1,10 @@
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import Screen from '@/components/Screen'
 import Logo from '@/components/Logo'
 import { useRide } from '@/store/RideContext'
 import { subscribeToRide } from '@/lib/realtime'
+import { cancelRide } from '@/lib/api'
 import { isSupabaseConfigured } from '@/lib/supabase'
 
 /**
@@ -12,7 +13,15 @@ import { isSupabaseConfigured } from '@/lib/supabase'
  */
 export default function FindDriver() {
   const navigate = useNavigate()
-  const { rideId } = useRide()
+  const { rideId, reset } = useRide()
+  const [busy, setBusy] = useState(false)
+
+  const cancel = async () => {
+    setBusy(true)
+    if (rideId) await cancelRide(rideId)
+    reset()
+    navigate('/home')
+  }
 
   useEffect(() => {
     // Realtime: انتظر تحديث حالة الرحلة إلى "مقبولة" فأبعد.
@@ -45,8 +54,8 @@ export default function FindDriver() {
           <p className="text-lg font-bold">نبحث عن أقرب سائق…</p>
           <p className="text-sm text-ink-soft">لحظات ونلقى ليك سائق قريب</p>
         </div>
-        <button className="btn-outline" onClick={() => navigate('/home')}>
-          إلغاء
+        <button className="btn-outline" onClick={cancel} disabled={busy}>
+          {busy ? '…' : 'إلغاء'}
         </button>
       </div>
     </Screen>

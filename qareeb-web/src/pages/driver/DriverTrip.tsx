@@ -4,7 +4,8 @@ import Screen from '@/components/Screen'
 import MapView from '@/components/MapView'
 import { useDriver } from '@/store/DriverContext'
 import { useAuth } from '@/store/AuthContext'
-import { settleRide, setRideStatus, getSettings, getActiveDriverRide } from '@/lib/api'
+import { settleRide, setRideStatus, cancelRide, getSettings, getActiveDriverRide } from '@/lib/api'
+import { subscribeToRide } from '@/lib/realtime'
 import { getService } from '@/data/services'
 import { money } from '@/lib/format'
 
@@ -50,6 +51,19 @@ export default function DriverTrip() {
     }
   }, [activeRide, profile?.id, setActiveRide])
 
+  // Realtime: إن ألغى الراكب الرحلة، أبلغ السائق وأعده لقائمة الطلبات.
+  useEffect(() => {
+    if (!activeRide?.id) return
+    const unsub = subscribeToRide(activeRide.id, (ride) => {
+      if (ride.status === 'cancelled') {
+        setActiveRide(null)
+        alert('ألغى الراكب الرحلة.')
+        navigate('/driver')
+      }
+    })
+    return unsub
+  }, [activeRide?.id, setActiveRide, navigate])
+
   if (recovering) {
     return (
       <Screen title="الرحلة الجارية">
@@ -83,6 +97,16 @@ export default function DriverTrip() {
     if (error) return alert(error)
     setActiveRide(null)
     navigate('/driver/wallet')
+  }
+
+  const release = async () => {
+    if (!confirm('التخلّي عن هذه الرحلة؟ ستعود متاحة لسائق آخر.')) return
+    setBusy(true)
+    const { error } = await cancelRide(activeRide.id)
+    setBusy(false)
+    if (error) return alert(error)
+    setActiveRide(null)
+    navigate('/driver')
   }
 
   return (
@@ -149,6 +173,15 @@ export default function DriverTrip() {
           {!['accepted', 'arrived', 'in_progress'].includes(activeRide.status) && (
             <button className="btn-primary w-full" onClick={complete} disabled={busy}>
               {busy ? '…' : 'إنهاء وتسوية الرحلة'}
+            </button>
+          )}
+          {(activeRide.status === 'accepted' || activeRide.status === 'arrived') && (
+            <button
+              className="mt-2 w-full text-center text-sm text-danger"
+              onClick={release}
+              disabled={busy}
+            >
+              التخلّي عن الرحلة
             </button>
           )}
         </div>

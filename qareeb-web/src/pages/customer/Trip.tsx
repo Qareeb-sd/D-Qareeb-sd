@@ -7,7 +7,7 @@ import { useRide } from '@/store/RideContext'
 import { useAuth } from '@/store/AuthContext'
 import { getService } from '@/data/services'
 import { subscribeToRide } from '@/lib/realtime'
-import { getRideDriver, getActiveCustomerRide, type RideDriverInfo } from '@/lib/api'
+import { getRideDriver, getActiveCustomerRide, cancelRide, type RideDriverInfo } from '@/lib/api'
 import { isSupabaseConfigured } from '@/lib/supabase'
 import { money } from '@/lib/format'
 import type { PaymentMethod, RideStatus } from '@/lib/types'
@@ -29,11 +29,12 @@ const statusInfo: Partial<Record<RideStatus, { emoji: string; text: string }>> =
 export default function Trip() {
   const navigate = useNavigate()
   const { profile } = useAuth()
-  const { rideId, serviceId, dropoff, payment, setPayment, fare, restore } = useRide()
+  const { rideId, serviceId, dropoff, payment, setPayment, fare, restore, reset } = useRide()
   const service = serviceId ? getService(serviceId) : undefined
   const total = fare ?? 0
   const [driver, setDriver] = useState<RideDriverInfo | null>(null)
   const [status, setStatus] = useState<RideStatus | null>(null)
+  const [busy, setBusy] = useState(false)
 
   // استرجاع الرحلة الجارية بعد تحديث الصفحة (تُفقد الحالة من الذاكرة).
   useEffect(() => {
@@ -60,16 +61,37 @@ export default function Trip() {
     })
   }, [status, profile?.id])
 
-  // Realtime: تابع تقدّم الرحلة، وانتقل للتقييم لحظة إنهاء السائق لها.
+  // Realtime: تابع تقدّم الرحلة والانتقالات (اكتمال / تخلّي السائق / إلغاء).
   useEffect(() => {
     const unsub = subscribeToRide(rideId ?? '', (ride) => {
       setStatus(ride.status)
       if (ride.status === 'completed') navigate('/rate')
+      else if (ride.status === 'searching') navigate('/find-driver') // تخلّى السائق → إعادة البحث
+      else if (ride.status === 'cancelled') {
+        reset()
+        navigate('/home')
+      }
     })
     return unsub
+    // reset مستقرّ سلوكياً (يعيد المسودّة للحالة الافتراضية) — نتجنّب إعادة الاشتراك كل render.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [rideId, navigate])
 
+  const cancel = async () => {
+    setBusy(true)
+    if (rideId) {
+      const { error } = await cancelRide(rideId)
+      if (error) {
+        setBusy(false)
+        return alert(error)
+      }
+    }
+    reset()
+    navigate('/home')
+  }
+
   const banner = status ? statusInfo[status] : undefined
+  const cancellable = status !== 'in_progress'
 
   return (
     <Screen title="رحلتك الآن" bare>
@@ -138,14 +160,25 @@ export default function Trip() {
           </div>
         </div>
 
-        <div className="border-t border-hairline p-4">
+        <div className="space-y-2 border-t border-hairline p-4">
           {isSupabaseConfigured ? (
             <p className="text-center text-sm text-ink-soft">
-              الرحلة جارية — سيُنهيها السائق عند الوصول.
+              {status === 'in_progress'
+                ? 'الرحلة جارية إلى وجهتك.'
+                : 'السائق في طريقه — يمكنك الإلغاء قبل بدء الرحلة.'}
             </p>
           ) : (
             <button className="btn-primary w-full" onClick={() => navigate('/rate')}>
               إنهاء الرحلة (معاينة)
+            </button>
+          )}
+          {cancellable && (
+            <button
+              className="btn-outline w-full text-danger"
+              onClick={cancel}
+              disabled={busy}
+            >
+              {busy ? '…' : 'إلغاء الرحلة'}
             </button>
           )}
         </div>

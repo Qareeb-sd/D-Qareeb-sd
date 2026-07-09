@@ -651,6 +651,16 @@ export async function setRideStatus(
   return error ? { error: error.message } : {}
 }
 
+/**
+ * إلغاء الرحلة عبر دالة آمنة:
+ *   • العميل → cancelled، • السائق → تعود searching بلا سائق.
+ */
+export async function cancelRide(rideId: string): Promise<{ error?: string }> {
+  if (!isSupabaseConfigured) return {}
+  const { error } = await supabase.rpc('cancel_ride', { p_ride: rideId })
+  return error ? { error: error.message } : {}
+}
+
 /** تسوية الرحلة عند اكتمالها: يُقيَّد للسائق (الأجرة − العمولة) عبر دالة آمنة. */
 export async function settleRide(rideId: string): Promise<{ error?: string }> {
   if (!isSupabaseConfigured) return {}
