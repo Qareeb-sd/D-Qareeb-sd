@@ -68,4 +68,31 @@
   .chip {
     @apply inline-flex items-center gap-1 rounded-full px-3 py-1 text-sm font-medium;
   }
+
+  /* حركات Micro-interactions */
+  .shadow-lift {
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
+  }
+}
+
+@layer utilities {
+  /* تأثير نبضة للأزرار المهمة */
+  @keyframes pulse-green {
+    0% { box-shadow: 0 0 0 0 rgba(27, 107, 63, 0.35); }
+    70% { box-shadow: 0 0 0 10px rgba(27, 107, 63, 0); }
+    100% { box-shadow: 0 0 0 0 rgba(27, 107, 63, 0); }
+  }
+  .animate-pulse-green {
+    animation: pulse-green 2s infinite;
+  }
+
+  /* تأثير اهتزاز خفيف للأخطاء */
+  @keyframes shake {
+    0%, 100% { transform: translateX(0); }
+    25% { transform: translateX(-4px); }
+    75% { transform: translateX(4px); }
+  }
+  .animate-shake {
+    animation: shake 0.3s ease-in-out;
+  }
 }
