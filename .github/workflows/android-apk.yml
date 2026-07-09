@@ -1,0 +1,63 @@
+name: بناء تطبيق أندرويد (APK)
+
+# يبني ملف APK جاهزاً للتثبيت على الهاتف — يدوياً من تبويب Actions،
+# أو تلقائياً عند الدفع إلى main. حمّل الناتج من قسم Artifacts في التشغيل.
+
+on:
+  workflow_dispatch: {}
+  push:
+    branches: [main]
+    paths: ['qareeb-web/**']
+
+jobs:
+  build-apk:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: qareeb-web
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: qareeb-web/package-lock.json
+
+      - name: تثبيت الحزم
+        run: npm ci
+
+      - name: تجهيز متغيّرات البيئة (من أسرار المستودع)
+        run: |
+          cat > .env <<EOF
+          VITE_SUPABASE_URL=${{ secrets.VITE_SUPABASE_URL }}
+          VITE_SUPABASE_ANON_KEY=${{ secrets.VITE_SUPABASE_ANON_KEY }}
+          VITE_GOOGLE_MAPS_API_KEY=${{ secrets.VITE_GOOGLE_MAPS_API_KEY }}
+          VITE_VAPID_PUBLIC_KEY=${{ secrets.VITE_VAPID_PUBLIC_KEY }}
+          EOF
+
+      - name: بناء الويب (dist)
+        run: npm run build
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - uses: android-actions/setup-android@v3
+
+      - name: تجهيز حزم Android SDK المطلوبة
+        run: yes | sdkmanager "platforms;android-36" "build-tools;36.0.0" "platform-tools"
+
+      - name: نسخ الويب إلى مشروع أندرويد
+        run: npx cap sync android
+
+      - name: بناء APK (debug)
+        run: cd android && ./gradlew assembleDebug --no-daemon
+
+      - name: رفع الـ APK كـ Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: qareeb-debug-apk
+          path: qareeb-web/android/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
