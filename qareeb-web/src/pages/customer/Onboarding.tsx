@@ -18,7 +18,26 @@ const points = [
   },
 ]
 
-/** رسم SVG توضيحي — خريطة سودان مبسطة + طرق + نقاط */
+/**
+ * رسم SVG توضيحي — خريطة السودان الحقيقية (صورة ظلّية) وعليها خطوط التوصيل
+ * الذهبية المتقطّعة بين المدن، ودبوس "قريب" النابض على الخرطوم.
+ */
+// حدود السودان المبسّطة (شمال مسطّح مع مصر، نتوء البحر الأحمر شمال‑شرق، جنوب متعرّج).
+const SUDAN_PATH =
+  'M95 55 L132 51 L170 48 L196 47 L205 40 L213 51 L219 65 L213 80 L206 92 ' +
+  'L200 104 L188 112 L176 121 L160 126 L146 120 L132 126 L120 121 L110 113 ' +
+  'L100 97 L93 80 L90 66 L92 58 Z'
+
+// مدن على خطوط التوصيل — الخرطوم هي المحور.
+const KHARTOUM_DOT = { x: 150, y: 86 }
+const CITIES = [
+  { x: 208, y: 60 }, // بورتسودان (البحر الأحمر)
+  { x: 199, y: 95 }, // كسلا (شرق)
+  { x: 135, y: 60 }, // دنقلا (شمال)
+  { x: 112, y: 100 }, // نيالا/الفاشر (غرب)
+  { x: 168, y: 112 }, // مدني/الأبيض (جنوب‑شرق)
+]
+
 function Illustration() {
   return (
     <svg
@@ -29,54 +48,54 @@ function Illustration() {
     >
       {/* خلفية */}
       <rect width="320" height="180" rx="20" fill="#E8F1EC" />
-      {/* شكل السودان المبسط */}
-      <path
-        d="M60 140 Q55 110 70 90 Q80 70 110 65 Q140 60 160 70 Q190 55 220 65 Q250 75 260 100 Q265 120 250 140 Q230 155 190 150 Q160 148 130 152 Q100 155 80 148 Q65 145 60 140Z"
-        fill="#1B6B3F"
-        opacity="0.12"
-      />
-      {/* طرق */}
-      <path
-        d="M80 130 Q120 100 160 110 Q200 120 240 95"
-        stroke="#C9A138"
-        strokeWidth="2.5"
-        strokeLinecap="round"
-        strokeDasharray="6 4"
-        opacity="0.5"
-      />
-      <path
-        d="M100 80 Q140 100 160 110 Q180 120 210 130"
-        stroke="#C9A138"
-        strokeWidth="2"
-        strokeLinecap="round"
-        strokeDasharray="4 4"
-        opacity="0.35"
-      />
+
+      {/* شكل السودان الحقيقي */}
+      <path d={SUDAN_PATH} fill="#1B6B3F" opacity="0.14" />
+      <path d={SUDAN_PATH} fill="none" stroke="#1B6B3F" strokeWidth="1.5" opacity="0.4" strokeLinejoin="round" />
+
+      {/* خطوط التوصيل الذهبية من الخرطوم إلى بقية المدن */}
+      {CITIES.map((c, i) => (
+        <line
+          key={i}
+          x1={KHARTOUM_DOT.x}
+          y1={KHARTOUM_DOT.y}
+          x2={c.x}
+          y2={c.y}
+          stroke="#C9A138"
+          strokeWidth="2"
+          strokeLinecap="round"
+          strokeDasharray="5 4"
+          opacity="0.6"
+        >
+          <animate
+            attributeName="stroke-dashoffset"
+            values="18;0"
+            dur="1.6s"
+            repeatCount="indefinite"
+          />
+        </line>
+      ))}
+
       {/* نقاط المدن */}
-      <circle cx="100" cy="80" r="5" fill="#1B6B3F" opacity="0.6" />
-      <circle cx="160" cy="110" r="6" fill="#1B6B3F" />
-      <circle cx="240" cy="95" r="5" fill="#1B6B3F" opacity="0.6" />
-      <circle cx="210" cy="130" r="4" fill="#1B6B3F" opacity="0.4" />
-      {/* دبوس قريب متحرك */}
+      {CITIES.map((c, i) => (
+        <circle key={`d${i}`} cx={c.x} cy={c.y} r="3.5" fill="#1B6B3F" opacity="0.55" />
+      ))}
+
+      {/* دبوس قريب النابض على الخرطوم */}
       <g>
-        <ellipse cx="160" cy="110" rx="14" ry="8" fill="#1B6B3F" opacity="0.15">
-          <animate attributeName="rx" values="14;18;14" dur="2s" repeatCount="indefinite" />
-          <animate attributeName="ry" values="8;10;8" dur="2s" repeatCount="indefinite" />
-          <animate attributeName="opacity" values="0.15;0.05;0.15" dur="2s" repeatCount="indefinite" />
+        <ellipse cx={KHARTOUM_DOT.x} cy={KHARTOUM_DOT.y} rx="12" ry="7" fill="#1B6B3F" opacity="0.15">
+          <animate attributeName="rx" values="12;17;12" dur="2s" repeatCount="indefinite" />
+          <animate attributeName="ry" values="7;10;7" dur="2s" repeatCount="indefinite" />
+          <animate attributeName="opacity" values="0.15;0.04;0.15" dur="2s" repeatCount="indefinite" />
         </ellipse>
         <path
-          d="M160 92c-5.5 0-10 4.3-10 9.6 0 6.8 8.7 15 9.5 15.7a1 1 0 0 0 1 0c.8-.7 9.5-8.9 9.5-15.7 0-5.3-4.5-9.6-10-9.6Z"
+          d={`M${KHARTOUM_DOT.x} ${KHARTOUM_DOT.y - 18}c-5.5 0-10 4.3-10 9.6 0 6.8 8.7 15 9.5 15.7a1 1 0 0 0 1 0c.8-.7 9.5-8.9 9.5-15.7 0-5.3-4.5-9.6-10-9.6Z`}
           fill="#1B6B3F"
         />
-        <circle cx="160" cy="101.5" r="4.5" fill="none" stroke="#C9A138" strokeWidth="1.5" />
-        <circle cx="160" cy="101.5" r="2" fill="#C9A138" />
+        <circle cx={KHARTOUM_DOT.x} cy={KHARTOUM_DOT.y - 8.5} r="4.5" fill="none" stroke="#C9A138" strokeWidth="1.5" />
+        <circle cx={KHARTOUM_DOT.x} cy={KHARTOUM_DOT.y - 8.5} r="2" fill="#C9A138" />
       </g>
-      {/* سيارة صغيرة */}
-      <g transform="translate(135, 118)">
-        <rect x="0" y="4" width="18" height="6" rx="3" fill="#52584E" opacity="0.3" />
-        <circle cx="5" cy="11" r="2" fill="#52584E" opacity="0.4" />
-        <circle cx="14" cy="11" r="2" fill="#52584E" opacity="0.4" />
-      </g>
+
       {/* نجوم زخرفية */}
       <circle cx="50" cy="40" r="1.5" fill="#C9A138" opacity="0.4">
         <animate attributeName="opacity" values="0.4;0.8;0.4" dur="3s" repeatCount="indefinite" />

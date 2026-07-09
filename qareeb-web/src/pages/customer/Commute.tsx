@@ -25,11 +25,15 @@ export default function Commute() {
   const [dest, setDest] = useState<google.maps.LatLngLiteral>(KHARTOUM)
   const [destAddress, setDestAddress] = useState('')
   const [time, setTime] = useState('07:30')
+  const [returnTime, setReturnTime] = useState('15:30')
   const [selected, setSelected] = useState<string[]>([
     'السبت', 'الأحد', 'الاثنين', 'الثلاثاء', 'الأربعاء',
   ])
   const [roundTrip, setRoundTrip] = useState(true)
   const [busy, setBusy] = useState(false)
+
+  // سعة المركبة = عدد نقاط الانطلاق (المنازل) الممكنة للذهاب/الإياب.
+  const seats = services.find((s) => s.id === serviceId)?.seats ?? 4
 
   // منزل المنظّم = موقعه الحالي (يمكن تعديله لاحقاً).
   const home = useRef<google.maps.LatLngLiteral>(KHARTOUM)
@@ -53,6 +57,7 @@ export default function Commute() {
         service_id: serviceId,
         dest: { ...dest, address: destAddress || 'مكان العمل' },
         scheduled_time: time,
+        return_time: roundTrip ? returnTime : null,
         days: selected,
         round_trip: roundTrip,
         organizer: { name: name.trim(), home: { ...home.current, address: 'منزلي' } },
@@ -91,9 +96,14 @@ export default function Commute() {
               >
                 <VehicleImage service={s} className="h-10 w-full" />
                 <p className="mt-1 text-xs font-bold">{s.name}</p>
+                <p className="text-[10px] text-ink-muted">{s.seats} مقاعد</p>
               </button>
             ))}
           </div>
+          <p className="mt-1 text-xs text-ink-soft">
+            تتّسع لـ <span className="font-bold text-green">{seats}</span> نقاط انطلاق —
+            كل راكب من منزله إلى مكان العمل، والعودة بالعكس.
+          </p>
         </div>
 
         {/* اسم المنظّم */}
@@ -119,16 +129,31 @@ export default function Commute() {
           />
         </div>
 
-        {/* الوقت */}
-        <div>
-          <label className="label">وقت الوصول</label>
-          <input
-            type="time"
-            className="field"
-            dir="ltr"
-            value={time}
-            onChange={(e) => setTime(e.target.value)}
-          />
+        {/* أوقات الذهاب والإياب */}
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label className="label">وقت الذهاب</label>
+            <input
+              type="time"
+              className="field"
+              dir="ltr"
+              value={time}
+              onChange={(e) => setTime(e.target.value)}
+            />
+            <p className="mt-1 text-[11px] text-ink-muted">الوصول لمكان العمل</p>
+          </div>
+          <div className={roundTrip ? '' : 'opacity-40'}>
+            <label className="label">وقت الإياب</label>
+            <input
+              type="time"
+              className="field"
+              dir="ltr"
+              value={returnTime}
+              disabled={!roundTrip}
+              onChange={(e) => setReturnTime(e.target.value)}
+            />
+            <p className="mt-1 text-[11px] text-ink-muted">المغادرة من العمل</p>
+          </div>
         </div>
 
         {/* الأيام */}
@@ -156,7 +181,11 @@ export default function Commute() {
         <div className="card flex items-center justify-between p-4">
           <div>
             <p className="font-medium">ذهاب وإياب</p>
-            <p className="text-xs text-ink-muted">رحلة العودة في نفس اليوم</p>
+            <p className="text-xs text-ink-muted">
+              {roundTrip
+                ? 'الإياب من مكان العمل إلى منزل كل راكب'
+                : 'ذهاب فقط (بدون رحلة عودة)'}
+            </p>
           </div>
           <button
             onClick={() => setRoundTrip((v) => !v)}

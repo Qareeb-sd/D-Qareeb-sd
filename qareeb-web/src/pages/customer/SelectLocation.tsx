@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import Screen from '@/components/Screen'
 import MapView from '@/components/MapView'
+import MapPin from '@/components/MapPin'
 import { useRide } from '@/store/RideContext'
 import { useAuth } from '@/store/AuthContext'
 import { useMaps } from '@/store/MapsContext'
@@ -241,9 +242,7 @@ export default function SelectLocation() {
           onUserDrag={() => (active === 'pickup' ? setPickupSet(true) : setDropoffSet(true))}
           className="h-full w-full"
         />
-        <div className="pointer-events-none absolute inset-0 grid place-items-center">
-          <div className="-mt-6 text-4xl drop-shadow">{active === 'pickup' ? '🟢' : '📍'}</div>
-        </div>
+        <MapPin variant={active === 'pickup' ? 'pickup' : 'dropoff'} />
       </div>
 
       {/* المسافة · المدة · السعر */}

@@ -48,17 +48,20 @@ export default function Home() {
               <button
                 key={s.id}
                 onClick={() => chooseService(s.id)}
-                className="card relative flex flex-col items-center gap-2 p-4 text-center transition hover:shadow-lift"
+                className="card relative flex flex-col items-center gap-2 p-4 pt-3 text-center transition hover:shadow-lift"
                 style={accent ? { border: `1.5px solid ${accent.border}`, backgroundColor: accent.bg } : undefined}
               >
-                {accent && (
-                  <span
-                    className="chip absolute left-2 top-2"
-                    style={{ backgroundColor: accent.border, color: '#fff' }}
-                  >
-                    {accent.badge}
-                  </span>
-                )}
+                {/* صفّ العلامة أعلى البطاقة — فوق صورة المركبة لا خلفها (محجوز دائماً لتناسق الارتفاع) */}
+                <div className="flex h-5 w-full items-center justify-start">
+                  {accent && (
+                    <span
+                      className="chip"
+                      style={{ backgroundColor: accent.border, color: '#fff' }}
+                    >
+                      {accent.badge}
+                    </span>
+                  )}
+                </div>
                 <VehicleImage service={s} className="h-16 w-full" />
                 <div>
                   <p className="font-bold" style={accent ? { color: accent.title } : undefined}>

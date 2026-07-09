@@ -197,7 +197,8 @@ create table if not exists public.commute_orders (
   dest_lat       double precision not null,     -- مكان العمل (الوجهة المشتركة)
   dest_lng       double precision not null,
   dest_address   text,
-  scheduled_time text not null,                 -- "HH:MM"
+  scheduled_time text not null,                 -- وقت الذهاب (الوصول للعمل) "HH:MM"
+  return_time    text,                          -- وقت الإياب (المغادرة من العمل) "HH:MM" — للذهاب والإياب
   days           text[] not null default '{}',
   round_trip     boolean not null default true,
   invite_code    text not null unique default substr(md5(random()::text), 1, 6),
@@ -206,8 +207,9 @@ create table if not exists public.commute_orders (
   created_at     timestamptz not null default now()
 );
 create index if not exists commute_orders_status_idx on public.commute_orders(status);
--- ترقية القواعد القديمة (إن كان الجدول موجوداً بدون عمود السائق)
+-- ترقية القواعد القديمة (إن كان الجدول موجوداً بدون الأعمدة الجديدة)
 alter table public.commute_orders add column if not exists driver_id uuid references public.users(id) on delete set null;
+alter table public.commute_orders add column if not exists return_time text;
 
 create table if not exists public.commute_members (
   id           uuid primary key default gen_random_uuid(),

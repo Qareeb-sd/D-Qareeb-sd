@@ -77,8 +77,14 @@ export default function CommuteOrder() {
           </span>
         </div>
         <Row icon="🏢" text={order.dest_address ?? 'مكان العمل'} />
-        <Row icon="⏰" text={`الوصول ${order.scheduled_time}${order.round_trip ? ' · ذهاب وإياب' : ''}`} />
+        <Row
+          icon="⏰"
+          text={`الذهاب ${order.scheduled_time}${
+            order.round_trip && order.return_time ? ` · الإياب ${order.return_time}` : ''
+          }`}
+        />
         <Row icon="📅" text={order.days.join(' · ')} />
+        <Row icon="👥" text={`الركّاب ${members.length} / ${service?.seats ?? 4}`} />
       </div>
 
       {/* رابط الدعوة */}

@@ -17,6 +17,7 @@ export interface NewCommuteInput {
   service_id: string
   dest: Place
   scheduled_time: string
+  return_time: string | null
   days: string[]
   round_trip: boolean
   organizer: { name: string; home: Place }
@@ -58,6 +59,7 @@ export async function createCommuteOrder(
       dest_lng: input.dest.lng,
       dest_address: input.dest.address,
       scheduled_time: input.scheduled_time,
+      return_time: input.return_time,
       days: input.days,
       round_trip: input.round_trip,
       invite_code: invite(),
@@ -89,6 +91,7 @@ export async function createCommuteOrder(
       dest_lng: input.dest.lng,
       dest_address: input.dest.address,
       scheduled_time: input.scheduled_time,
+      return_time: input.return_time,
       days: input.days,
       round_trip: input.round_trip,
     })

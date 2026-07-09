@@ -143,7 +143,8 @@ export interface CommuteOrder {
   dest_lat: number
   dest_lng: number
   dest_address: string | null // مكان العمل
-  scheduled_time: string // "HH:MM"
+  scheduled_time: string // وقت الذهاب (الوصول للعمل) "HH:MM"
+  return_time: string | null // وقت الإياب (المغادرة من العمل) "HH:MM"
   days: string[]
   round_trip: boolean
   invite_code: string
