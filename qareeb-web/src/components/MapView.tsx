@@ -44,12 +44,46 @@ export default function MapView({
 
   if (!isMapsConfigured) {
     return (
-      <div
-        className={`grid place-items-center bg-green-mint text-center text-sm text-ink-soft ${className}`}
-      >
-        اضبط <code className="mx-1 rounded bg-white px-1">VITE_GOOGLE_MAPS_API_KEY</code>
-        <br />
-        لعرض الخريطة
+      <div className={`relative overflow-hidden ${className}`}>
+        {/* بديل أنيق للخريطة قبل ضبط مفتاح قوقل — رسم شوارع مبسّط */}
+        <svg
+          viewBox="0 0 400 260"
+          preserveAspectRatio="xMidYMid slice"
+          className="h-full w-full"
+          xmlns="http://www.w3.org/2000/svg"
+        >
+          <rect width="400" height="260" fill="#EAF3EC" />
+          {/* كتل المباني */}
+          <g fill="#DCEAE0">
+            <rect x="24" y="30" width="70" height="52" rx="6" />
+            <rect x="300" y="26" width="76" height="60" rx="6" />
+            <rect x="40" y="176" width="80" height="60" rx="6" />
+            <rect x="286" y="182" width="86" height="56" rx="6" />
+          </g>
+          {/* الشوارع */}
+          <path d="M0 132 H400" stroke="#CFE0D4" strokeWidth="16" />
+          <path d="M150 0 V260" stroke="#CFE0D4" strokeWidth="16" />
+          {/* مسار الرحلة الذهبي */}
+          <path
+            d="M70 210 Q150 150 210 132 Q280 110 340 60"
+            stroke="#C9A138"
+            strokeWidth="4"
+            strokeLinecap="round"
+            strokeDasharray="10 8"
+            fill="none"
+          />
+          {/* نقطة البداية */}
+          <circle cx="70" cy="210" r="7" fill="#0F7B3F" stroke="#fff" strokeWidth="3" />
+          {/* دبوس الوجهة */}
+          <path
+            d="M340 36c-9 0-16 7-16 16 0 11 16 26 16 26s16-15 16-26c0-9-7-16-16-16Z"
+            fill="#E11D48"
+          />
+          <circle cx="340" cy="52" r="6" fill="#fff" />
+        </svg>
+        <span className="absolute inset-x-0 bottom-2 text-center text-xs font-medium text-ink-soft">
+          معاينة الخريطة
+        </span>
       </div>
     )
   }

@@ -55,7 +55,7 @@ export default function Home() {
                 <div className="flex h-5 w-full items-center justify-start">
                   {accent && (
                     <span
-                      className="chip"
+                      className="chip text-[13px] font-bold"
                       style={{ backgroundColor: accent.border, color: '#fff' }}
                     >
                       {accent.badge}

@@ -53,7 +53,7 @@
   }
 
   .card {
-    @apply rounded-2xl bg-white shadow-card border border-hairline;
+    @apply rounded-2xl bg-white shadow-card border border-hairline leading-[1.6];
   }
 
   .field {

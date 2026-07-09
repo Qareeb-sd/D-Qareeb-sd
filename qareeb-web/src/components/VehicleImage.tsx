@@ -29,13 +29,14 @@ export default function VehicleImage({
   }
 
   return (
-    <div className={`relative flex items-center justify-center overflow-hidden ${className ?? ''}`}>
+    <div className={`relative flex items-center justify-center overflow-hidden rounded-xl bg-white ${className ?? ''}`}>
+      {/* قصّ موحّد (object-cover) لتناسق كل بطاقات المركبات */}
       <img
         src={service.image}
         alt={service.name}
         loading="lazy"
         onError={() => setFailed(true)}
-        className="h-full w-full object-contain"
+        className="h-full w-full object-cover"
       />
     </div>
   )
