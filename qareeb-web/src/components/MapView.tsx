@@ -1,12 +1,7 @@
 import { useRef } from 'react'
-import { useJsApiLoader, GoogleMap, MarkerF, PolylineF } from '@react-google-maps/api'
-import {
-  GOOGLE_MAPS_API_KEY,
-  MAPS_LIBRARIES,
-  MAPS_LOADER_ID,
-  MAP_OPTIONS,
-  isMapsConfigured,
-} from '@/lib/maps'
+import { GoogleMap, MarkerF, PolylineF } from '@react-google-maps/api'
+import { MAP_OPTIONS, isMapsConfigured } from '@/lib/maps'
+import { useMaps } from '@/store/MapsContext'
 import { KHARTOUM } from '@/theme'
 
 // أيقونة السائق (سيارة داخل دائرة خضراء) كـ data-URI — لا تُحمَّل من قوقل.
@@ -45,11 +40,7 @@ export default function MapView({
   className = 'h-64 w-full rounded-2xl',
 }: MapViewProps) {
   const mapRef = useRef<google.maps.Map | null>(null)
-  const { isLoaded } = useJsApiLoader({
-    id: MAPS_LOADER_ID,
-    googleMapsApiKey: GOOGLE_MAPS_API_KEY,
-    libraries: MAPS_LIBRARIES,
-  })
+  const { isLoaded } = useMaps()
 
   if (!isMapsConfigured) {
     return (

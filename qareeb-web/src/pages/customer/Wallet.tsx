@@ -1,4 +1,5 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import BottomNav from '@/components/BottomNav'
 import Logo from '@/components/Logo'
 import { money } from '@/lib/format'
@@ -10,65 +11,59 @@ import {
   createTopup,
   uploadTopupProof,
 } from '@/lib/api'
-import type { Settings, Transaction, Wallet as WalletType } from '@/lib/types'
 
 /** محفظة قريب: الرصيد + التعبئة بتحويل بنكي ورفع إثبات + سجل المعاملات. */
 export default function Wallet() {
   const { profile } = useAuth()
   const userId = profile?.id ?? 'demo-user'
+  const qc = useQueryClient()
 
-  const [wallet, setWallet] = useState<WalletType | null>(null)
-  const [txs, setTxs] = useState<Transaction[]>([])
-  const [settings, setSettings] = useState<Settings | null>(null)
-  const [loading, setLoading] = useState(true)
+  // قراءات عبر react-query — إعادة محاولة تلقائية وتخزين مؤقت (يناسب الشبكة الضعيفة).
+  const { data: wallet, isLoading: walletLoading } = useQuery({
+    queryKey: ['wallet', userId],
+    queryFn: () => getWallet(userId),
+  })
+  const { data: settings } = useQuery({ queryKey: ['settings'], queryFn: getSettings })
+  const { data: txs = [], isLoading: txLoading } = useQuery({
+    queryKey: ['transactions', wallet?.id],
+    queryFn: () => listTransactions(wallet!.id),
+    enabled: Boolean(wallet?.id),
+  })
+  const loading = walletLoading || (Boolean(wallet) && txLoading)
 
   const [showTopup, setShowTopup] = useState(false)
   const [amount, setAmount] = useState('')
   const [proof, setProof] = useState<File | null>(null)
-  const [submitting, setSubmitting] = useState(false)
-  const [error, setError] = useState('')
   const [done, setDone] = useState(false)
 
-  useEffect(() => {
-    let alive = true
-    async function load() {
-      const [w, s] = await Promise.all([getWallet(userId), getSettings()])
-      if (!alive) return
-      setWallet(w)
-      setSettings(s)
-      if (w) setTxs(await listTransactions(w.id))
-      setLoading(false)
-    }
-    void load()
-    return () => {
-      alive = false
-    }
-  }, [userId])
+  const topupMut = useMutation({
+    mutationFn: async () => {
+      // ارفع إثبات التحويل (إن وُجد) إلى Storage ثم أرسل طلب التعبئة بمساره.
+      let proofPath: string | null = null
+      if (proof) {
+        const up = await uploadTopupProof(userId, proof)
+        if (up.error) throw new Error(`تعذّر رفع الإثبات: ${up.error}`)
+        proofPath = up.path ?? null
+      }
+      const { error } = await createTopup(wallet!.id, Number(amount), proofPath)
+      if (error) throw new Error(error)
+    },
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ['transactions', wallet?.id] })
+      void qc.invalidateQueries({ queryKey: ['wallet', userId] })
+      setDone(true)
+      setAmount('')
+      setProof(null)
+    },
+  })
 
-  const submitTopup = async (e: React.FormEvent) => {
+  const submitTopup = (e: React.FormEvent) => {
     e.preventDefault()
     if (!wallet) return
-    setError('')
-    setSubmitting(true)
-
-    // ارفع إثبات التحويل (إن وُجد) إلى Storage ثم أرسل طلب التعبئة بمساره.
-    let proofPath: string | null = null
-    if (proof) {
-      const up = await uploadTopupProof(userId, proof)
-      if (up.error) {
-        setSubmitting(false)
-        return setError(`تعذّر رفع الإثبات: ${up.error}`)
-      }
-      proofPath = up.path ?? null
-    }
-
-    const { error } = await createTopup(wallet.id, Number(amount), proofPath)
-    setSubmitting(false)
-    if (error) return setError(error)
-    setDone(true)
-    setAmount('')
-    setProof(null)
+    topupMut.mutate()
   }
+  const submitting = topupMut.isPending
+  const error = topupMut.error?.message ?? ''
 
   return (
     <div className="screen">

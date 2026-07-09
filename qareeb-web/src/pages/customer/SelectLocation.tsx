@@ -1,20 +1,14 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { useJsApiLoader } from '@react-google-maps/api'
 import Screen from '@/components/Screen'
 import MapView from '@/components/MapView'
 import { useRide } from '@/store/RideContext'
 import { useAuth } from '@/store/AuthContext'
+import { useMaps } from '@/store/MapsContext'
 import { DEFAULT_SERVICE_ID, getService } from '@/data/services'
 import { createRide, getServicePricing, getSettings } from '@/lib/api'
 import { estimateFare, estimateRoute } from '@/lib/pricing'
-import {
-  fetchRoute,
-  GOOGLE_MAPS_API_KEY,
-  MAPS_LIBRARIES,
-  MAPS_LOADER_ID,
-  isMapsConfigured,
-} from '@/lib/maps'
+import { fetchRoute, isMapsConfigured } from '@/lib/maps'
 import { km, mins, money } from '@/lib/format'
 import { KHARTOUM } from '@/theme'
 import type { Settings, ServicePricing } from '@/lib/types'
@@ -56,11 +50,7 @@ export default function SelectLocation() {
   const [quote, setQuote] = useState<Quote | null>(null)
   const [busy, setBusy] = useState(false)
 
-  const { isLoaded } = useJsApiLoader({
-    id: MAPS_LOADER_ID,
-    googleMapsApiKey: GOOGLE_MAPS_API_KEY,
-    libraries: MAPS_LIBRARIES,
-  })
+  const { isLoaded } = useMaps()
 
   const useMyLocation = () => {
     if (!navigator.geolocation) {
