@@ -169,6 +169,12 @@ qareeb-web/
 والترحيل — عبر Service Worker + جدول `push_subscriptions` + دالة Edge `push`.
 خطوات الإعداد والنشر ومفاتيح VAPID في **[`PUSH.md`](./PUSH.md)**.
 
+## تتبّع موقع السائق لحظياً (اكتمل)
+
+يبثّ السائق موقعه أثناء الرحلة عبر قناة **Broadcast** (بلا كتابة في القاعدة)،
+والراكب يراه نقطةً خضراء تتحرّك على الخريطة وتتبعه المركزية. `createLocationBroadcaster`
+/ `subscribeToDriverLocation` في `src/lib/realtime.ts`.
+
 ## إلغاء الرحلة (اكتمل)
 
 عبر دالة آمنة `cancel_ride`:

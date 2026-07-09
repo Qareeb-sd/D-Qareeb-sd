@@ -12,6 +12,8 @@ import { KHARTOUM } from '@/theme'
 interface MapViewProps {
   center?: google.maps.LatLngLiteral
   marker?: google.maps.LatLngLiteral
+  /** موقع السائق اللحظي (نقطة خضراء متحرّكة). */
+  driver?: google.maps.LatLngLiteral
   onCenterChanged?: (pos: google.maps.LatLngLiteral) => void
   /** يُستدعى عند سحب المستخدم للخريطة فعلياً (تفاعل حقيقي). */
   onUserDrag?: () => void
@@ -24,6 +26,7 @@ interface MapViewProps {
 export default function MapView({
   center = KHARTOUM,
   marker,
+  driver,
   onCenterChanged,
   onUserDrag,
   className = 'h-64 w-full rounded-2xl',
@@ -71,6 +74,20 @@ export default function MapView({
         onDragEnd={onUserDrag}
       >
         {marker && <MarkerF position={marker} />}
+        {driver && (
+          <MarkerF
+            position={driver}
+            zIndex={999}
+            icon={{
+              path: google.maps.SymbolPath.CIRCLE,
+              scale: 8,
+              fillColor: '#1B6B3F',
+              fillOpacity: 1,
+              strokeColor: '#ffffff',
+              strokeWeight: 3,
+            }}
+          />
+        )}
       </GoogleMap>
     </div>
   )

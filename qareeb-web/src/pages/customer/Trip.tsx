@@ -6,7 +6,7 @@ import VehicleImage from '@/components/VehicleImage'
 import { useRide } from '@/store/RideContext'
 import { useAuth } from '@/store/AuthContext'
 import { getService } from '@/data/services'
-import { subscribeToRide } from '@/lib/realtime'
+import { subscribeToRide, subscribeToDriverLocation } from '@/lib/realtime'
 import { getRideDriver, getActiveCustomerRide, cancelRide, type RideDriverInfo } from '@/lib/api'
 import { isSupabaseConfigured } from '@/lib/supabase'
 import { money } from '@/lib/format'
@@ -34,6 +34,7 @@ export default function Trip() {
   const total = fare ?? 0
   const [driver, setDriver] = useState<RideDriverInfo | null>(null)
   const [status, setStatus] = useState<RideStatus | null>(null)
+  const [driverPos, setDriverPos] = useState<google.maps.LatLngLiteral | null>(null)
   const [busy, setBusy] = useState(false)
 
   // استرجاع الرحلة الجارية بعد تحديث الصفحة (تُفقد الحالة من الذاكرة).
@@ -60,6 +61,13 @@ export default function Trip() {
       if (r) setStatus(r.status)
     })
   }, [status, profile?.id])
+
+  // موقع السائق اللحظي على الخريطة.
+  useEffect(() => {
+    if (!rideId) return
+    const unsub = subscribeToDriverLocation(rideId, setDriverPos)
+    return unsub
+  }, [rideId])
 
   // Realtime: تابع تقدّم الرحلة والانتقالات (اكتمال / تخلّي السائق / إلغاء).
   useEffect(() => {
@@ -96,7 +104,12 @@ export default function Trip() {
   return (
     <Screen title="رحلتك الآن" bare>
       <div className="flex h-full flex-col">
-        <MapView marker={dropoff?.pos} className="h-56 w-full" />
+        <MapView
+          marker={dropoff?.pos}
+          driver={driverPos ?? undefined}
+          center={driverPos ?? dropoff?.pos}
+          className="h-56 w-full"
+        />
 
         <div className="flex-1 space-y-4 p-4">
           {/* حالة الرحلة */}

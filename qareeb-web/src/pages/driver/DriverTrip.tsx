@@ -5,7 +5,7 @@ import MapView from '@/components/MapView'
 import { useDriver } from '@/store/DriverContext'
 import { useAuth } from '@/store/AuthContext'
 import { settleRide, setRideStatus, cancelRide, getSettings, getActiveDriverRide } from '@/lib/api'
-import { subscribeToRide } from '@/lib/realtime'
+import { subscribeToRide, createLocationBroadcaster } from '@/lib/realtime'
 import { getService } from '@/data/services'
 import { money } from '@/lib/format'
 
@@ -50,6 +50,21 @@ export default function DriverTrip() {
       alive = false
     }
   }, [activeRide, profile?.id, setActiveRide])
+
+  // بثّ موقع السائق اللحظي للراكب طوال وجوده في شاشة الرحلة.
+  useEffect(() => {
+    if (!activeRide?.id || !('geolocation' in navigator)) return
+    const broadcaster = createLocationBroadcaster(activeRide.id)
+    const watchId = navigator.geolocation.watchPosition(
+      (p) => broadcaster.send({ lat: p.coords.latitude, lng: p.coords.longitude }),
+      undefined,
+      { enableHighAccuracy: true, maximumAge: 5000, timeout: 15000 },
+    )
+    return () => {
+      navigator.geolocation.clearWatch(watchId)
+      broadcaster.stop()
+    }
+  }, [activeRide?.id])
 
   // Realtime: إن ألغى الراكب الرحلة، أبلغ السائق وأعده لقائمة الطلبات.
   useEffect(() => {
