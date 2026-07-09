@@ -1,33 +1,25 @@
-import { useEffect, useState } from 'react'
+import { useQuery } from '@tanstack/react-query'
 import Logo from '@/components/Logo'
 import DriverNav from '@/components/DriverNav'
 import { useAuth } from '@/store/AuthContext'
 import { getWallet, listDriverTransactions } from '@/lib/api'
 import { money } from '@/lib/format'
-import type { Transaction, Wallet } from '@/lib/types'
 
 /** محفظة السائق: الرصيد + الأرباح والعمولة المخصومة + سجل المعاملات. */
 export default function DriverWallet() {
   const { profile } = useAuth()
   const userId = profile?.id ?? 'demo-user'
 
-  const [wallet, setWallet] = useState<Wallet | null>(null)
-  const [txs, setTxs] = useState<Transaction[]>([])
-  const [loading, setLoading] = useState(true)
-
-  useEffect(() => {
-    let alive = true
-    void (async () => {
-      const w = await getWallet(userId)
-      if (!alive) return
-      setWallet(w)
-      if (w) setTxs(await listDriverTransactions(w.id))
-      setLoading(false)
-    })()
-    return () => {
-      alive = false
-    }
-  }, [userId])
+  const { data: wallet, isLoading: walletLoading } = useQuery({
+    queryKey: ['driver-wallet', userId],
+    queryFn: () => getWallet(userId),
+  })
+  const { data: txs = [], isLoading: txLoading } = useQuery({
+    queryKey: ['driver-transactions', wallet?.id],
+    queryFn: () => listDriverTransactions(wallet!.id),
+    enabled: Boolean(wallet?.id),
+  })
+  const loading = walletLoading || (Boolean(wallet) && txLoading)
 
   const earnings = txs
     .filter((t) => t.type === 'ride_earning')

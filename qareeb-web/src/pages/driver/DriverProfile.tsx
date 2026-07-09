@@ -1,19 +1,18 @@
-import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { useQuery } from '@tanstack/react-query'
 import DriverNav from '@/components/DriverNav'
 import { useAuth } from '@/store/AuthContext'
 import { getDriver } from '@/lib/api'
 import { getService } from '@/data/services'
-import type { Driver } from '@/lib/types'
 
 export default function DriverProfile() {
   const navigate = useNavigate()
   const { profile, signOut } = useAuth()
-  const [driver, setDriver] = useState<Driver | null>(null)
-
-  useEffect(() => {
-    void getDriver(profile?.id ?? 'demo-user').then(setDriver)
-  }, [profile?.id])
+  const userId = profile?.id ?? 'demo-user'
+  const { data: driver } = useQuery({
+    queryKey: ['driver', userId],
+    queryFn: () => getDriver(userId),
+  })
 
   const logout = async () => {
     await signOut()
