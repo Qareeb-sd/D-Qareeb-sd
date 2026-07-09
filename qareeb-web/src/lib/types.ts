@@ -139,6 +139,35 @@ export interface CommuteMember {
   created_at: string
 }
 
+// ---------- طلبات الانضمام كسائق (KYC) ----------
+export type DriverAppStatus = 'pending' | 'approved' | 'rejected'
+
+/** طلب انضمام سائق — بياناته ووثائقه وحالة اعتماده. */
+export interface DriverApplication {
+  id: string
+  user_id: string
+  full_name: string
+  phone: string
+  email: string | null
+  vehicle_type: string
+  plate_number: string
+  is_rented: boolean
+  residence: string | null
+  driving_license_url: string | null
+  vehicle_license_url: string | null
+  rental_contract_url: string | null
+  transport_permit_url: string | null
+  photo_front_url: string | null
+  photo_back_url: string | null
+  photo_side_url: string | null
+  photo_interior_url: string | null
+  status: DriverAppStatus
+  review_note: string | null
+  reviewed_by: string | null
+  created_at: string
+  updated_at: string
+}
+
 // نوع Database مبسّط لعميل supabase-js. وسّعه عند الحاجة.
 export interface Database {
   public: {
@@ -169,12 +198,22 @@ export interface Database {
         Insert: Partial<CommuteMember>
         Update: Partial<CommuteMember>
       }
+      driver_applications: {
+        Row: DriverApplication
+        Insert: Partial<DriverApplication>
+        Update: Partial<DriverApplication>
+      }
     }
     Views: Record<string, never>
     Functions: {
       approve_topup: { Args: { p_topup: string }; Returns: undefined }
       reject_topup: { Args: { p_topup: string }; Returns: undefined }
       settle_ride: { Args: { p_ride: string }; Returns: undefined }
+      approve_driver_application: { Args: { p_app: string }; Returns: undefined }
+      reject_driver_application: {
+        Args: { p_app: string; p_note?: string | null }
+        Returns: undefined
+      }
       get_ride_driver: {
         Args: { p_ride: string }
         Returns: {

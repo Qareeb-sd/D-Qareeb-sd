@@ -20,9 +20,9 @@ import CommuteOrder from '@/pages/customer/CommuteOrder'
 import CommuteJoin from '@/pages/customer/CommuteJoin'
 import Rides from '@/pages/customer/Rides'
 import Profile from '@/pages/customer/Profile'
-import BecomeDriver from '@/pages/customer/BecomeDriver'
 
 // السائق
+import DriverRegister from '@/pages/driver/DriverRegister'
 import DriverHome from '@/pages/driver/DriverHome'
 import DriverTrip from '@/pages/driver/DriverTrip'
 import DriverWallet from '@/pages/driver/DriverWallet'
@@ -64,7 +64,9 @@ export default function App() {
           <Route path="/commute/:id" element={guard(<CommuteOrder />)} />
           <Route path="/rides" element={guard(<Rides />)} />
           <Route path="/profile" element={guard(<Profile />)} />
-          <Route path="/become-driver" element={guard(<BecomeDriver />)} />
+
+          {/* تسجيل الانضمام كسائق — متاح لأي مستخدم مسجّل (قبل اعتماد الدور) */}
+          <Route path="/driver/register" element={guard(<DriverRegister />)} />
 
           {/* السائق (محمي بدور driver) */}
           <Route path="/driver" element={driverGuard(<DriverHome />)} />

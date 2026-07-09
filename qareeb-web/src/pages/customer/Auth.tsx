@@ -17,14 +17,23 @@ export default function Auth() {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
 
-  const submit = async (e: React.FormEvent) => {
-    e.preventDefault()
+  const doLogin = async (target: string) => {
     setError('')
     setBusy(true)
     const { error } = await signInWithPhone(phone, password, name || undefined)
     setBusy(false)
     if (error) return setError(error)
-    navigate('/home')
+    navigate(target)
+  }
+
+  const submit = (e: React.FormEvent) => {
+    e.preventDefault()
+    void doLogin('/home')
+  }
+
+  const driverLogin = () => {
+    if (!phone || !password) return setError('أدخل رقم الهاتف وكلمة السر أولاً.')
+    void doLogin('/driver')
   }
 
   return (
@@ -79,6 +88,16 @@ export default function Auth() {
           {busy ? '…' : 'دخول'}
         </button>
       </form>
+
+      <div className="my-5 flex items-center gap-3 text-xs text-ink-muted">
+        <span className="h-px flex-1 bg-hairline" />
+        أو
+        <span className="h-px flex-1 bg-hairline" />
+      </div>
+
+      <button type="button" onClick={driverLogin} disabled={busy} className="btn-outline w-full">
+        🧑🏽‍✈️ الدخول أو الانضمام كسائق
+      </button>
 
       <p className="mt-6 text-center text-xs text-ink-muted">
         تسجيل حساب جديد عبر واتساب — قريباً.

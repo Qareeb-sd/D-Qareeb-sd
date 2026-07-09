@@ -500,6 +500,119 @@ create policy "read own or admin proof" on storage.objects
   );
 
 -- ============================================================
+--  طلبات الانضمام كسائق (KYC) + وثائقها + اعتمادها من الأدمن
+-- ============================================================
+do $$ begin
+  create type driver_app_status as enum ('pending', 'approved', 'rejected');
+exception when duplicate_object then null; end $$;
+
+create table if not exists public.driver_applications (
+  id                   uuid primary key default gen_random_uuid(),
+  user_id              uuid not null references public.users(id) on delete cascade,
+  full_name            text not null,
+  phone                text not null,
+  email                text,
+  vehicle_type         text not null,               -- من كتالوج الخدمات
+  plate_number         text not null,               -- لوحة السيارة
+  is_rented            boolean not null default false,
+  residence            text,                         -- السكن / العنوان
+  -- الوثائق والصور (مسارات داخل bucket خاص "driver-docs")
+  driving_license_url  text,                         -- رخصة القيادة
+  vehicle_license_url  text,                         -- رخصة/استمارة السيارة
+  rental_contract_url  text,                         -- عقد الإيجار (إن كانت مستأجرة)
+  transport_permit_url text,                         -- تصريح النقل
+  photo_front_url      text,                         -- صورة أمامية
+  photo_back_url       text,                         -- صورة خلفية
+  photo_side_url       text,                         -- صورة جانبية (الأطراف)
+  photo_interior_url   text,                         -- صورة داخلية
+  status               driver_app_status not null default 'pending',
+  review_note          text,                         -- سبب الرفض (اختياري)
+  reviewed_by          uuid references public.users(id) on delete set null,
+  created_at           timestamptz not null default now(),
+  updated_at           timestamptz not null default now()
+);
+create index if not exists driver_apps_status_idx on public.driver_applications(status);
+create index if not exists driver_apps_user_idx on public.driver_applications(user_id);
+
+alter table public.driver_applications enable row level security;
+
+-- المستخدم ينشئ/يقرأ/يحدّث طلبه فقط
+drop policy if exists "own driver application" on public.driver_applications;
+create policy "own driver application" on public.driver_applications
+  for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
+
+-- الأدمن يقرأ كل الطلبات (الاعتماد/الرفض عبر دوال security definer أدناه)
+drop policy if exists "admin read driver apps" on public.driver_applications;
+create policy "admin read driver apps" on public.driver_applications
+  for select using (public.is_admin());
+
+-- اعتماد طلب سائق: يعلّمه approved، يُنشئ/يحدّث صفّ السائق، ويرقّي الدور — ذرّياً.
+create or replace function public.approve_driver_application(p_app uuid)
+returns void language plpgsql security definer set search_path = public as $$
+declare
+  v_user   uuid;
+  v_vtype  text;
+  v_plate  text;
+  v_status driver_app_status;
+  v_driver uuid;
+begin
+  if not public.is_admin() then raise exception 'غير مصرّح'; end if;
+
+  select user_id, vehicle_type, plate_number, status
+    into v_user, v_vtype, v_plate, v_status
+    from public.driver_applications where id = p_app for update;
+
+  if v_user is null then raise exception 'الطلب غير موجود'; end if;
+  if v_status <> 'pending' then raise exception 'الطلب روجع مسبقاً'; end if;
+
+  update public.driver_applications
+    set status = 'approved', reviewed_by = auth.uid(), updated_at = now()
+    where id = p_app;
+
+  select id into v_driver from public.drivers where user_id = v_user;
+  if v_driver is null then
+    insert into public.drivers (user_id, vehicle_type, plate_number)
+      values (v_user, v_vtype, v_plate);
+  else
+    update public.drivers set vehicle_type = v_vtype, plate_number = v_plate
+      where id = v_driver;
+  end if;
+
+  update public.users set role = 'driver' where id = v_user;
+end $$;
+
+-- رفض طلب سائق (مع سبب اختياري)
+create or replace function public.reject_driver_application(p_app uuid, p_note text default null)
+returns void language plpgsql security definer set search_path = public as $$
+begin
+  if not public.is_admin() then raise exception 'غير مصرّح'; end if;
+  update public.driver_applications
+    set status = 'rejected', review_note = p_note, reviewed_by = auth.uid(), updated_at = now()
+    where id = p_app and status = 'pending';
+end $$;
+
+-- التخزين: وثائق السائق (bucket خاص driver-docs)
+insert into storage.buckets (id, name, public)
+  values ('driver-docs', 'driver-docs', false)
+  on conflict (id) do nothing;
+
+drop policy if exists "upload own driver doc" on storage.objects;
+create policy "upload own driver doc" on storage.objects
+  for insert to authenticated
+  with check (
+    bucket_id = 'driver-docs'
+    and (storage.foldername(name))[1] = auth.uid()::text
+  );
+
+drop policy if exists "read own or admin driver doc" on storage.objects;
+create policy "read own or admin driver doc" on storage.objects
+  for select to authenticated
+  using (
+    bucket_id = 'driver-docs'
+    and ((storage.foldername(name))[1] = auth.uid()::text or public.is_admin())
+  );
+
+-- ============================================================
 --  Realtime: تفعيل النشر على جدول الرحلات
 --  (يمكّن اشتراكات العميل/السائق اللحظية على تغيّرات rides)
 -- ============================================================
@@ -508,7 +621,7 @@ declare
   t text;
 begin
   if exists (select 1 from pg_publication where pubname = 'supabase_realtime') then
-    foreach t in array array['rides', 'commute_orders', 'commute_members'] loop
+    foreach t in array array['rides', 'commute_orders', 'commute_members', 'driver_applications'] loop
       if not exists (
         select 1 from pg_publication_tables
         where pubname = 'supabase_realtime' and schemaname = 'public' and tablename = t

@@ -123,10 +123,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     },
 
     async refreshProfile() {
-      if (!isSupabaseConfigured) {
-        setProfile((p) => (p ? { ...p, role: 'driver' } : p))
-        return
-      }
+      if (!isSupabaseConfigured) return
       const uid = session?.user?.id
       if (uid) await loadProfile(uid)
     },

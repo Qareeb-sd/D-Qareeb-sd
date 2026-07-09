@@ -7,6 +7,8 @@ import type {
   Topup,
   Driver,
   ServicePricing,
+  DriverApplication,
+  DriverAppStatus,
 } from './types'
 
 /**
@@ -378,36 +380,104 @@ export async function getDriver(userId: string): Promise<Driver | null> {
   return data ?? null
 }
 
-/**
- * تسجيل المستخدم كسائق: يُنشئ/يحدّث صفّ السائق (نوع المركبة + اللوحة) ويرقّي الدور.
- * يعتمد على سياسات RLS: "own driver row" و "own profile" (المستخدم يدير بياناته).
- */
-export async function registerDriver(
+// ============================================================
+//  طلبات الانضمام كسائق (KYC + وثائق + اعتماد)
+// ============================================================
+const DRIVER_DOCS_BUCKET = 'driver-docs'
+
+/** نوع الوثيقة/الصورة — يُستخدم اسماً منطقياً في مسار الملف. */
+export type DriverDocKind =
+  | 'driving_license'
+  | 'vehicle_license'
+  | 'rental_contract'
+  | 'transport_permit'
+  | 'photo_front'
+  | 'photo_back'
+  | 'photo_side'
+  | 'photo_interior'
+
+/** يرفع وثيقة/صورة سائق إلى مجلد المستخدم ويرجّع مسارها داخل الـ bucket. */
+export async function uploadDriverDoc(
   userId: string,
-  vehicleType: string,
-  plateNumber: string,
+  kind: DriverDocKind,
+  file: File,
+): Promise<{ path?: string; error?: string }> {
+  if (!isSupabaseConfigured) return { path: `demo/${kind}` }
+  const ext = file.name.split('.').pop()?.replace(/[^\w]+/g, '') || 'bin'
+  const path = `${userId}/${kind}-${Date.now()}.${ext}`
+  const { error } = await supabase.storage
+    .from(DRIVER_DOCS_BUCKET)
+    .upload(path, file, { upsert: true })
+  return error ? { error: error.message } : { path }
+}
+
+/** رابط موقّع مؤقت لعرض وثيقة السائق (الـ bucket خاص). */
+export async function getDriverDocUrl(path: string): Promise<string | null> {
+  if (!isSupabaseConfigured) return null
+  const { data } = await supabase.storage.from(DRIVER_DOCS_BUCKET).createSignedUrl(path, 3600)
+  return data?.signedUrl ?? null
+}
+
+export type DriverApplicationInput = Omit<
+  DriverApplication,
+  'id' | 'status' | 'review_note' | 'reviewed_by' | 'created_at' | 'updated_at'
+>
+
+/** يُنشئ طلب انضمام سائق (حالته pending حتى يعتمده الأدمن). */
+export async function submitDriverApplication(
+  input: DriverApplicationInput,
 ): Promise<{ error?: string }> {
   if (!isSupabaseConfigured) return {}
+  const { error } = await supabase
+    .from('driver_applications')
+    .insert({ ...input, status: 'pending' })
+  return error ? { error: error.message } : {}
+}
 
-  const existing = await getDriver(userId)
-  if (existing) {
-    const { error } = await supabase
-      .from('drivers')
-      .update({ vehicle_type: vehicleType, plate_number: plateNumber })
-      .eq('id', existing.id)
-    if (error) return { error: error.message }
-  } else {
-    const { error } = await supabase
-      .from('drivers')
-      .insert({ user_id: userId, vehicle_type: vehicleType, plate_number: plateNumber })
-    if (error) return { error: error.message }
-  }
+/** آخر طلب انضمام للمستخدم الحالي (لعرض حالته: قيد المراجعة/مرفوض/معتمد). */
+export async function getMyDriverApplication(
+  userId: string,
+): Promise<DriverApplication | null> {
+  if (!isSupabaseConfigured) return null
+  const { data } = await supabase
+    .from('driver_applications')
+    .select('*')
+    .eq('user_id', userId)
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle()
+  return data ?? null
+}
 
-  const { error: roleError } = await supabase
-    .from('users')
-    .update({ role: 'driver' })
-    .eq('id', userId)
-  return roleError ? { error: roleError.message } : {}
+// ---------- الأدمن: مراجعة الطلبات ----------
+export async function listDriverApplications(
+  status: DriverAppStatus = 'pending',
+): Promise<DriverApplication[]> {
+  if (!isSupabaseConfigured) return []
+  const { data } = await supabase
+    .from('driver_applications')
+    .select('*')
+    .eq('status', status)
+    .order('created_at', { ascending: true })
+  return data ?? []
+}
+
+export async function approveDriverApplication(id: string): Promise<{ error?: string }> {
+  if (!isSupabaseConfigured) return {}
+  const { error } = await supabase.rpc('approve_driver_application', { p_app: id })
+  return error ? { error: error.message } : {}
+}
+
+export async function rejectDriverApplication(
+  id: string,
+  note?: string,
+): Promise<{ error?: string }> {
+  if (!isSupabaseConfigured) return {}
+  const { error } = await supabase.rpc('reject_driver_application', {
+    p_app: id,
+    p_note: note ?? null,
+  })
+  return error ? { error: error.message } : {}
 }
 
 export async function setDriverOnline(

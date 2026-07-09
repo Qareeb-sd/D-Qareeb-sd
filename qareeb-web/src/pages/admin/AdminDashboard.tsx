@@ -11,9 +11,14 @@ import {
   getProofUrl,
   listServicePricing,
   updateServicePricing,
+  listDriverApplications,
+  approveDriverApplication,
+  rejectDriverApplication,
+  getDriverDocUrl,
   type AdminStats,
 } from '@/lib/api'
-import type { Settings, Topup, ServicePricing } from '@/lib/types'
+import { getService } from '@/data/services'
+import type { Settings, Topup, ServicePricing, DriverApplication } from '@/lib/types'
 
 /**
  * لوحة الأدمن: إحصاءات + اعتماد التعبئات + إعدادات المنصة (عمولة/Surge/شرائح/بنك)
@@ -24,24 +29,48 @@ export default function AdminDashboard() {
   const [topups, setTopups] = useState<Topup[]>([])
   const [settings, setSettings] = useState<Settings | null>(null)
   const [pricing, setPricing] = useState<ServicePricing[]>([])
+  const [driverApps, setDriverApps] = useState<DriverApplication[]>([])
   const [busyId, setBusyId] = useState<string | null>(null)
   const [savedMsg, setSavedMsg] = useState('')
   const [priceMsg, setPriceMsg] = useState('')
 
   useEffect(() => {
     void (async () => {
-      const [s, t, cfg, pr] = await Promise.all([
+      const [s, t, cfg, pr, apps] = await Promise.all([
         getAdminStats(),
         listPendingTopups(),
         getSettings(),
         listServicePricing(),
+        listDriverApplications('pending'),
       ])
       setStats(s)
       setTopups(t)
       setSettings(cfg)
       setPricing(pr)
+      setDriverApps(apps)
     })()
   }, [])
+
+  const viewDoc = async (path: string | null) => {
+    if (!path) return alert('لا توجد وثيقة مرفقة')
+    const url = await getDriverDocUrl(path)
+    if (url) window.open(url, '_blank', 'noopener')
+    else alert('عرض الوثيقة غير متاح في وضع المعاينة')
+  }
+
+  const reviewDriver = async (app: DriverApplication, approve: boolean) => {
+    let note: string | undefined
+    if (!approve) {
+      note = window.prompt('سبب الرفض (اختياري):') ?? undefined
+    }
+    setBusyId(app.id)
+    const { error } = approve
+      ? await approveDriverApplication(app.id)
+      : await rejectDriverApplication(app.id, note)
+    setBusyId(null)
+    if (error) return alert(error)
+    setDriverApps((cur) => cur.filter((a) => a.id !== app.id))
+  }
 
   const viewProof = async (path: string) => {
     const url = await getProofUrl(path)
@@ -152,6 +181,87 @@ export default function AdminDashboard() {
                   >
                     رفض
                   </button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* طلبات الانضمام كسائق */}
+        <div className="card p-4">
+          <p className="mb-3 font-bold">
+            طلبات الانضمام كسائق
+            {driverApps.length > 0 && (
+              <span className="mr-2 chip bg-green-soft text-green">{driverApps.length}</span>
+            )}
+          </p>
+          {driverApps.length === 0 ? (
+            <p className="py-4 text-center text-sm text-ink-muted">لا توجد طلبات معلّقة</p>
+          ) : (
+            <div className="space-y-3">
+              {driverApps.map((a) => (
+                <div key={a.id} className="rounded-2xl border border-hairline p-3">
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0">
+                      <p className="font-bold">{a.full_name}</p>
+                      <p className="text-xs text-ink-muted" dir="ltr">
+                        {a.phone}
+                        {a.email ? ` · ${a.email}` : ''}
+                      </p>
+                      <p className="mt-1 text-sm text-ink-soft">
+                        {getService(a.vehicle_type)?.name ?? a.vehicle_type} · {a.plate_number}
+                        {a.is_rented ? ' · مستأجرة' : ''}
+                      </p>
+                      {a.residence && (
+                        <p className="text-xs text-ink-muted">📍 {a.residence}</p>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* الوثائق */}
+                  <div className="mt-2 flex flex-wrap gap-1.5">
+                    {(
+                      [
+                        ['رخصة القيادة', a.driving_license_url],
+                        ['رخصة السيارة', a.vehicle_license_url],
+                        ['تصريح النقل', a.transport_permit_url],
+                        ...(a.is_rented ? [['عقد الإيجار', a.rental_contract_url] as const] : []),
+                        ['أمامية', a.photo_front_url],
+                        ['خلفية', a.photo_back_url],
+                        ['جانبية', a.photo_side_url],
+                        ['داخلية', a.photo_interior_url],
+                      ] as [string, string | null][]
+                    ).map(([label, path]) => (
+                      <button
+                        key={label}
+                        onClick={() => viewDoc(path)}
+                        className={`rounded-lg px-2 py-1 text-xs ${
+                          path
+                            ? 'bg-green-soft text-green'
+                            : 'bg-hairline text-ink-muted line-through'
+                        }`}
+                      >
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+
+                  <div className="mt-3 flex gap-2">
+                    <button
+                      onClick={() => reviewDriver(a, true)}
+                      disabled={busyId === a.id}
+                      className="btn-primary flex-1 py-1.5 text-sm"
+                    >
+                      اعتماد
+                    </button>
+                    <button
+                      onClick={() => reviewDriver(a, false)}
+                      disabled={busyId === a.id}
+                      className="btn-outline flex-1 py-1.5 text-sm text-danger"
+                    >
+                      رفض
+                    </button>
+                  </div>
                 </div>
               ))}
             </div>
