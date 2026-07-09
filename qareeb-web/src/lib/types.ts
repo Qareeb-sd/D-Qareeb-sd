@@ -215,6 +215,17 @@ export interface Database {
         Args: { p_app: string; p_note?: string | null }
         Returns: undefined
       }
+      admin_financial_summary: {
+        Args: Record<string, never>
+        Returns: {
+          platform_commission: number
+          total_topups: number
+          ride_payments: number
+          driver_earnings: number
+          completed_rides: number
+          wallet_liability: number
+        }[]
+      }
       get_ride_driver: {
         Args: { p_ride: string }
         Returns: {

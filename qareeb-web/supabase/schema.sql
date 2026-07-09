@@ -309,6 +309,42 @@ drop policy if exists "admin read topups" on public.topups;
 create policy "admin read topups" on public.topups
   for select using (public.is_admin());
 
+-- الأدمن يقرأ كل السائقين والرحلات والمعاملات (للقوائم والملخّص المالي)
+drop policy if exists "admin read drivers" on public.drivers;
+create policy "admin read drivers" on public.drivers
+  for select using (public.is_admin());
+
+drop policy if exists "admin read rides" on public.rides;
+create policy "admin read rides" on public.rides
+  for select using (public.is_admin());
+
+drop policy if exists "admin read transactions" on public.transactions;
+create policy "admin read transactions" on public.transactions
+  for select using (public.is_admin());
+
+-- ملخّص مالي للمنصة (أدمن فقط) — إجماليات من جدول المعاملات والمحافظ.
+create or replace function public.admin_financial_summary()
+returns table (
+  platform_commission numeric,   -- إجمالي عمولة المنصة
+  total_topups        numeric,   -- إجمالي التعبئات المعتمدة
+  ride_payments       numeric,   -- إجمالي ما دفعه العملاء (محفظة)
+  driver_earnings     numeric,   -- إجمالي أرباح السائقين (إجمالي الأجرة)
+  completed_rides     bigint,    -- عدد الرحلات المكتملة
+  wallet_liability    numeric    -- مجموع أرصدة كل المحافظ
+) language plpgsql stable security definer set search_path = public as $$
+begin
+  if not public.is_admin() then raise exception 'غير مصرّح'; end if;
+  return query
+    select
+      coalesce(-sum(t.amount) filter (where t.type = 'commission'), 0),
+      coalesce( sum(t.amount) filter (where t.type = 'topup'), 0),
+      coalesce(-sum(t.amount) filter (where t.type = 'ride_payment'), 0),
+      coalesce( sum(t.amount) filter (where t.type = 'ride_earning'), 0),
+      (select count(*) from public.rides where status = 'completed'),
+      coalesce((select sum(balance) from public.wallets), 0)
+    from public.transactions t;
+end $$;
+
 -- الأدمن يعدّل الإعدادات (العمولة + Surge + الشرائح + الحساب البنكي)
 drop policy if exists "admin write settings" on public.settings;
 create policy "admin write settings" on public.settings

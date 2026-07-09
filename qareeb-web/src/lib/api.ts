@@ -349,6 +349,76 @@ export async function getAdminStats(): Promise<AdminStats> {
   }
 }
 
+// ---------- الأدمن: قوائم مستقلة ----------
+export interface AdminDriverRow extends Driver {
+  users?: { full_name: string | null; phone: string } | null
+}
+
+const demoAdminDrivers: AdminDriverRow[] = [
+  {
+    id: 'd1',
+    user_id: 'u1',
+    vehicle_type: 'amjad',
+    plate_number: 'خ ط م ١٢٣٤',
+    is_online: true,
+    rating: 4.9,
+    created_at: new Date().toISOString(),
+    users: { full_name: 'عثمان الطيب', phone: '+249900000001' },
+  },
+  {
+    id: 'd2',
+    user_id: 'u2',
+    vehicle_type: 'hiace',
+    plate_number: 'خ ط م ٥٦٧٨',
+    is_online: false,
+    rating: 4.7,
+    created_at: new Date().toISOString(),
+    users: { full_name: 'مريم عبدالله', phone: '+249900000002' },
+  },
+]
+
+export async function listAllDrivers(): Promise<AdminDriverRow[]> {
+  if (!isSupabaseConfigured) return demoAdminDrivers
+  const { data } = await supabase
+    .from('drivers')
+    .select('*, users(full_name, phone)')
+    .order('is_online', { ascending: false })
+  return (data as AdminDriverRow[]) ?? []
+}
+
+export async function listAllRides(limit = 50): Promise<Ride[]> {
+  if (!isSupabaseConfigured) return demoRides
+  const { data } = await supabase
+    .from('rides')
+    .select('*')
+    .order('created_at', { ascending: false })
+    .limit(limit)
+  return data ?? []
+}
+
+export interface FinancialSummary {
+  platform_commission: number
+  total_topups: number
+  ride_payments: number
+  driver_earnings: number
+  completed_rides: number
+  wallet_liability: number
+}
+
+export async function getFinancialSummary(): Promise<FinancialSummary | null> {
+  if (!isSupabaseConfigured)
+    return {
+      platform_commission: 184500,
+      total_topups: 640000,
+      ride_payments: 210300,
+      driver_earnings: 1230000,
+      completed_rides: 342,
+      wallet_liability: 418200,
+    }
+  const { data } = await supabase.rpc('admin_financial_summary')
+  return (Array.isArray(data) ? data[0] : data) ?? null
+}
+
 export async function updateSettings(
   patch: Partial<Settings>,
 ): Promise<{ error?: string }> {
