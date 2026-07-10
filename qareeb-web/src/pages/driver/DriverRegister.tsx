@@ -4,7 +4,7 @@ import Screen from '@/components/Screen'
 import VehicleImage from '@/components/VehicleImage'
 import { useAuth } from '@/store/AuthContext'
 import { isSupabaseConfigured } from '@/lib/supabase'
-import { services } from '@/data/services'
+import { services, getService } from '@/data/services'
 import {
   submitDriverApplication,
   getMyDriverApplication,
@@ -13,15 +13,18 @@ import {
 } from '@/lib/api'
 import type { DriverApplication } from '@/lib/types'
 
-/** حقول الوثائق/الصور المطلوبة (المفتاح = نوع الوثيقة، والقيمة = التسمية). */
-const docFields: { kind: DriverDocKind; label: string; photo?: boolean }[] = [
-  { kind: 'driving_license', label: 'رخصة القيادة' },
-  { kind: 'vehicle_license', label: 'رخصة/استمارة السيارة' },
-  { kind: 'transport_permit', label: 'تصريح النقل' },
-  { kind: 'photo_front', label: 'صورة السيارة — أمامية', photo: true },
-  { kind: 'photo_back', label: 'صورة السيارة — خلفية', photo: true },
-  { kind: 'photo_side', label: 'صورة السيارة — جانبية/الأطراف', photo: true },
-  { kind: 'photo_interior', label: 'صورة السيارة — من الداخل', photo: true },
+/**
+ * حقول الوثائق/الصور المطلوبة. تسميات الصور تتكيّف مع نوع المركبة
+ * (noun) فتقول «صورة السحّاب/الركشة/الهايس…» بدل «السيارة» دائماً.
+ */
+const docFields: { kind: DriverDocKind; label: (noun: string) => string; photo?: boolean }[] = [
+  { kind: 'driving_license', label: () => 'رخصة القيادة' },
+  { kind: 'vehicle_license', label: (n) => `رخصة/استمارة ${n}` },
+  { kind: 'transport_permit', label: () => 'تصريح النقل' },
+  { kind: 'photo_front', label: (n) => `صورة ${n} — أمامية`, photo: true },
+  { kind: 'photo_back', label: (n) => `صورة ${n} — خلفية`, photo: true },
+  { kind: 'photo_side', label: (n) => `صورة ${n} — جانبية/الأطراف`, photo: true },
+  { kind: 'photo_interior', label: (n) => `صورة ${n} — من الداخل`, photo: true },
 ]
 
 const urlKey: Record<DriverDocKind, keyof DriverApplication> = {
@@ -58,6 +61,9 @@ export default function DriverRegister() {
   const [files, setFiles] = useState<Partial<Record<DriverDocKind, File>>>({})
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
+
+  // اسم المركبة المختارة للصياغة (السحّاب/الركشة/الهايس…).
+  const noun = getService(vehicleType)?.noun ?? 'المركبة'
 
   useEffect(() => {
     void getMyDriverApplication(userId).then((a) => {
@@ -233,7 +239,7 @@ export default function DriverRegister() {
                     onClick={() => setVehicleType(s.id)}
                     className={`flex items-center gap-2 rounded-2xl border p-2.5 text-right transition ${
                       vehicleType === s.id
-                        ? 'border-green bg-green-soft font-bold text-green'
+                        ? 'border-lemon bg-lemon/20 font-bold text-green-dark'
                         : 'border-hairline bg-white text-ink-soft'
                     }`}
                   >
@@ -262,7 +268,7 @@ export default function DriverRegister() {
 
             {/* الوثائق والصور */}
             <div className="space-y-3">
-              <p className="label">الوثائق وصور السيارة</p>
+              <p className="label">الوثائق وصور {noun}</p>
               {isRented && (
                 <FileField
                   label="عقد الإيجار"
@@ -273,7 +279,7 @@ export default function DriverRegister() {
               {docFields.map((d) => (
                 <FileField
                   key={d.kind}
-                  label={d.label}
+                  label={d.label(noun)}
                   photo={d.photo}
                   file={files[d.kind] ?? null}
                   onChange={(f) => setFile(d.kind, f)}
@@ -307,7 +313,7 @@ function FileField({
       <span className="text-xl">{photo ? '📷' : '📄'}</span>
       <div className="min-w-0 flex-1">
         <p className="truncate text-sm font-medium">{label}</p>
-        {file && <p className="truncate text-xs text-green">{file.name}</p>}
+        {file && <p className="truncate text-xs text-green-dark">{file.name}</p>}
       </div>
       <input
         ref={inputRef}
@@ -321,7 +327,7 @@ function FileField({
         type="button"
         onClick={() => inputRef.current?.click()}
         className={`shrink-0 rounded-xl px-3 py-1.5 text-sm font-bold ${
-          file ? 'bg-green-soft text-green' : 'bg-hairline text-ink-soft'
+          file ? 'bg-lemon/25 text-green-dark' : 'bg-hairline text-ink-soft'
         }`}
       >
         {file ? 'تغيير' : 'إرفاق'}

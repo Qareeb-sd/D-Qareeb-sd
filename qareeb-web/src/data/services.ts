@@ -19,6 +19,7 @@ export interface Service {
   art: VehicleArt
   tint: string
   seats: number
+  noun: string // اسم المركبة في الصياغة، مثل «السحّاب»/«الركشة» (لنماذج التسجيل)
   femaleDriver?: boolean
   sharable?: boolean // يدعم ترحيل
   destinationOptional?: boolean // الوجهة اختيارية (مشوار مفتوح)
@@ -33,6 +34,7 @@ export const services: Service[] = [
     art: 'sedan',
     tint: '#EDEFEC',
     seats: 4,
+    noun: 'السيارة',
     sharable: true,
   },
   {
@@ -43,6 +45,7 @@ export const services: Service[] = [
     art: 'ladies',
     tint: '#E85C9E',
     seats: 4,
+    noun: 'السيارة',
     femaleDriver: true,
     sharable: true,
   },
@@ -54,6 +57,7 @@ export const services: Service[] = [
     art: 'microbus',
     tint: '#3A6FB0',
     seats: 7,
+    noun: 'الأمجاد',
     sharable: true,
   },
   {
@@ -64,6 +68,7 @@ export const services: Service[] = [
     art: 'van',
     tint: '#CED2CE',
     seats: 11,
+    noun: 'الهايس',
     sharable: true,
   },
   {
@@ -74,6 +79,7 @@ export const services: Service[] = [
     art: 'rickshaw',
     tint: '#2B2F2C',
     seats: 3,
+    noun: 'الركشة',
     sharable: true,
   },
   {
@@ -84,6 +90,7 @@ export const services: Service[] = [
     art: 'sedan',
     tint: '#EDEFEC',
     seats: 4,
+    noun: 'السيارة',
     sharable: true,
     destinationOptional: true,
   },
@@ -95,6 +102,7 @@ export const services: Service[] = [
     art: 'tow',
     tint: '#EDEFEC',
     seats: 2,
+    noun: 'السطحة',
     sharable: false,
   },
 ]

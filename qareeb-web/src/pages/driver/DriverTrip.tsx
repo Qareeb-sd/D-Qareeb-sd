@@ -175,7 +175,10 @@ export default function DriverTrip() {
           )}
         </div>
 
-        <div className="border-t border-hairline p-4">
+        <div
+          className="border-t border-hairline p-4"
+          style={{ paddingBottom: 'calc(1rem + env(safe-area-inset-bottom))' }}
+        >
           {activeRide.status === 'accepted' && (
             <button className="btn-driver w-full" onClick={() => advance('arrived')} disabled={busy}>
               {busy ? '…' : 'وصلت لموقع الراكب'}
