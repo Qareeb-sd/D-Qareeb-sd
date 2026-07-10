@@ -675,6 +675,38 @@ export async function setBudget(category: string, percent: number) {
   return error ? { error: error.message } : {}
 }
 
+/** الصورة المالية: أمانات العملاء/السائقين + نصيبي (المتاح) + الاستدانة. */
+export async function getCompanyFinance() {
+  if (!isSupabaseConfigured)
+    return { customer_float: 0, driver_float: 0, commission: 0, expenses: 0, borrowed: 0, treasury: 0 }
+  const { data } = await supabase.rpc('company_finance')
+  const r = data?.[0]
+  return {
+    customer_float: Number(r?.customer_float ?? 0),
+    driver_float: Number(r?.driver_float ?? 0),
+    commission: Number(r?.commission ?? 0),
+    expenses: Number(r?.expenses ?? 0),
+    borrowed: Number(r?.borrowed ?? 0),
+    treasury: Number(r?.treasury ?? 0),
+  }
+}
+
+export async function listLoans() {
+  if (!isSupabaseConfigured) return []
+  const { data } = await supabase.from('loans').select('*').order('created_at', { ascending: false })
+  return data ?? []
+}
+export async function borrowFromFloat(source: 'customer' | 'driver', amount: number, note?: string) {
+  if (!isSupabaseConfigured) return {}
+  const { error } = await supabase.rpc('borrow_from_float', { p_source: source, p_amount: amount, p_note: note ?? null })
+  return error ? { error: error.message } : {}
+}
+export async function repayLoan(id: string) {
+  if (!isSupabaseConfigured) return {}
+  const { error } = await supabase.rpc('repay_loan', { p_id: id })
+  return error ? { error: error.message } : {}
+}
+
 export interface FinancialSummary {
   platform_commission: number
   total_topups: number

@@ -43,6 +43,10 @@ import {
   paySalaries,
   getBudgetReport,
   setBudget,
+  getCompanyFinance,
+  listLoans,
+  borrowFromFloat,
+  repayLoan,
   type AdminStats,
   type AdminDriverRow,
   type FinancialSummary,
@@ -65,6 +69,8 @@ import type {
   HrEmployee,
   Expense,
   BudgetRow,
+  CompanyFinance,
+  Loan,
 } from '@/lib/types'
 
 type Tab =
@@ -137,6 +143,9 @@ export default function AdminDashboard() {
   const [hrMsg, setHrMsg] = useState('')
   const [budget, setBudgetState] = useState<BudgetRow[]>([])
   const [budgetScope, setBudgetScope] = useState<'month' | 'year'>('month')
+  const [fin, setFin] = useState<CompanyFinance | null>(null)
+  const [loans, setLoans] = useState<Loan[]>([])
+  const [borrowForm, setBorrowForm] = useState({ source: 'customer', amount: '', note: '' })
 
   // بحث/فلترة
   const [rideQuery, setRideQuery] = useState('')
@@ -184,6 +193,8 @@ export default function AdminDashboard() {
       void listCompanyAccounts().then((a) => setAccounts(a as CompanyAccount[]))
       void listHrEmployees().then((e) => setEmployees(e as HrEmployee[]))
       void listExpenses().then((x) => setExpenses(x as Expense[]))
+      void getCompanyFinance().then(setFin)
+      void listLoans().then((l) => setLoans(l as Loan[]))
     }
   }, [tab, staffList, audit, accounts])
 
@@ -202,6 +213,27 @@ export default function AdminDashboard() {
     void listHrEmployees().then((e) => setEmployees(e as HrEmployee[]))
     void listExpenses().then((x) => setExpenses(x as Expense[]))
     void getBudgetReport(budgetScope).then((b) => setBudgetState(b as BudgetRow[]))
+    void getCompanyFinance().then(setFin)
+    void listLoans().then((l) => setLoans(l as Loan[]))
+  }
+
+  const submitBorrow = async () => {
+    const amount = Number(borrowForm.amount)
+    if (!amount) return
+    setHrMsg('')
+    const { error } = await borrowFromFloat(
+      borrowForm.source as 'customer' | 'driver',
+      amount,
+      borrowForm.note.trim() || undefined,
+    )
+    if (error) return setHrMsg(error)
+    setBorrowForm({ source: 'customer', amount: '', note: '' })
+    reloadHr()
+  }
+  const doRepay = async (id: string) => {
+    if (!window.confirm('تسديد هذا الدَّين؟ سيَنقص المتاح للصرف.')) return
+    await repayLoan(id)
+    reloadHr()
   }
 
   const submitAccount = async () => {
@@ -1096,6 +1128,85 @@ export default function AdminDashboard() {
 
         {tab === 'hr' && access.is_admin && (
           <>
+            {/* الخزينة: فصل الأموال + الاستدانة */}
+            <div className="card p-4">
+              <p className="mb-1 font-bold">الخزينة — أموال المنصّة</p>
+              <p className="mb-3 text-xs text-ink-muted">
+                محافظ العملاء والسائقين <span className="font-bold">أمانات لا يُصرف منها</span>. القابل
+                للصرف هو «نصيبي» (العمولة) + ما استدنته.
+              </p>
+              <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+                <div className="rounded-2xl border border-hairline bg-white p-3">
+                  <p className="text-lg font-extrabold text-info">{money(fin?.customer_float ?? 0)}</p>
+                  <p className="text-xs text-ink-muted">👛 محفظة العملاء (أمانة)</p>
+                </div>
+                <div className="rounded-2xl border border-hairline bg-white p-3">
+                  <p className="text-lg font-extrabold text-gold-deep">{money(fin?.driver_float ?? 0)}</p>
+                  <p className="text-xs text-ink-muted">🚗 محفظة السائقين (أمانة)</p>
+                </div>
+                <div className="rounded-2xl border border-green/30 bg-green-soft p-3">
+                  <p className="text-lg font-extrabold text-green">{money(fin?.treasury ?? 0)}</p>
+                  <p className="text-xs text-ink-soft">💰 نصيبي — المتاح للصرف</p>
+                </div>
+                <div className="rounded-2xl border border-hairline bg-white p-3">
+                  <p className="text-lg font-extrabold text-danger">{money(fin?.borrowed ?? 0)}</p>
+                  <p className="text-xs text-ink-muted">🔻 دَين مستحقّ للمحافظ</p>
+                </div>
+              </div>
+              <p className="mt-2 text-[11px] text-ink-muted">
+                نصيبي = العمولة ({money(fin?.commission ?? 0)}) − المنصرفات ({money(fin?.expenses ?? 0)}) +
+                المُستدان ({money(fin?.borrowed ?? 0)}).
+              </p>
+
+              {/* استدانة من المحافظ */}
+              <div className="mt-4 border-t border-hairline pt-3">
+                <p className="mb-2 text-sm font-bold">استدانة من المحافظ (تزيد المتاح كدَين)</p>
+                <div className="grid gap-2 md:grid-cols-4">
+                  <select
+                    className="field"
+                    value={borrowForm.source}
+                    onChange={(e) => setBorrowForm({ ...borrowForm, source: e.target.value })}
+                  >
+                    <option value="customer">من محفظة العملاء</option>
+                    <option value="driver">من محفظة السائقين</option>
+                  </select>
+                  <input
+                    className="field"
+                    inputMode="decimal"
+                    placeholder="المبلغ"
+                    value={borrowForm.amount}
+                    onChange={(e) => setBorrowForm({ ...borrowForm, amount: e.target.value })}
+                  />
+                  <input
+                    className="field"
+                    placeholder="سبب (اختياري)"
+                    value={borrowForm.note}
+                    onChange={(e) => setBorrowForm({ ...borrowForm, note: e.target.value })}
+                  />
+                  <button onClick={submitBorrow} className="btn-gold">استدانة</button>
+                </div>
+                {loans.filter((l) => l.active).length > 0 && (
+                  <div className="mt-3 divide-y divide-hairline">
+                    {loans.filter((l) => l.active).map((l) => (
+                      <div key={l.id} className="flex items-center gap-3 py-2 text-sm">
+                        <span className="chip bg-danger/10 text-xs text-danger">
+                          {l.source === 'driver' ? 'من السائقين' : 'من العملاء'}
+                        </span>
+                        <span className="flex-1 text-ink-soft">{l.note ?? '—'}</span>
+                        <span className="font-bold text-danger">{money(l.amount)}</span>
+                        <button
+                          onClick={() => doRepay(l.id)}
+                          className="rounded-lg border border-green/40 px-2 py-1 text-xs font-bold text-green"
+                        >
+                          سداد
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+
             {/* مؤشّرات HR */}
             {(() => {
               const totalSalaries = (employees ?? []).filter((e) => e.active).reduce((s, e) => s + e.salary, 0)
@@ -1119,12 +1230,12 @@ export default function AdminDashboard() {
                 <div>
                   <p className="font-bold">الميزانية حسب البنود</p>
                   <p className="text-xs text-ink-muted">
-                    المتاح لكل بند = رصيد الحسابات × نسبته − المصروف الفعلي.
+                    المتاح لكل بند = «نصيبي» × نسبته − المصروف الفعلي.
                   </p>
                 </div>
                 <div className="flex items-center gap-2">
                   <span className="text-sm text-ink-soft">
-                    رصيد الحسابات: <span className="font-bold text-green">{money(budget[0]?.income ?? 0)}</span>
+                    نصيبي: <span className="font-bold text-green">{money(budget[0]?.income ?? 0)}</span>
                   </span>
                   <div className="flex rounded-xl border border-hairline p-1">
                     {(['month', 'year'] as const).map((s) => (

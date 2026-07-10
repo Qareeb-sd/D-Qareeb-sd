@@ -511,7 +511,12 @@ begin
   v_start := case when p_scope = 'year' then date_trunc('year', now())::date
                   else date_trunc('month', now())::date end;
   select coalesce(sum(amount),0) into v_period_spent from public.expenses where spent_at >= v_start;
-  v_pool := (select coalesce(sum(balance),0) from public.company_accounts) + v_period_spent;
+  -- المجمّع = «نصيبي» (العمولة − كل المنصرفات + المُستدان) + منصرفات الفترة (لتثبيت التخصيص).
+  v_pool := (
+    (select coalesce(-sum(amount),0) from public.transactions where type='commission')
+    - (select coalesce(sum(amount),0) from public.expenses)
+    + (select coalesce(sum(amount),0) from public.loans where active)
+  ) + v_period_spent;
   return query
     select b.category, b.percent,
            round(v_pool * b.percent / 100, 2) as allocated,
@@ -520,6 +525,60 @@ begin
            v_pool as income
     from public.budget_plan b
     order by b.percent desc;
+end $$;
+
+-- ============================================================
+--  الخزينة: فصل أموال العملاء/السائقين عن «نصيبي» (العمولة) + الاستدانة
+-- ============================================================
+create table if not exists public.loans (
+  id         uuid primary key default gen_random_uuid(),
+  source     text not null default 'customer',   -- customer / driver
+  amount     numeric(14,2) not null,
+  note       text,
+  active     boolean not null default true,        -- true = دَين لم يُسدَّد بعد
+  created_at timestamptz not null default now()
+);
+alter table public.loans enable row level security;
+drop policy if exists "owner loans" on public.loans;
+create policy "owner loans" on public.loans
+  for all using (public.is_admin()) with check (public.is_admin());
+
+-- الصورة المالية: أمانات العملاء/السائقين + العمولة + المنصرفات + المُستدان + المتاح.
+create or replace function public.company_finance()
+returns table (
+  customer_float numeric, driver_float numeric,
+  commission numeric, expenses numeric, borrowed numeric, treasury numeric
+) language plpgsql stable security definer set search_path = public as $$
+declare v_cust numeric; v_drv numeric; v_comm numeric; v_exp numeric; v_borrow numeric;
+begin
+  if not public.is_admin() then raise exception 'غير مصرّح'; end if;
+  select coalesce(sum(w.balance),0) into v_cust
+    from public.wallets w join public.users u on u.id = w.user_id where u.role = 'customer';
+  select coalesce(sum(w.balance),0) into v_drv
+    from public.wallets w join public.users u on u.id = w.user_id where u.role = 'driver';
+  select coalesce(-sum(amount),0) into v_comm from public.transactions where type = 'commission';
+  select coalesce(sum(amount),0) into v_exp from public.expenses;
+  select coalesce(sum(amount),0) into v_borrow from public.loans where active;
+  return query select v_cust, v_drv, v_comm, v_exp, v_borrow, (v_comm - v_exp + v_borrow);
+end $$;
+
+-- استدانة من محفظة العملاء/السائقين لحسابنا (تزيد المتاح، كدَين).
+create or replace function public.borrow_from_float(p_source text, p_amount numeric, p_note text)
+returns void language plpgsql security definer set search_path = public as $$
+begin
+  if not public.is_admin() then raise exception 'غير مصرّح'; end if;
+  insert into public.loans (source, amount, note) values (p_source, p_amount, p_note);
+  perform public.log_action('استدانة من المحافظ',
+    (case p_source when 'driver' then 'السائقين' else 'العملاء' end) || ' — ' || p_amount::text || ' ج.س');
+end $$;
+
+-- سداد دَين (يعيد المبلغ، فينقص المتاح).
+create or replace function public.repay_loan(p_id uuid)
+returns void language plpgsql security definer set search_path = public as $$
+begin
+  if not public.is_admin() then raise exception 'غير مصرّح'; end if;
+  update public.loans set active = false where id = p_id;
+  perform public.log_action('سداد استدانة', p_id::text);
 end $$;
 
 

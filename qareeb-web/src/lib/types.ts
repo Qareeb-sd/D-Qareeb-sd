@@ -267,6 +267,26 @@ export interface Expense {
   created_at: string
 }
 
+/** الصورة المالية للخزينة (نتيجة company_finance). */
+export interface CompanyFinance {
+  customer_float: number
+  driver_float: number
+  commission: number
+  expenses: number
+  borrowed: number
+  treasury: number
+}
+
+/** دَين استدانة من المحافظ. */
+export interface Loan {
+  id: string
+  source: 'customer' | 'driver'
+  amount: number
+  note: string | null
+  active: boolean
+  created_at: string
+}
+
 /** بند ميزانية للفترة (نتيجة budget_report). */
 export interface BudgetRow {
   category: ExpenseCategory
