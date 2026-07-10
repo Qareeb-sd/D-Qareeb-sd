@@ -593,6 +593,74 @@ export async function listAuditLog(limit = 100) {
   return data ?? []
 }
 
+// ------------------------- الحسابات الداخلية (HR) -------------------------
+
+export async function listCompanyAccounts() {
+  if (!isSupabaseConfigured) return []
+  const { data } = await supabase.from('company_accounts').select('*').order('created_at')
+  return data ?? []
+}
+export async function addCompanyAccount(a: { name: string; bank?: string; number?: string; balance?: number }) {
+  if (!isSupabaseConfigured) return {}
+  const { error } = await supabase.from('company_accounts').insert(a)
+  return error ? { error: error.message } : {}
+}
+export async function deleteCompanyAccount(id: string) {
+  if (!isSupabaseConfigured) return {}
+  const { error } = await supabase.from('company_accounts').delete().eq('id', id)
+  return error ? { error: error.message } : {}
+}
+
+export async function listHrEmployees() {
+  if (!isSupabaseConfigured) return []
+  const { data } = await supabase.from('hr_employees').select('*').order('created_at', { ascending: false })
+  return data ?? []
+}
+export async function addHrEmployee(e: { name: string; role?: string; phone?: string; salary?: number }) {
+  if (!isSupabaseConfigured) return {}
+  const { error } = await supabase.from('hr_employees').insert(e)
+  return error ? { error: error.message } : {}
+}
+export async function deleteHrEmployee(id: string) {
+  if (!isSupabaseConfigured) return {}
+  const { error } = await supabase.from('hr_employees').delete().eq('id', id)
+  return error ? { error: error.message } : {}
+}
+
+export async function listExpenses(limit = 100) {
+  if (!isSupabaseConfigured) return []
+  const { data } = await supabase
+    .from('expenses')
+    .select('*')
+    .order('spent_at', { ascending: false })
+    .limit(limit)
+  return data ?? []
+}
+export async function addExpense(p: {
+  category: string
+  description?: string
+  amount: number
+  employee?: string | null
+  account?: string | null
+  date?: string | null
+}) {
+  if (!isSupabaseConfigured) return {}
+  const { error } = await supabase.rpc('add_expense', {
+    p_category: p.category,
+    p_description: p.description ?? null,
+    p_amount: p.amount,
+    p_employee: p.employee ?? null,
+    p_account: p.account ?? null,
+    p_date: p.date ?? null,
+  })
+  return error ? { error: error.message } : {}
+}
+export async function paySalaries(accountId: string | null, note?: string): Promise<{ total?: number; error?: string }> {
+  if (!isSupabaseConfigured) return { total: 0 }
+  const { data, error } = await supabase.rpc('pay_salaries', { p_account: accountId, p_note: note ?? null })
+  return error ? { error: error.message } : { total: Number(data) }
+}
+
 export interface FinancialSummary {
   platform_commission: number
   total_topups: number

@@ -32,6 +32,15 @@ import {
   removeStaff,
   setStaffActive,
   listAuditLog,
+  listCompanyAccounts,
+  addCompanyAccount,
+  deleteCompanyAccount,
+  listHrEmployees,
+  addHrEmployee,
+  deleteHrEmployee,
+  listExpenses,
+  addExpense,
+  paySalaries,
   type AdminStats,
   type AdminDriverRow,
   type FinancialSummary,
@@ -50,9 +59,21 @@ import type {
   StaffRow,
   StaffPerm,
   AuditEntry,
+  CompanyAccount,
+  HrEmployee,
+  Expense,
 } from '@/lib/types'
 
-type Tab = 'overview' | 'requests' | 'drivers' | 'rides' | 'finance' | 'settings' | 'staff' | 'audit'
+type Tab =
+  | 'overview'
+  | 'requests'
+  | 'drivers'
+  | 'rides'
+  | 'finance'
+  | 'hr'
+  | 'settings'
+  | 'staff'
+  | 'audit'
 
 /** التبويبات مع الصلاحية المطلوبة لكلٍّ (null = تكفي أي صلاحية). */
 const tabs: { id: Tab; label: string; perm: StaffPerm | null; ownerOnly?: boolean }[] = [
@@ -61,6 +82,7 @@ const tabs: { id: Tab; label: string; perm: StaffPerm | null; ownerOnly?: boolea
   { id: 'drivers', label: 'السائقون', perm: 'drivers' },
   { id: 'rides', label: 'الرحلات', perm: 'rides' },
   { id: 'finance', label: 'المالية', perm: null, ownerOnly: true },
+  { id: 'hr', label: 'المنصرفات والرواتب', perm: null, ownerOnly: true },
   { id: 'settings', label: 'الإعدادات', perm: 'settings' },
   { id: 'staff', label: 'الموظفون', perm: null, ownerOnly: true },
   { id: 'audit', label: 'سجلّ النشاط', perm: null, ownerOnly: true },
@@ -101,6 +123,15 @@ export default function AdminDashboard() {
   const [staffMsg, setStaffMsg] = useState('')
   const [audit, setAudit] = useState<AuditEntry[] | null>(null)
   const [toast, setToast] = useState('')
+
+  // HR مصغّر
+  const [accounts, setAccounts] = useState<CompanyAccount[] | null>(null)
+  const [employees, setEmployees] = useState<HrEmployee[] | null>(null)
+  const [expenses, setExpenses] = useState<Expense[] | null>(null)
+  const [expForm, setExpForm] = useState({ category: 'other', description: '', amount: '', account: '' })
+  const [empForm, setEmpForm] = useState({ name: '', role: '', phone: '', salary: '' })
+  const [accForm, setAccForm] = useState({ name: '', bank: '', number: '', balance: '' })
+  const [hrMsg, setHrMsg] = useState('')
 
   // بحث/فلترة
   const [rideQuery, setRideQuery] = useState('')
@@ -144,7 +175,76 @@ export default function AdminDashboard() {
   useEffect(() => {
     if (tab === 'staff' && staffList === null) void listStaff().then(setStaffList)
     if (tab === 'audit' && audit === null) void listAuditLog().then((a) => setAudit(a as AuditEntry[]))
-  }, [tab, staffList, audit])
+    if (tab === 'hr' && accounts === null) {
+      void listCompanyAccounts().then((a) => setAccounts(a as CompanyAccount[]))
+      void listHrEmployees().then((e) => setEmployees(e as HrEmployee[]))
+      void listExpenses().then((x) => setExpenses(x as Expense[]))
+    }
+  }, [tab, staffList, audit, accounts])
+
+  const reloadHr = () => {
+    void listCompanyAccounts().then((a) => setAccounts(a as CompanyAccount[]))
+    void listHrEmployees().then((e) => setEmployees(e as HrEmployee[]))
+    void listExpenses().then((x) => setExpenses(x as Expense[]))
+  }
+
+  const submitAccount = async () => {
+    if (!accForm.name.trim()) return
+    await addCompanyAccount({
+      name: accForm.name.trim(),
+      bank: accForm.bank.trim() || undefined,
+      number: accForm.number.trim() || undefined,
+      balance: Number(accForm.balance) || 0,
+    })
+    setAccForm({ name: '', bank: '', number: '', balance: '' })
+    reloadHr()
+  }
+  const submitEmployee = async () => {
+    if (!empForm.name.trim()) return
+    await addHrEmployee({
+      name: empForm.name.trim(),
+      role: empForm.role.trim() || undefined,
+      phone: empForm.phone.trim() || undefined,
+      salary: Number(empForm.salary) || 0,
+    })
+    setEmpForm({ name: '', role: '', phone: '', salary: '' })
+    reloadHr()
+  }
+  const submitExpense = async () => {
+    const amount = Number(expForm.amount)
+    if (!amount) return
+    setHrMsg('')
+    const { error } = await addExpense({
+      category: expForm.category,
+      description: expForm.description.trim() || undefined,
+      amount,
+      account: expForm.account || null,
+    })
+    if (error) return setHrMsg(error)
+    setExpForm({ category: 'other', description: '', amount: '', account: '' })
+    reloadHr()
+  }
+  const runPaySalaries = async () => {
+    const total = (employees ?? []).filter((e) => e.active).reduce((s, e) => s + e.salary, 0)
+    if (total === 0) return setHrMsg('لا يوجد موظفون برواتب لصرفها')
+    if (!window.confirm(`صرف رواتب الموظفين النشطين؟ الإجمالي ${money(total)}`)) return
+    setHrMsg('')
+    // يخصم من أول حساب إن وُجد.
+    const acc = accounts?.[0]?.id ?? null
+    const { total: paid, error } = await paySalaries(acc, 'راتب شهري')
+    if (error) return setHrMsg(error)
+    setHrMsg(`تم صرف رواتب بمجموع ${money(paid ?? 0)} ✓`)
+    reloadHr()
+  }
+
+  const expenseCatLabels: Record<string, string> = {
+    salary: 'رواتب',
+    rent: 'إيجار',
+    fuel: 'وقود',
+    maintenance: 'صيانة',
+    marketing: 'تسويق',
+    other: 'أخرى',
+  }
 
   const toggleStaffActive = async (s: StaffRow) => {
     setBusyId(s.user_id)
@@ -970,6 +1070,116 @@ export default function AdminDashboard() {
                         </p>
                       </div>
                       <span className="shrink-0 text-sm font-bold text-green">{money(r.fare ?? 0)}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </>
+        )}
+
+        {tab === 'hr' && access.is_admin && (
+          <>
+            {/* مؤشّرات HR */}
+            {(() => {
+              const totalSalaries = (employees ?? []).filter((e) => e.active).reduce((s, e) => s + e.salary, 0)
+              const monthExpenses = (expenses ?? [])
+                .filter((x) => new Date(x.spent_at).getMonth() === new Date().getMonth())
+                .reduce((s, x) => s + x.amount, 0)
+              const totalBalance = (accounts ?? []).reduce((s, a) => s + a.balance, 0)
+              return (
+                <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+                  <StatCard label="رصيد الحسابات" value={money(totalBalance)} icon="🏦" iconBg="#E8F1EC" accent="#1B6B3F" />
+                  <StatCard label="رواتب شهرية" value={money(totalSalaries)} icon="👔" iconBg="#FBF4DD" accent="#A88528" />
+                  <StatCard label="منصرفات هذا الشهر" value={money(monthExpenses)} icon="🧾" iconBg="#FDECEB" accent="#C5453B" />
+                  <StatCard label="عدد الموظفين" value={num((employees ?? []).length)} icon="👥" iconBg="#E3EEF7" accent="#3A6FB0" />
+                </div>
+              )
+            })()}
+
+            {/* الحسابات البنكية */}
+            <div className="card p-4">
+              <p className="mb-3 font-bold">الحسابات البنكية / الخزائن</p>
+              <div className="mb-3 grid gap-2 md:grid-cols-4">
+                <input className="field" placeholder="اسم الحساب" value={accForm.name} onChange={(e) => setAccForm({ ...accForm, name: e.target.value })} />
+                <input className="field" placeholder="البنك" value={accForm.bank} onChange={(e) => setAccForm({ ...accForm, bank: e.target.value })} />
+                <input className="field text-left" dir="ltr" placeholder="رقم الحساب" value={accForm.number} onChange={(e) => setAccForm({ ...accForm, number: e.target.value })} />
+                <div className="flex gap-2">
+                  <input className="field" inputMode="decimal" placeholder="الرصيد" value={accForm.balance} onChange={(e) => setAccForm({ ...accForm, balance: e.target.value })} />
+                  <button onClick={submitAccount} className="btn-primary px-4">إضافة</button>
+                </div>
+              </div>
+              {accounts && accounts.length > 0 && (
+                <div className="divide-y divide-hairline">
+                  {accounts.map((a) => (
+                    <div key={a.id} className="flex items-center gap-3 py-2.5">
+                      <div className="flex-1">
+                        <p className="font-bold">{a.name}</p>
+                        <p className="text-xs text-ink-muted">{a.bank ?? '—'} · {a.number ?? '—'}</p>
+                      </div>
+                      <span className="font-extrabold text-green">{money(a.balance)}</span>
+                      <button onClick={async () => { if (confirm('حذف الحساب؟')) { await deleteCompanyAccount(a.id); reloadHr() } }} className="rounded-lg border border-danger/40 px-2 py-1 text-xs text-danger">حذف</button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* الموظفون والرواتب */}
+            <div className="card p-4">
+              <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+                <p className="font-bold">الموظفون (كشف الرواتب)</p>
+                <button onClick={runPaySalaries} className="btn-gold px-4 py-1.5 text-sm">💸 صرف رواتب الشهر</button>
+              </div>
+              <div className="mb-3 grid gap-2 md:grid-cols-5">
+                <input className="field" placeholder="الاسم" value={empForm.name} onChange={(e) => setEmpForm({ ...empForm, name: e.target.value })} />
+                <input className="field" placeholder="المسمّى" value={empForm.role} onChange={(e) => setEmpForm({ ...empForm, role: e.target.value })} />
+                <input className="field text-left" dir="ltr" placeholder="الهاتف" value={empForm.phone} onChange={(e) => setEmpForm({ ...empForm, phone: e.target.value })} />
+                <input className="field" inputMode="decimal" placeholder="الراتب" value={empForm.salary} onChange={(e) => setEmpForm({ ...empForm, salary: e.target.value })} />
+                <button onClick={submitEmployee} className="btn-primary">إضافة موظف</button>
+              </div>
+              {employees && employees.length > 0 && (
+                <div className="divide-y divide-hairline">
+                  {employees.map((e) => (
+                    <div key={e.id} className="flex items-center gap-3 py-2.5">
+                      <div className="flex-1">
+                        <p className="font-bold">{e.name} <span className="text-xs text-ink-muted">{e.role ?? ''}</span></p>
+                        <p className="text-xs text-ink-muted" dir="ltr">{e.phone ?? '—'}</p>
+                      </div>
+                      <span className="font-bold text-green">{money(e.salary)}</span>
+                      <button onClick={async () => { if (confirm('حذف الموظف؟')) { await deleteHrEmployee(e.id); reloadHr() } }} className="rounded-lg border border-danger/40 px-2 py-1 text-xs text-danger">حذف</button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* تسجيل منصرف + السجلّ */}
+            <div className="card p-4">
+              <p className="mb-3 font-bold">تسجيل منصرف</p>
+              <div className="mb-3 grid gap-2 md:grid-cols-5">
+                <select className="field" value={expForm.category} onChange={(e) => setExpForm({ ...expForm, category: e.target.value })}>
+                  {Object.entries(expenseCatLabels).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+                </select>
+                <input className="field" placeholder="الوصف" value={expForm.description} onChange={(e) => setExpForm({ ...expForm, description: e.target.value })} />
+                <input className="field" inputMode="decimal" placeholder="المبلغ" value={expForm.amount} onChange={(e) => setExpForm({ ...expForm, amount: e.target.value })} />
+                <select className="field" value={expForm.account} onChange={(e) => setExpForm({ ...expForm, account: e.target.value })}>
+                  <option value="">بدون خصم من حساب</option>
+                  {(accounts ?? []).map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
+                </select>
+                <button onClick={submitExpense} className="btn-primary">تسجيل</button>
+              </div>
+              {hrMsg && <p className="mb-2 text-sm text-green">{hrMsg}</p>}
+              {expenses && expenses.length > 0 && (
+                <div className="divide-y divide-hairline">
+                  {expenses.map((x) => (
+                    <div key={x.id} className="flex items-center gap-3 py-2.5">
+                      <span className="chip bg-green-soft text-xs text-green">{expenseCatLabels[x.category] ?? x.category}</span>
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-sm">{x.description ?? '—'}</p>
+                        <p className="text-xs text-ink-muted">{new Date(x.spent_at).toLocaleDateString('ar-SD')}</p>
+                      </div>
+                      <span className="font-bold text-danger">− {money(x.amount)}</span>
                     </div>
                   ))}
                 </div>

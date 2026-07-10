@@ -384,6 +384,97 @@ begin
     values (auth.uid(), coalesce(v_name, 'مستخدم'), p_action, p_target);
 end $$;
 
+-- ============================================================
+--  الحسابات الداخلية (HR مصغّر): منصرفات · رواتب · حسابات بنكية
+--  للمالك فقط (is_admin). لا علاقة لها بمحافظ العملاء.
+-- ============================================================
+
+-- الحسابات البنكية للشركة (خزائن)
+create table if not exists public.company_accounts (
+  id         uuid primary key default gen_random_uuid(),
+  name       text not null,                 -- اسم الحساب/الخزينة
+  bank       text,                          -- البنك
+  number     text,                          -- رقم الحساب
+  balance    numeric(14,2) not null default 0,
+  created_at timestamptz not null default now()
+);
+alter table public.company_accounts enable row level security;
+
+-- الموظفون في كشف الرواتب (منفصل عن صلاحيات staff)
+create table if not exists public.hr_employees (
+  id         uuid primary key default gen_random_uuid(),
+  name       text not null,
+  role       text,                          -- المسمّى الوظيفي
+  phone      text,
+  salary     numeric(14,2) not null default 0,  -- الراتب الشهري
+  active     boolean not null default true,
+  created_at timestamptz not null default now()
+);
+alter table public.hr_employees enable row level security;
+
+-- المنصرفات (رواتب/إيجار/صيانة/…)
+create table if not exists public.expenses (
+  id          uuid primary key default gen_random_uuid(),
+  category    text not null default 'other', -- salary/rent/fuel/maintenance/marketing/other
+  description text,
+  amount      numeric(14,2) not null,
+  employee_id uuid references public.hr_employees(id) on delete set null,
+  account_id  uuid references public.company_accounts(id) on delete set null,
+  spent_at    date not null default current_date,
+  created_by  uuid references public.users(id) on delete set null,
+  created_at  timestamptz not null default now()
+);
+create index if not exists expenses_date_idx on public.expenses(spent_at desc);
+alter table public.expenses enable row level security;
+
+-- كلها للمالك فقط (قراءة وكتابة)
+do $$ begin
+  perform 1;
+end $$;
+drop policy if exists "owner accounts" on public.company_accounts;
+create policy "owner accounts" on public.company_accounts
+  for all using (public.is_admin()) with check (public.is_admin());
+drop policy if exists "owner hr" on public.hr_employees;
+create policy "owner hr" on public.hr_employees
+  for all using (public.is_admin()) with check (public.is_admin());
+drop policy if exists "owner expenses" on public.expenses;
+create policy "owner expenses" on public.expenses
+  for all using (public.is_admin()) with check (public.is_admin());
+
+-- تسجيل منصرف (يخصم من رصيد الحساب إن حُدّد) — للمالك.
+create or replace function public.add_expense(
+  p_category text, p_description text, p_amount numeric,
+  p_employee uuid, p_account uuid, p_date date
+) returns void language plpgsql security definer set search_path = public as $$
+begin
+  if not public.is_admin() then raise exception 'غير مصرّح'; end if;
+  insert into public.expenses (category, description, amount, employee_id, account_id, spent_at, created_by)
+    values (p_category, p_description, p_amount, p_employee, p_account, coalesce(p_date, current_date), auth.uid());
+  if p_account is not null then
+    update public.company_accounts set balance = balance - p_amount where id = p_account;
+  end if;
+  perform public.log_action('تسجيل منصرف', p_category || ' — ' || p_amount::text || ' ج.س');
+end $$;
+
+-- صرف رواتب كل الموظفين النشطين دفعة واحدة (لشهر) — للمالك.
+create or replace function public.pay_salaries(p_account uuid, p_note text default null)
+returns numeric language plpgsql security definer set search_path = public as $$
+declare v_total numeric := 0; r record;
+begin
+  if not public.is_admin() then raise exception 'غير مصرّح'; end if;
+  for r in select id, name, salary from public.hr_employees where active and salary > 0 loop
+    insert into public.expenses (category, description, amount, employee_id, account_id, created_by)
+      values ('salary', coalesce(p_note,'راتب') || ' — ' || r.name, r.salary, r.id, p_account, auth.uid());
+    v_total := v_total + r.salary;
+  end loop;
+  if p_account is not null and v_total > 0 then
+    update public.company_accounts set balance = balance - v_total where id = p_account;
+  end if;
+  perform public.log_action('صرف رواتب', v_total::text || ' ج.س');
+  return v_total;
+end $$;
+
+
 -- التسعير: قراءة للجميع (المصادَق عليهم)
 drop policy if exists "read pricing" on public.service_pricing;
 create policy "read pricing" on public.service_pricing

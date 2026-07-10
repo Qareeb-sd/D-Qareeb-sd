@@ -224,6 +224,49 @@ export interface AuditEntry {
   created_at: string
 }
 
+// ---------- الحسابات الداخلية (HR مصغّر) ----------
+export type ExpenseCategory =
+  | 'salary'
+  | 'rent'
+  | 'fuel'
+  | 'maintenance'
+  | 'marketing'
+  | 'other'
+
+/** حساب/خزينة بنكية للشركة. */
+export interface CompanyAccount {
+  id: string
+  name: string
+  bank: string | null
+  number: string | null
+  balance: number
+  created_at: string
+}
+
+/** موظف في كشف الرواتب. */
+export interface HrEmployee {
+  id: string
+  name: string
+  role: string | null
+  phone: string | null
+  salary: number
+  active: boolean
+  created_at: string
+}
+
+/** منصرف (راتب/إيجار/…). */
+export interface Expense {
+  id: string
+  category: ExpenseCategory
+  description: string | null
+  amount: number
+  employee_id: string | null
+  account_id: string | null
+  spent_at: string
+  created_by: string | null
+  created_at: string
+}
+
 /** اشتراك Web Push مخزّن لمستخدم. */
 export interface PushSubscriptionRow {
   id: string
