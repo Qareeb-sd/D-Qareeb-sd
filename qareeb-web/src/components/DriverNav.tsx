@@ -14,23 +14,36 @@ const items: {
   { to: '/driver/profile', label: 'حسابي', Icon: UserIcon },
 ]
 
-/** شريط تنقّل تطبيق السائق. */
+/** شريط تنقّل تطبيق السائق — بالهوية الليمونية (مميّز عن العميل). */
 export default function DriverNav() {
   return (
-    <nav className="sticky bottom-0 z-10 mx-auto flex w-full max-w-md items-stretch border-t border-hairline bg-white">
+    <nav
+      className="sticky bottom-0 z-10 mx-auto flex w-full max-w-md items-stretch border-t-2 border-lemon bg-white"
+      style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}
+    >
       {items.map(({ to, label, Icon, end }) => (
         <NavLink
           key={to}
           to={to}
           end={end}
           className={({ isActive }) =>
-            `flex flex-1 flex-col items-center gap-1 py-2.5 text-xs font-medium transition ${
-              isActive ? 'text-green' : 'text-ink-muted'
+            `flex flex-1 flex-col items-center gap-1 py-2 text-xs font-bold transition ${
+              isActive ? 'text-green-dark' : 'text-ink-muted'
             }`
           }
         >
-          <Icon width={22} height={22} />
-          {label}
+          {({ isActive }) => (
+            <>
+              <span
+                className={`grid h-8 w-12 place-items-center rounded-full transition ${
+                  isActive ? 'bg-lemon' : ''
+                }`}
+              >
+                <Icon width={22} height={22} />
+              </span>
+              {label}
+            </>
+          )}
         </NavLink>
       ))}
     </nav>

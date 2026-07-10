@@ -97,10 +97,10 @@ export default function DriverHome() {
 
   return (
     <div className="screen">
-      <header className="flex items-center gap-3 border-b border-hairline px-4 py-4">
+      <header className="flex items-center gap-3 border-b-2 border-lemon px-4 py-4">
         <Logo variant="driver" size={38} rounded={12} />
         <div className="flex-1">
-          <p className="font-extrabold text-green">قريب · السائق</p>
+          <p className="font-extrabold text-green-dark">قريب · السائق</p>
           <p className="text-xs text-ink-muted">⭐ {driver?.rating ?? '—'}</p>
         </div>
         {/* زر تفعيل تنبيهات الطلبات (صوت + إشعار) */}
@@ -122,10 +122,10 @@ export default function DriverHome() {
           role="switch"
           aria-checked={online}
           className={`flex items-center gap-2 rounded-full px-3 py-1.5 text-sm font-bold transition ${
-            online ? 'bg-green text-white' : 'bg-hairline text-ink-soft'
+            online ? 'bg-lemon text-green-dark' : 'bg-hairline text-ink-soft'
           }`}
         >
-          <span className={`h-2 w-2 rounded-full ${online ? 'bg-lemon' : 'bg-ink-muted'}`} />
+          <span className={`h-2 w-2 rounded-full ${online ? 'bg-green-dark' : 'bg-ink-muted'}`} />
           {online ? 'متصل' : 'غير متصل'}
         </button>
       </header>
@@ -170,12 +170,12 @@ export default function DriverHome() {
                         {r.pickup_address} ← {r.dropoff_address}
                       </p>
                     </div>
-                    <p className="font-extrabold text-green">{money(r.fare ?? 0)}</p>
+                    <p className="font-extrabold text-green-dark">{money(r.fare ?? 0)}</p>
                   </div>
                   <button
                     onClick={() => accept(r)}
                     disabled={busyId === r.id}
-                    className="btn-primary mt-3 w-full"
+                    className="btn-driver mt-3 w-full"
                   >
                     {busyId === r.id ? '…' : 'قبول الطلب'}
                   </button>

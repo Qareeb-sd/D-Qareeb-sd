@@ -147,7 +147,7 @@ export default function DriverTrip() {
           <div className="card p-4">
             <div className="flex items-center justify-between">
               <p className="font-bold">{service?.name ?? activeRide.service_id}</p>
-              <span className="chip bg-green-soft text-green">
+              <span className="chip-driver">
                 {statusLabels[activeRide.status] ?? activeRide.status}
               </span>
             </div>
@@ -177,22 +177,22 @@ export default function DriverTrip() {
 
         <div className="border-t border-hairline p-4">
           {activeRide.status === 'accepted' && (
-            <button className="btn-primary w-full" onClick={() => advance('arrived')} disabled={busy}>
+            <button className="btn-driver w-full" onClick={() => advance('arrived')} disabled={busy}>
               {busy ? '…' : 'وصلت لموقع الراكب'}
             </button>
           )}
           {activeRide.status === 'arrived' && (
-            <button className="btn-primary w-full" onClick={() => advance('in_progress')} disabled={busy}>
+            <button className="btn-driver w-full" onClick={() => advance('in_progress')} disabled={busy}>
               {busy ? '…' : 'بدء الرحلة'}
             </button>
           )}
           {activeRide.status === 'in_progress' && (
-            <button className="btn-primary w-full" onClick={complete} disabled={busy}>
+            <button className="btn-driver w-full" onClick={complete} disabled={busy}>
               {busy ? '…' : 'إنهاء وتسوية الرحلة'}
             </button>
           )}
           {!['accepted', 'arrived', 'in_progress'].includes(activeRide.status) && (
-            <button className="btn-primary w-full" onClick={complete} disabled={busy}>
+            <button className="btn-driver w-full" onClick={complete} disabled={busy}>
               {busy ? '…' : 'إنهاء وتسوية الرحلة'}
             </button>
           )}

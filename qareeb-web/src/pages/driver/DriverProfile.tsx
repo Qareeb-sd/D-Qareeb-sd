@@ -22,7 +22,7 @@ export default function DriverProfile() {
 
   return (
     <div className="screen">
-      <header className="px-4 py-4">
+      <header className="border-b-2 border-lemon px-4 py-4">
         <h1 className="text-lg font-bold">حسابي</h1>
       </header>
 

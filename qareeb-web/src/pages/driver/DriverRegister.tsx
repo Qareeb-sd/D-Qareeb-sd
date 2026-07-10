@@ -150,7 +150,7 @@ export default function DriverRegister() {
           <div className="text-5xl">✅</div>
           <p className="font-bold">تم اعتماد طلبك — أهلاً بك سائقاً في قريب!</p>
           <button
-            className="btn-primary"
+            className="btn-driver"
             onClick={async () => {
               await refreshProfile()
               navigate('/driver')
@@ -186,7 +186,7 @@ export default function DriverRegister() {
           <div className="text-4xl">⚠️</div>
           <p className="mt-2 font-bold text-danger">تم رفض طلبك السابق.</p>
           {app.review_note && <p className="mt-1 text-ink-soft">السبب: {app.review_note}</p>}
-          <button className="btn-primary mt-4" onClick={() => setShowForm(true)}>
+          <button className="btn-driver mt-4" onClick={() => setShowForm(true)}>
             إعادة التقديم
           </button>
         </div>
@@ -281,7 +281,7 @@ export default function DriverRegister() {
               ))}
             </div>
 
-        <button className="btn-primary w-full" type="submit" disabled={busy}>
+        <button className="btn-driver w-full" type="submit" disabled={busy}>
           {busy ? 'جارٍ الإرسال…' : 'إرسال الطلب للمراجعة'}
         </button>
       </form>

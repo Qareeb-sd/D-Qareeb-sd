@@ -92,6 +92,14 @@ export default function DriverLogin() {
         أول مرة؟ سجّل دخولك بالرقم وكلمة سر جديدة، ثم أكمل بيانات ووثائق الانضمام كسائق.
       </p>
 
+      {/* رجوع لتطبيق العميل */}
+      <button
+        onClick={() => navigate('/auth')}
+        className="mt-4 w-full text-center text-sm text-white/70 underline underline-offset-4"
+      >
+        عميل؟ دخول تطبيق العملاء
+      </button>
+
       {!isSupabaseConfigured && (
         <p className="mt-2 text-center text-[10px] text-white/40">وضع معاينة</p>
       )}

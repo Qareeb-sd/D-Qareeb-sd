@@ -56,7 +56,7 @@ export default function DriverCommute() {
 
   return (
     <div className="screen">
-      <header className="flex items-center gap-3 border-b border-hairline px-4 py-4">
+      <header className="flex items-center gap-3 border-b-2 border-lemon px-4 py-4">
         <Logo variant="driver" size={36} rounded={10} />
         <h1 className="text-lg font-bold">طلبات الترحيل</h1>
       </header>
@@ -124,7 +124,7 @@ function CommuteCard({
         {accepted ? (
           <span className="chip bg-lemon/30 text-green-dark">مقبولة</span>
         ) : (
-          <span className="chip bg-green-soft text-green">{members.length} ركّاب</span>
+          <span className="chip-driver">{members.length} ركّاب</span>
         )}
       </div>
       <p className="mt-1 text-sm text-ink-soft">
@@ -153,7 +153,7 @@ function CommuteCard({
           تواصَل مع الركّاب وابدأ رحلة الترحيل في موعدها.
         </p>
       ) : (
-        <button onClick={onAccept} disabled={busy} className="btn-primary mt-3 w-full">
+        <button onClick={onAccept} disabled={busy} className="btn-driver mt-3 w-full">
           {busy ? '…' : 'قبول الترحيل'}
         </button>
       )}

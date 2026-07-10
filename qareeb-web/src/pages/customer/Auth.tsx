@@ -83,7 +83,16 @@ export default function Auth() {
       <p className="mt-6 text-center text-xs text-ink-muted">
         تسجيل حساب جديد عبر واتساب — قريباً.
       </p>
-      <p className="mt-1 text-center text-[10px] text-ink-muted/70">إصدار 2 · دخول بكلمة السر</p>
+
+      {/* دخول تطبيق السائق (الهوية الليمونية) */}
+      <button
+        onClick={() => navigate('/driver/login')}
+        className="mt-5 flex w-full items-center justify-center gap-2 rounded-2xl border border-lemon bg-lemon/15 py-3 text-sm font-bold text-green-dark transition active:scale-[0.99]"
+      >
+        🚗 سائق؟ دخول تطبيق السائقين
+      </button>
+
+      <p className="mt-3 text-center text-[10px] text-ink-muted/70">إصدار 2 · دخول بكلمة السر</p>
     </div>
   )
 }

@@ -53,6 +53,13 @@
   .btn-outline {
     @apply btn border border-hairline bg-white text-ink hover:bg-green-mint;
   }
+  /* هوية السائق (الليموني) — زر وإشارة مميّزان عن العميل (الأخضر) */
+  .btn-driver {
+    @apply btn bg-lemon text-green-dark shadow-card hover:brightness-95;
+  }
+  .chip-driver {
+    @apply chip bg-lemon/25 text-green-dark;
+  }
 
   .card {
     @apply rounded-2xl bg-white shadow-card border border-hairline leading-[1.6];
