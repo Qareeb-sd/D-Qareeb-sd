@@ -22,6 +22,22 @@ android {
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
         }
     }
+
+    // تطبيقان منفصلان من نفس المشروع:
+    //   customer → «قريب» (sd.qareeb.app)      — ابنِ الويب بـ VITE_APP=customer
+    //   driver   → «كابتن قريب» (sd.qareeb.captain) — ابنِ الويب بـ VITE_APP=driver
+    // كل نكهة تُثبَّت جنباً إلى جنب بأيقونتها واسمها المستقلّين.
+    flavorDimensions "app"
+    productFlavors {
+        customer {
+            dimension "app"
+            applicationId "sd.qareeb.app"
+        }
+        driver {
+            dimension "app"
+            applicationId "sd.qareeb.captain"
+        }
+    }
 }
 
 repositories {

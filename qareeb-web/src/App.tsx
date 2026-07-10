@@ -1,4 +1,4 @@
-import { Routes, Route, Navigate } from 'react-router-dom'
+import { Suspense, lazy } from 'react'
 import { QueryClientProvider } from '@tanstack/react-query'
 import { queryClient } from '@/lib/queryClient'
 import { AuthProvider } from '@/store/AuthContext'
@@ -6,46 +6,25 @@ import { RideProvider } from '@/store/RideContext'
 import { DriverProvider } from '@/store/DriverContext'
 import { MapsProvider } from '@/store/MapsContext'
 import ErrorBoundary from '@/components/ErrorBoundary'
-import ProtectedRoute from '@/components/ProtectedRoute'
-import AdminRoute from '@/components/AdminRoute'
-import DriverRoute from '@/components/DriverRoute'
 
-// العميل
-import Onboarding from '@/pages/customer/Onboarding'
-import Auth from '@/pages/customer/Auth'
-import Home from '@/pages/customer/Home'
-import SelectLocation from '@/pages/customer/SelectLocation'
-import FindDriver from '@/pages/customer/FindDriver'
-import Trip from '@/pages/customer/Trip'
-import Rate from '@/pages/customer/Rate'
-import Wallet from '@/pages/customer/Wallet'
-import Commute from '@/pages/customer/Commute'
-import CommuteOrder from '@/pages/customer/CommuteOrder'
-import CommuteJoin from '@/pages/customer/CommuteJoin'
-import Rides from '@/pages/customer/Rides'
-import Profile from '@/pages/customer/Profile'
+/**
+ * تطبيق واحد بكود مشترك، يُبنى إلى تطبيقين منفصلين حسب VITE_APP:
+ *   - customer (افتراضي) → «قريب» (العميل) + لوحة الإدارة على الويب.
+ *   - driver             → «كابتن قريب» (السائق).
+ * الشرط ثابت وقت البناء، فيُستبعد كود التطبيق الآخر من الحزمة (تحميل أصغر).
+ */
+const AppRoutes = lazy(() =>
+  import.meta.env.VITE_APP === 'driver'
+    ? import('@/routes/DriverRoutes')
+    : import('@/routes/CustomerRoutes'),
+)
 
-// السائق
-import DriverLogin from '@/pages/driver/DriverLogin'
-import DriverRegister from '@/pages/driver/DriverRegister'
-import DriverHome from '@/pages/driver/DriverHome'
-import DriverTrip from '@/pages/driver/DriverTrip'
-import DriverWallet from '@/pages/driver/DriverWallet'
-import DriverCommute from '@/pages/driver/DriverCommute'
-import DriverProfile from '@/pages/driver/DriverProfile'
-
-// الأدمن
-import AdminLogin from '@/pages/admin/AdminLogin'
-import AdminDashboard from '@/pages/admin/AdminDashboard'
-
-/** يلفّ مسارات العميل بحارس المصادقة. */
-function guard(el: React.ReactNode) {
-  return <ProtectedRoute>{el}</ProtectedRoute>
-}
-
-/** يلفّ مسارات السائق بحارس دور السائق. */
-function driverGuard(el: React.ReactNode) {
-  return <DriverRoute>{el}</DriverRoute>
+function Splash() {
+  return (
+    <div className="screen items-center justify-center">
+      <div className="h-10 w-10 animate-spin rounded-full border-4 border-green-soft border-t-green" />
+    </div>
+  )
 }
 
 export default function App() {
@@ -56,47 +35,9 @@ export default function App() {
           <AuthProvider>
             <RideProvider>
               <DriverProvider>
-        <Routes>
-          {/* عامّة */}
-          <Route path="/" element={<Onboarding />} />
-          <Route path="/auth" element={<Auth />} />
-
-          {/* العميل (محمي) */}
-          <Route path="/home" element={guard(<Home />)} />
-          <Route path="/select-location" element={guard(<SelectLocation />)} />
-          <Route path="/find-driver" element={guard(<FindDriver />)} />
-          <Route path="/trip" element={guard(<Trip />)} />
-          <Route path="/rate" element={guard(<Rate />)} />
-          <Route path="/wallet" element={guard(<Wallet />)} />
-          <Route path="/commute" element={guard(<Commute />)} />
-          <Route path="/commute/join/:code" element={guard(<CommuteJoin />)} />
-          <Route path="/commute/:id" element={guard(<CommuteOrder />)} />
-          <Route path="/rides" element={guard(<Rides />)} />
-          <Route path="/profile" element={guard(<Profile />)} />
-
-          {/* ===== تطبيق السائق (مستقل عن العميل) ===== */}
-          <Route path="/driver/login" element={<DriverLogin />} />
-          {/* التسجيل يحمي نفسه: يوجّه غير المسجّل إلى /driver/login */}
-          <Route path="/driver/register" element={<DriverRegister />} />
-          <Route path="/driver" element={driverGuard(<DriverHome />)} />
-          <Route path="/driver/trip" element={driverGuard(<DriverTrip />)} />
-          <Route path="/driver/commute" element={driverGuard(<DriverCommute />)} />
-          <Route path="/driver/wallet" element={driverGuard(<DriverWallet />)} />
-          <Route path="/driver/profile" element={driverGuard(<DriverProfile />)} />
-
-          {/* ===== لوحة الإدارة (مستقلة) ===== */}
-          <Route path="/admin/login" element={<AdminLogin />} />
-          <Route
-            path="/admin"
-            element={
-              <AdminRoute>
-                <AdminDashboard />
-              </AdminRoute>
-            }
-          />
-
-          <Route path="*" element={<Navigate to="/" replace />} />
-        </Routes>
+                <Suspense fallback={<Splash />}>
+                  <AppRoutes />
+                </Suspense>
               </DriverProvider>
             </RideProvider>
           </AuthProvider>

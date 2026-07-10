@@ -3,7 +3,15 @@
 يغلّف Capacitor **نفس تطبيق الويب** (React) في تطبيق أصلي — للتجربة على هاتفك
 (APK) ثم النشر في المتجر. لا إعادة كتابة، ونفس الكود يخدم الويب والجوال.
 
-- **معرّف التطبيق:** `sd.qareeb.app` · **الاسم:** قريب
+**تطبيقان منفصلان من نفس الكود** (يُثبَّتان جنباً إلى جنب، ومربوطان بنفس قاعدة البيانات):
+
+| التطبيق | المعرّف | الاسم | الأيقونة | هدف البناء |
+|---|---|---|---|---|
+| العميل | `sd.qareeb.app` | قريب | خضراء · دبوس أبيض | `VITE_APP=customer` |
+| السائق | `sd.qareeb.captain` | كابتن قريب | صفراء · دبوس أخضر | `VITE_APP=driver` |
+
+- كل تطبيق يحمل **كوده فقط** (`VITE_APP` يستبعد كود الآخر) فيكون التحميل أصغر.
+- الفصل الأصلي عبر **product flavors** في `android/app/build.gradle` (customer / driver).
 - الإعداد في `capacitor.config.ts`، ومشروع أندرويد في `android/`.
 
 ---
@@ -22,16 +30,19 @@ cp .env.example .env    # ثم املأ القيم الحقيقية
 > **خرائط قوقل:** إن قيّدت المفتاح بنطاق الويب فقط، لن تظهر الخريطة داخل التطبيق.
 > للتجربة استخدم مفتاحاً غير مقيّد، أو أضِف قيود «تطبيقات Android» (بصمة SHA‑1 + `sd.qareeb.app`).
 
-## 2) بناء APK للتجربة
+## 2) بناء APK للتجربة (تطبيقان)
 ```
-npm run cap:apk
+npm run apk:customer   # قريب (العميل)
+npm run apk:driver     # كابتن قريب (السائق)
 ```
-يُنتج: `android/app/build/outputs/apk/debug/app-debug.apk`
-انقله لهاتفك وثبّته (فعّل «تثبيت من مصادر غير معروفة»).
+يُنتجان:
+- `android/app/build/outputs/apk/customer/debug/app-customer-debug.apk`
+- `android/app/build/outputs/apk/driver/debug/app-driver-debug.apk`
 
-أو افتح المشروع في Android Studio وشغّله على جهازك/محاكي:
+التثبيت على الهاتف (يعملان معاً — معرّفان مختلفان):
 ```
-npm run cap:open
+adb install -r -d android/app/build/outputs/apk/customer/debug/app-customer-debug.apk
+adb install -r -d android/app/build/outputs/apk/driver/debug/app-driver-debug.apk
 ```
 
 ## 3) تطوير حيّ على الهاتف (اختياري — الأسرع للتجربة)
@@ -41,16 +52,15 @@ npm run cap:open
 4. أعِد تعليق `server.url` قبل بناء نسخة الإنتاج.
 
 ## 4) بعد أي تعديل على الكود
-```
-npm run cap:sync    # يبني الويب وينسخه للمشروع الأصلي
-```
+أعد بناء التطبيق المتأثّر (`apk:customer` و/أو `apk:driver` من الخطوة 2).
 
 ## 5) النشر في متجر Play (لاحقاً)
-- أنشئ keystore للتوقيع، ثم:
+- أنشئ keystore للتوقيع، ثم ابنِ حزمة AAB **لكل تطبيق على حدة**:
   ```
-  cd android && ./gradlew bundleRelease
+  cross-env VITE_APP=customer npm run build && npx cap sync android && cd android && ./gradlew bundleCustomerRelease
+  cross-env VITE_APP=driver   npm run build && npx cap sync android && cd android && ./gradlew bundleDriverRelease
   ```
-  يُنتج AAB موقّعاً لرفعه على Play Console (بعد ضبط التوقيع في `android/app/build.gradle`).
+  يُنتجان AABين موقّعين لرفعهما كإدراجين منفصلين على Play Console (بعد ضبط التوقيع في `android/app/build.gradle`).
 - **iOS:** يتطلّب جهاز Mac + Xcode: `npm i @capacitor/ios && npx cap add ios && npx cap open ios`.
 
 ---
