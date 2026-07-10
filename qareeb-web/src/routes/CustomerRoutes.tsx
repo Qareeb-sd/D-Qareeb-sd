@@ -1,6 +1,5 @@
 import { Routes, Route, Navigate } from 'react-router-dom'
 import ProtectedRoute from '@/components/ProtectedRoute'
-import AdminRoute from '@/components/AdminRoute'
 
 // العميل
 import Onboarding from '@/pages/customer/Onboarding'
@@ -16,10 +15,6 @@ import CommuteOrder from '@/pages/customer/CommuteOrder'
 import CommuteJoin from '@/pages/customer/CommuteJoin'
 import Rides from '@/pages/customer/Rides'
 import Profile from '@/pages/customer/Profile'
-
-// الأدمن (يُنشر مع نسخة العميل/الويب فقط)
-import AdminLogin from '@/pages/admin/AdminLogin'
-import AdminDashboard from '@/pages/admin/AdminDashboard'
 
 const guard = (el: React.ReactNode) => <ProtectedRoute>{el}</ProtectedRoute>
 
@@ -41,17 +36,6 @@ export default function CustomerRoutes() {
       <Route path="/commute/:id" element={guard(<CommuteOrder />)} />
       <Route path="/rides" element={guard(<Rides />)} />
       <Route path="/profile" element={guard(<Profile />)} />
-
-      {/* لوحة الإدارة (مستقلة) */}
-      <Route path="/admin/login" element={<AdminLogin />} />
-      <Route
-        path="/admin"
-        element={
-          <AdminRoute>
-            <AdminDashboard />
-          </AdminRoute>
-        }
-      />
 
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>

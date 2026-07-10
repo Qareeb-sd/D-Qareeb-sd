@@ -8,15 +8,18 @@ import { MapsProvider } from '@/store/MapsContext'
 import ErrorBoundary from '@/components/ErrorBoundary'
 
 /**
- * تطبيق واحد بكود مشترك، يُبنى إلى تطبيقين منفصلين حسب VITE_APP:
- *   - customer (افتراضي) → «قريب» (العميل) + لوحة الإدارة على الويب.
+ * كود مشترك يُبنى إلى ثلاثة أهداف مستقلّة حسب VITE_APP:
+ *   - customer (افتراضي) → «قريب» (العميل).
  *   - driver             → «قريب كابتن» (السائق).
- * الشرط ثابت وقت البناء، فيُستبعد كود التطبيق الآخر من الحزمة (تحميل أصغر).
+ *   - admin              → موقع لوحة الإدارة (ويب فقط).
+ * الشرط ثابت وقت البناء، فيُستبعد كود الأهداف الأخرى من الحزمة.
  */
 const AppRoutes = lazy(() =>
   import.meta.env.VITE_APP === 'driver'
     ? import('@/routes/DriverRoutes')
-    : import('@/routes/CustomerRoutes'),
+    : import.meta.env.VITE_APP === 'admin'
+      ? import('@/routes/AdminRoutes')
+      : import('@/routes/CustomerRoutes'),
 )
 
 function Splash() {

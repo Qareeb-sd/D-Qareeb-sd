@@ -6,7 +6,9 @@
   "description": "قريب (Qareeb) — نقل آمن في كل السودان. تطبيق ويب (عميل/سائق/أدمن).",
   "scripts": {
     "dev": "vite",
+    "dev:admin": "cross-env VITE_APP=admin vite",
     "build": "tsc -b && vite build",
+    "build:admin": "cross-env VITE_APP=admin npm run build",
     "preview": "vite preview",
     "lint": "tsc --noEmit",
     "cap:open": "npx cap open android",
