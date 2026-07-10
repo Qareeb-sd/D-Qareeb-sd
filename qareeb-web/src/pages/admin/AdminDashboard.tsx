@@ -26,22 +26,46 @@ import {
   getFinancialSummary,
   listSosAlerts,
   resolveSos,
+  getMyAdminAccess,
+  listStaff,
+  setStaff,
+  removeStaff,
   type AdminStats,
   type AdminDriverRow,
   type FinancialSummary,
 } from '@/lib/api'
 import { subscribeToSos } from '@/lib/realtime'
 import { getService } from '@/data/services'
-import type { Settings, Topup, ServicePricing, DriverApplication, Ride, SosAlert } from '@/lib/types'
+import type {
+  Settings,
+  Topup,
+  ServicePricing,
+  DriverApplication,
+  Ride,
+  SosAlert,
+  AdminAccess,
+  StaffRow,
+  StaffPerm,
+} from '@/lib/types'
 
-type Tab = 'overview' | 'requests' | 'drivers' | 'rides' | 'settings'
+type Tab = 'overview' | 'requests' | 'drivers' | 'rides' | 'settings' | 'staff'
 
-const tabs: { id: Tab; label: string }[] = [
-  { id: 'overview', label: 'نظرة عامة' },
-  { id: 'requests', label: 'الطلبات' },
-  { id: 'drivers', label: 'السائقون' },
-  { id: 'rides', label: 'الرحلات' },
-  { id: 'settings', label: 'الإعدادات' },
+/** التبويبات مع الصلاحية المطلوبة لكلٍّ (null = تكفي أي صلاحية). */
+const tabs: { id: Tab; label: string; perm: StaffPerm | null; ownerOnly?: boolean }[] = [
+  { id: 'overview', label: 'نظرة عامة', perm: null },
+  { id: 'requests', label: 'الطلبات', perm: 'requests' },
+  { id: 'drivers', label: 'السائقون', perm: 'drivers' },
+  { id: 'rides', label: 'الرحلات', perm: 'rides' },
+  { id: 'settings', label: 'الإعدادات', perm: 'settings' },
+  { id: 'staff', label: 'الموظفون', perm: null, ownerOnly: true },
+]
+
+/** أسماء الصلاحيات المعروضة للمالك عند إضافة موظف. */
+const permLabels: { id: StaffPerm; label: string; desc: string }[] = [
+  { id: 'requests', label: 'الطلبات', desc: 'اعتماد التعبئات وطلبات السائقين' },
+  { id: 'drivers', label: 'السائقون', desc: 'عرض وإدارة السائقين' },
+  { id: 'rides', label: 'الرحلات', desc: 'متابعة الرحلات' },
+  { id: 'settings', label: 'الإعدادات', desc: 'التسعير والعمولة والحساب البنكي' },
 ]
 
 /**
@@ -62,6 +86,13 @@ export default function AdminDashboard() {
   const [rides, setRides] = useState<Ride[] | null>(null)
   const [activeRides, setActiveRides] = useState<Ride[]>([])
   const [sos, setSos] = useState<SosAlert[]>([])
+
+  // صلاحياتي (مالك أم موظف؟) + قائمة الموظفين (للمالك)
+  const [access, setAccess] = useState<AdminAccess>({ is_admin: false, perms: [] })
+  const [staffList, setStaffList] = useState<StaffRow[] | null>(null)
+  const [staffPhone, setStaffPhone] = useState('')
+  const [staffPerms, setStaffPerms] = useState<StaffPerm[]>(['requests'])
+  const [staffMsg, setStaffMsg] = useState('')
 
   const [busyId, setBusyId] = useState<string | null>(null)
   const [savedMsg, setSavedMsg] = useState('')
@@ -92,6 +123,46 @@ export default function AdminDashboard() {
   useEffect(() => {
     if (tab === 'drivers' && drivers === null) void listAllDrivers().then(setDrivers)
   }, [tab, drivers])
+
+  // صلاحياتي + قائمة الموظفين (للمالك).
+  useEffect(() => {
+    void getMyAdminAccess().then(setAccess)
+  }, [])
+  useEffect(() => {
+    if (tab === 'staff' && staffList === null) void listStaff().then(setStaffList)
+  }, [tab, staffList])
+
+  const togglePerm = (p: StaffPerm) =>
+    setStaffPerms((cur) => (cur.includes(p) ? cur.filter((x) => x !== p) : [...cur, p]))
+
+  const addStaff = async () => {
+    if (!staffPhone.trim() || staffPerms.length === 0) return
+    setStaffMsg('')
+    setBusyId('staff-add')
+    const { message, error } = await setStaff(staffPhone.trim(), staffPerms)
+    setBusyId(null)
+    setStaffMsg(error ?? message ?? '')
+    if (!error) {
+      setStaffPhone('')
+      setStaffList(null) // إعادة التحميل
+    }
+  }
+
+  const deleteStaff = async (userId: string, name: string) => {
+    if (!window.confirm(`إزالة الموظف «${name}» من لوحة الإدارة؟`)) return
+    setBusyId(userId)
+    const { error } = await removeStaff(userId)
+    setBusyId(null)
+    if (error) return alert(error)
+    setStaffList((cur) => (cur ? cur.filter((s) => s.user_id !== userId) : cur))
+  }
+
+  // التبويبات المرئية حسب صلاحياتي.
+  const visibleTabs = tabs.filter((t) => {
+    if (t.ownerOnly) return access.is_admin
+    if (t.perm === null) return true
+    return access.is_admin || access.perms.includes(t.perm)
+  })
 
   // ===== تحليلات محسوبة من الرحلات الحقيقية =====
   const analytics = useMemo(() => {
@@ -240,7 +311,7 @@ export default function AdminDashboard() {
 
       {/* تبويبات */}
       <nav className="flex gap-1 overflow-x-auto border-b border-hairline px-2 py-2">
-        {tabs.map((tb) => (
+        {visibleTabs.map((tb) => (
           <button
             key={tb.id}
             onClick={() => setTab(tb.id)}
@@ -709,6 +780,99 @@ export default function AdminDashboard() {
                 </button>
               </form>
             )}
+          </>
+        )}
+
+        {tab === 'staff' && access.is_admin && (
+          <>
+            {/* إضافة موظف */}
+            <div className="card p-4">
+              <p className="font-bold">إضافة موظف</p>
+              <p className="mb-3 text-xs text-ink-muted">
+                يجب أن يكون الموظف قد سجّل دخوله مرّة واحدة من موقع الإدارة بهاتفه
+                (ستظهر له «لا يملك صلاحية» — هذا طبيعي)، ثم أضِفه هنا بصلاحياته.
+              </p>
+              <div className="grid gap-3 md:grid-cols-2">
+                <input
+                  className="field text-left"
+                  dir="ltr"
+                  inputMode="tel"
+                  value={staffPhone}
+                  onChange={(e) => setStaffPhone(e.target.value)}
+                  placeholder="رقم هاتف الموظف (مثل 91XXXXXXX)"
+                />
+                <div className="flex flex-wrap items-center gap-2">
+                  {permLabels.map((p) => {
+                    const on = staffPerms.includes(p.id)
+                    return (
+                      <button
+                        key={p.id}
+                        type="button"
+                        title={p.desc}
+                        onClick={() => togglePerm(p.id)}
+                        className={`chip border px-3 py-1.5 text-sm transition ${
+                          on
+                            ? 'border-green bg-green text-white'
+                            : 'border-hairline bg-white text-ink-soft'
+                        }`}
+                      >
+                        {p.label}
+                      </button>
+                    )
+                  })}
+                </div>
+              </div>
+              <button
+                onClick={addStaff}
+                disabled={busyId === 'staff-add' || !staffPhone.trim() || staffPerms.length === 0}
+                className="btn-primary mt-3"
+              >
+                {busyId === 'staff-add' ? '…' : 'إضافة / تحديث الصلاحيات'}
+              </button>
+              {staffMsg && <p className="mt-2 text-sm text-green">{staffMsg}</p>}
+            </div>
+
+            {/* قائمة الموظفين */}
+            <div className="card p-4">
+              <p className="mb-3 font-bold">الموظفون الحاليون</p>
+              {staffList === null ? (
+                <p className="py-6 text-center text-sm text-ink-muted">…</p>
+              ) : staffList.length === 0 ? (
+                <p className="py-6 text-center text-sm text-ink-muted">
+                  لا يوجد موظفون بعد — أضِف أول موظف من الأعلى.
+                </p>
+              ) : (
+                <div className="divide-y divide-hairline">
+                  {staffList.map((s) => (
+                    <div key={s.user_id} className="flex items-center gap-3 py-3">
+                      <div className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-green-soft">
+                        🧑🏽‍💼
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate font-bold">{s.users?.full_name ?? 'موظف'}</p>
+                        <p className="truncate text-xs text-ink-muted" dir="ltr">
+                          {s.users?.phone ?? '—'}
+                        </p>
+                      </div>
+                      <div className="flex flex-wrap justify-end gap-1">
+                        {s.perms.map((p) => (
+                          <span key={p} className="chip bg-green-soft text-xs text-green">
+                            {permLabels.find((x) => x.id === p)?.label ?? p}
+                          </span>
+                        ))}
+                      </div>
+                      <button
+                        onClick={() => deleteStaff(s.user_id, s.users?.full_name ?? 'موظف')}
+                        disabled={busyId === s.user_id}
+                        className="shrink-0 rounded-lg border border-danger/40 px-2.5 py-1 text-xs font-bold text-danger hover:bg-danger/5"
+                      >
+                        إزالة
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
           </>
         )}
       </main>

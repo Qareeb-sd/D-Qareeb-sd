@@ -269,6 +269,85 @@ returns boolean language sql stable security definer set search_path = public as
   );
 $$;
 
+-- ============================================================
+--  الموظفون (وصول محدود للوحة الإدارة بصلاحيات يحدّدها المالك)
+--  الصلاحيات: requests (الطلبات) · drivers (السائقون) · rides (الرحلات)
+--             · settings (التسعير والإعدادات)
+-- ============================================================
+create table if not exists public.staff (
+  user_id    uuid primary key references public.users(id) on delete cascade,
+  perms      text[] not null default '{}',
+  active     boolean not null default true,
+  created_by uuid references public.users(id) on delete set null,
+  created_at timestamptz not null default now()
+);
+alter table public.staff enable row level security;
+
+-- هل المستخدم موظفاً نشطاً أو أدمن؟ (للقراءة العامة في اللوحة)
+create or replace function public.is_staff_or_admin()
+returns boolean language sql stable security definer set search_path = public as $$
+  select public.is_admin() or exists (
+    select 1 from public.staff where user_id = auth.uid() and active
+  );
+$$;
+
+-- هل يملك صلاحية معيّنة؟ (الأدمن يملك الكل)
+create or replace function public.has_perm(p text)
+returns boolean language sql stable security definer set search_path = public as $$
+  select public.is_admin() or exists (
+    select 1 from public.staff
+    where user_id = auth.uid() and active and p = any(perms)
+  );
+$$;
+
+drop policy if exists "admin manage staff" on public.staff;
+create policy "admin manage staff" on public.staff
+  for all using (public.is_admin()) with check (public.is_admin());
+
+drop policy if exists "own staff row" on public.staff;
+create policy "own staff row" on public.staff
+  for select using (auth.uid() = user_id);
+
+-- صلاحياتي في اللوحة (للواجهة): أدمن → كل الصلاحيات، موظف → صلاحياته.
+create or replace function public.my_admin_access()
+returns table (is_admin boolean, perms text[])
+language sql stable security definer set search_path = public as $$
+  select
+    public.is_admin(),
+    case
+      when public.is_admin() then array['requests','drivers','rides','settings']
+      else coalesce(
+        (select s.perms from public.staff s where s.user_id = auth.uid() and s.active),
+        '{}'
+      )
+    end;
+$$;
+
+-- المالك يضيف/يعدّل موظفاً برقم هاتفه (يجب أن يكون سجّل دخوله مرة).
+create or replace function public.admin_set_staff(p_phone text, p_perms text[])
+returns text language plpgsql security definer set search_path = public as $$
+declare v_id uuid;
+begin
+  if not public.is_admin() then raise exception 'غير مصرّح'; end if;
+  select id into v_id from auth.users
+    where email = regexp_replace(p_phone, '\D', '', 'g') || '@qareeb.sd';
+  if v_id is null then
+    return 'لا يوجد حساب بهذا الرقم — اطلب من الموظف تسجيل الدخول مرّة من موقع الإدارة أولاً.';
+  end if;
+  insert into public.staff (user_id, perms, created_by)
+    values (v_id, p_perms, auth.uid())
+    on conflict (user_id) do update set perms = excluded.perms, active = true;
+  return 'تم ✓';
+end $$;
+
+-- المالك يزيل موظفاً.
+create or replace function public.admin_remove_staff(p_user uuid)
+returns void language plpgsql security definer set search_path = public as $$
+begin
+  if not public.is_admin() then raise exception 'غير مصرّح'; end if;
+  delete from public.staff where user_id = p_user;
+end $$;
+
 -- التسعير: قراءة للجميع (المصادَق عليهم)
 drop policy if exists "read pricing" on public.service_pricing;
 create policy "read pricing" on public.service_pricing
@@ -345,28 +424,28 @@ create policy "read settings" on public.settings
 -- الأدمن يقرأ كل المستخدمين والمحافظ والتعبئات (للوحة التحكم)
 drop policy if exists "admin read users" on public.users;
 create policy "admin read users" on public.users
-  for select using (public.is_admin());
+  for select using (public.is_staff_or_admin());
 
 drop policy if exists "admin read wallets" on public.wallets;
 create policy "admin read wallets" on public.wallets
-  for select using (public.is_admin());
+  for select using (public.is_staff_or_admin());
 
 drop policy if exists "admin read topups" on public.topups;
 create policy "admin read topups" on public.topups
-  for select using (public.is_admin());
+  for select using (public.is_staff_or_admin());
 
 -- الأدمن يقرأ كل السائقين والرحلات والمعاملات (للقوائم والملخّص المالي)
 drop policy if exists "admin read drivers" on public.drivers;
 create policy "admin read drivers" on public.drivers
-  for select using (public.is_admin());
+  for select using (public.is_staff_or_admin());
 
 drop policy if exists "admin read rides" on public.rides;
 create policy "admin read rides" on public.rides
-  for select using (public.is_admin());
+  for select using (public.is_staff_or_admin());
 
 drop policy if exists "admin read transactions" on public.transactions;
 create policy "admin read transactions" on public.transactions
-  for select using (public.is_admin());
+  for select using (public.is_staff_or_admin());
 
 -- ملخّص مالي للمنصة (أدمن فقط) — إجماليات من جدول المعاملات والمحافظ.
 create or replace function public.admin_financial_summary()
@@ -379,7 +458,7 @@ returns table (
   wallet_liability    numeric    -- مجموع أرصدة كل المحافظ
 ) language plpgsql stable security definer set search_path = public as $$
 begin
-  if not public.is_admin() then raise exception 'غير مصرّح'; end if;
+  if not public.is_staff_or_admin() then raise exception 'غير مصرّح'; end if;
   return query
     select
       coalesce(-sum(t.amount) filter (where t.type = 'commission'), 0),
@@ -398,21 +477,21 @@ create policy "raise own sos" on public.sos_alerts
 
 drop policy if exists "read sos" on public.sos_alerts;
 create policy "read sos" on public.sos_alerts
-  for select using (auth.uid() = user_id or public.is_admin());
+  for select using (auth.uid() = user_id or public.is_staff_or_admin());
 
 drop policy if exists "admin update sos" on public.sos_alerts;
 create policy "admin update sos" on public.sos_alerts
-  for update using (public.is_admin()) with check (public.is_admin());
+  for update using (public.is_staff_or_admin()) with check (public.is_staff_or_admin());
 
 -- الأدمن يعدّل الإعدادات (العمولة + Surge + الشرائح + الحساب البنكي)
 drop policy if exists "admin write settings" on public.settings;
 create policy "admin write settings" on public.settings
-  for update using (public.is_admin()) with check (public.is_admin());
+  for update using (public.has_perm('settings')) with check (public.has_perm('settings'));
 
 -- الأدمن يعدّل تسعير المركبات
 drop policy if exists "admin write pricing" on public.service_pricing;
 create policy "admin write pricing" on public.service_pricing
-  for all using (public.is_admin()) with check (public.is_admin());
+  for all using (public.has_perm('settings')) with check (public.has_perm('settings'));
 
 -- ============================================================
 --  اعتماد/رفض التعبئة (عمليات ذرّية عبر دوال آمنة)
@@ -426,7 +505,7 @@ declare
   v_amount numeric;
   v_status topup_status;
 begin
-  if not public.is_admin() then
+  if not public.has_perm('requests') then
     raise exception 'غير مصرّح';
   end if;
 
@@ -453,7 +532,7 @@ end $$;
 create or replace function public.reject_topup(p_topup uuid)
 returns void language plpgsql security definer set search_path = public as $$
 begin
-  if not public.is_admin() then raise exception 'غير مصرّح'; end if;
+  if not public.has_perm('requests') then raise exception 'غير مصرّح'; end if;
   update public.topups
     set status = 'rejected', reviewed_by = auth.uid()
     where id = p_topup and status = 'pending';
@@ -529,7 +608,7 @@ create policy "own driver row" on public.drivers
 -- الأدمن يقرأ كل السائقين (لعرض طلبات التسجيل واعتمادها)
 drop policy if exists "admin read drivers" on public.drivers;
 create policy "admin read drivers" on public.drivers
-  for select using (public.is_admin());
+  for select using (public.is_staff_or_admin());
 
 -- (منع ترقية الدور ذاتياً مُعرّف أعلاه — trigger واحد يكفي.)
 
@@ -556,7 +635,7 @@ end $$;
 create or replace function public.admin_delete_driver(p_user uuid)
 returns void language plpgsql security definer set search_path = public as $$
 begin
-  if not public.is_admin() then raise exception 'غير مصرّح'; end if;
+  if not public.has_perm('drivers') then raise exception 'غير مصرّح'; end if;
   delete from public.drivers where user_id = p_user;
   update public.users set role = 'customer' where id = p_user and role = 'driver';
 end $$;
@@ -814,7 +893,7 @@ declare
   v_status driver_app_status;
   v_driver uuid;
 begin
-  if not public.is_admin() then raise exception 'غير مصرّح'; end if;
+  if not public.has_perm('requests') then raise exception 'غير مصرّح'; end if;
 
   select user_id, vehicle_type, plate_number, status
     into v_user, v_vtype, v_plate, v_status
@@ -843,7 +922,7 @@ end $$;
 create or replace function public.reject_driver_application(p_app uuid, p_note text default null)
 returns void language plpgsql security definer set search_path = public as $$
 begin
-  if not public.is_admin() then raise exception 'غير مصرّح'; end if;
+  if not public.has_perm('requests') then raise exception 'غير مصرّح'; end if;
   update public.driver_applications
     set status = 'rejected', review_note = p_note, reviewed_by = auth.uid(), updated_at = now()
     where id = p_app and status = 'pending';

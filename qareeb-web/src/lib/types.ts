@@ -194,6 +194,26 @@ export interface DriverApplication {
   updated_at: string
 }
 
+// ---------- الموظفون (وصول محدود للوحة الإدارة) ----------
+/** صلاحيات لوحة الإدارة المتاحة للموظفين. */
+export type StaffPerm = 'requests' | 'drivers' | 'rides' | 'settings'
+
+/** موظف لوحة الإدارة وصلاحياته. */
+export interface StaffRow {
+  user_id: string
+  perms: StaffPerm[]
+  active: boolean
+  created_by: string | null
+  created_at: string
+  users?: { full_name: string | null; phone: string } // join للاسم والهاتف
+}
+
+/** صلاحياتي في اللوحة (نتيجة my_admin_access). */
+export interface AdminAccess {
+  is_admin: boolean
+  perms: StaffPerm[]
+}
+
 /** اشتراك Web Push مخزّن لمستخدم. */
 export interface PushSubscriptionRow {
   id: string
@@ -249,6 +269,11 @@ export interface Database {
         Insert: Partial<SosAlert>
         Update: Partial<SosAlert>
       }
+      staff: {
+        Row: StaffRow
+        Insert: Partial<StaffRow>
+        Update: Partial<StaffRow>
+      }
     }
     Views: Record<string, never>
     Functions: {
@@ -277,6 +302,13 @@ export interface Database {
           wallet_liability: number
         }[]
       }
+      my_admin_access: {
+        Args: Record<string, never>
+        Returns: { is_admin: boolean; perms: string[] }[]
+      }
+      admin_set_staff: { Args: { p_phone: string; p_perms: string[] }; Returns: string }
+      admin_remove_staff: { Args: { p_user: string }; Returns: undefined }
+      admin_delete_driver: { Args: { p_user: string }; Returns: undefined }
       get_ride_driver: {
         Args: { p_ride: string }
         Returns: {

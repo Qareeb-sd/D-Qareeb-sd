@@ -11,6 +11,9 @@ import type {
   ServicePricing,
   SosAlert,
   SosRole,
+  StaffRow,
+  StaffPerm,
+  AdminAccess,
 } from './types'
 
 /**
@@ -517,6 +520,52 @@ export async function listActiveRides(): Promise<Ride[]> {
 export async function deleteDriver(userId: string): Promise<{ error?: string }> {
   if (!isSupabaseConfigured) return {}
   const { error } = await supabase.rpc('admin_delete_driver', { p_user: userId })
+  return error ? { error: error.message } : {}
+}
+
+// ------------------------- الموظفون (صلاحيات اللوحة) -------------------------
+
+/** صلاحياتي في لوحة الإدارة: أدمن (مالك) أم موظف بصلاحيات محدودة؟ */
+export async function getMyAdminAccess(): Promise<AdminAccess> {
+  // وضع المعاينة: وصول كامل لتجربة اللوحة.
+  if (!isSupabaseConfigured)
+    return { is_admin: true, perms: ['requests', 'drivers', 'rides', 'settings'] }
+  const { data } = await supabase.rpc('my_admin_access')
+  const row = data?.[0]
+  return {
+    is_admin: Boolean(row?.is_admin),
+    perms: (row?.perms ?? []) as StaffPerm[],
+  }
+}
+
+/** قائمة الموظفين مع أسمائهم وهواتفهم (للمالك فقط). */
+export async function listStaff(): Promise<StaffRow[]> {
+  if (!isSupabaseConfigured) return []
+  const { data } = await supabase
+    .from('staff')
+    .select('*, users(full_name, phone)')
+    .order('created_at', { ascending: false })
+  return (data as StaffRow[]) ?? []
+}
+
+/** إضافة/تعديل موظف برقم هاتفه وصلاحياته (للمالك فقط). */
+export async function setStaff(
+  phone: string,
+  perms: StaffPerm[],
+): Promise<{ message?: string; error?: string }> {
+  if (!isSupabaseConfigured) return { message: 'تم ✓ (معاينة)' }
+  const { data, error } = await supabase.rpc('admin_set_staff', {
+    p_phone: phone,
+    p_perms: perms,
+  })
+  if (error) return { error: error.message }
+  return { message: (data as string) ?? 'تم ✓' }
+}
+
+/** إزالة موظف (للمالك فقط). */
+export async function removeStaff(userId: string): Promise<{ error?: string }> {
+  if (!isSupabaseConfigured) return {}
+  const { error } = await supabase.rpc('admin_remove_staff', { p_user: userId })
   return error ? { error: error.message } : {}
 }
 
