@@ -498,23 +498,26 @@ begin
     on conflict (category) do update set percent = excluded.percent;
 end $$;
 
--- تقرير الميزانية للفترة: الإيراد (عمولة المنصة) موزّعاً بالنِّسب مقابل المصروف الفعلي.
+-- تقرير الميزانية للفترة:
+--  المجمّع (pool) = رصيد الحسابات البنكية الحالي + منصرفات الفترة
+--  (أي المبلغ قبل صرف هذه الفترة، فيبقى تخصيص كل بند ثابتاً رغم الخصم).
+--  المخصّص = المجمّع × النسبة، والمتاح = المخصّص − المصروف.
 create or replace function public.budget_report(p_scope text)
 returns table (category text, percent numeric, allocated numeric, spent numeric, income numeric)
 language plpgsql stable security definer set search_path = public as $$
-declare v_start date; v_income numeric;
+declare v_start date; v_pool numeric; v_period_spent numeric;
 begin
   if not public.is_admin() then raise exception 'غير مصرّح'; end if;
   v_start := case when p_scope = 'year' then date_trunc('year', now())::date
                   else date_trunc('month', now())::date end;
-  select coalesce(-sum(amount),0) into v_income from public.transactions
-    where type = 'commission' and created_at >= v_start;
+  select coalesce(sum(amount),0) into v_period_spent from public.expenses where spent_at >= v_start;
+  v_pool := (select coalesce(sum(balance),0) from public.company_accounts) + v_period_spent;
   return query
     select b.category, b.percent,
-           round(v_income * b.percent / 100, 2) as allocated,
+           round(v_pool * b.percent / 100, 2) as allocated,
            coalesce((select sum(e.amount) from public.expenses e
                      where e.category = b.category and e.spent_at >= v_start), 0) as spent,
-           v_income as income
+           v_pool as income
     from public.budget_plan b
     order by b.percent desc;
 end $$;

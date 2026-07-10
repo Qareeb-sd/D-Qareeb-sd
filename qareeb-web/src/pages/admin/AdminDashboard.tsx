@@ -1119,12 +1119,12 @@ export default function AdminDashboard() {
                 <div>
                   <p className="font-bold">الميزانية حسب البنود</p>
                   <p className="text-xs text-ink-muted">
-                    توزيع الإيراد (عمولة المنصة) على البنود بالنِّسب، مقابل المصروف الفعلي.
+                    المتاح لكل بند = رصيد الحسابات × نسبته − المصروف الفعلي.
                   </p>
                 </div>
                 <div className="flex items-center gap-2">
                   <span className="text-sm text-ink-soft">
-                    الإيراد: <span className="font-bold text-green">{money(budget[0]?.income ?? 0)}</span>
+                    رصيد الحسابات: <span className="font-bold text-green">{money(budget[0]?.income ?? 0)}</span>
                   </span>
                   <div className="flex rounded-xl border border-hairline p-1">
                     {(['month', 'year'] as const).map((s) => (
@@ -1166,7 +1166,8 @@ export default function AdminDashboard() {
                           <span className="text-ink-muted">%</span>
                           <span className="flex-1" />
                           <span className="text-xs text-ink-soft">
-                            {money(b.spent)} / {money(b.allocated)}
+                            المتاح <span className={`font-bold ${over ? 'text-danger' : 'text-green'}`}>{money(b.allocated - b.spent)}</span>
+                            <span className="text-ink-muted"> · صُرف {money(b.spent)} من {money(b.allocated)}</span>
                           </span>
                         </div>
                         <div className="h-2 w-full overflow-hidden rounded-full bg-hairline">
