@@ -32,7 +32,10 @@ export default function DriverLogin() {
   }
 
   return (
-    <div className="screen bg-[#125531] px-6 py-10 text-white">
+    <div
+      className="screen bg-[#125531] px-6 py-10 text-white"
+      style={{ paddingBottom: 'calc(2.5rem + env(safe-area-inset-bottom))' }}
+    >
       <div className="mb-8 flex flex-col items-center text-center">
         <Logo variant="driver" size={76} rounded={22} />
         <h1 className="mt-4 text-2xl font-extrabold text-lemon">قريب · السائق</h1>

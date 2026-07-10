@@ -35,7 +35,13 @@ export default function Screen({ title, back, right, children, bare }: ScreenPro
           {right}
         </header>
       )}
-      <main className={bare ? 'flex-1' : 'flex-1 px-4 py-4'}>{children}</main>
+      <main
+        className={bare ? 'flex-1' : 'flex-1 px-4 py-4'}
+        // مسافة أمان أسفل المحتوى حتى لا يغطّي شريط الهاتف آخر زر
+        style={bare ? undefined : { paddingBottom: 'calc(1rem + env(safe-area-inset-bottom))' }}
+      >
+        {children}
+      </main>
     </div>
   )
 }

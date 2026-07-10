@@ -70,7 +70,11 @@ export default function DriverOnboarding() {
         </div>
       </div>
 
-      <button className="btn-driver mt-6 w-full" onClick={() => navigate('/driver/login')}>
+      <button
+        className="btn-driver mt-6 w-full"
+        style={{ marginBottom: 'env(safe-area-inset-bottom)' }}
+        onClick={() => navigate('/driver/login')}
+      >
         يلا نبدأ
       </button>
     </div>

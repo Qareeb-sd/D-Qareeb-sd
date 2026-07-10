@@ -70,7 +70,11 @@ export default function Onboarding() {
         </div>
       </div>
 
-      <button className="btn-primary mt-6 w-full" onClick={() => navigate('/auth')}>
+      <button
+        className="btn-primary mt-6 w-full"
+        style={{ marginBottom: 'env(safe-area-inset-bottom)' }}
+        onClick={() => navigate('/auth')}
+      >
         يلا نبدأ
       </button>
     </div>

@@ -28,7 +28,10 @@ export default function Auth() {
   }
 
   return (
-    <div className="screen px-6 py-10">
+    <div
+      className="screen px-6 py-10"
+      style={{ paddingBottom: 'calc(2.5rem + env(safe-area-inset-bottom))' }}
+    >
       <div className="mb-8 flex flex-col items-center text-center">
         <Logo size={72} rounded={20} />
         <h1 className="mt-4 text-2xl font-extrabold text-green">قريب</h1>
