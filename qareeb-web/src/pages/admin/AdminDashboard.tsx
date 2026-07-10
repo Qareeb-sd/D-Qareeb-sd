@@ -37,6 +37,7 @@ import {
   type FinancialSummary,
 } from '@/lib/api'
 import { subscribeToSos, subscribeToTopups, subscribeToDriverApplications } from '@/lib/realtime'
+import { exportCsv } from '@/lib/csv'
 import { getService } from '@/data/services'
 import type {
   Settings,
@@ -199,6 +200,70 @@ export default function AdminDashboard() {
     if (error) return alert(error)
     setStaffList((cur) => (cur ? cur.filter((s) => s.user_id !== userId) : cur))
   }
+
+  // ===== تصدير CSV =====
+  const day = () => new Date().toISOString().slice(0, 10)
+  const statusAr: Record<string, string> = {
+    requested: 'مطلوبة',
+    searching: 'بحث عن سائق',
+    accepted: 'مقبولة',
+    arrived: 'وصل السائق',
+    in_progress: 'جارية',
+    completed: 'مكتملة',
+    cancelled: 'ملغاة',
+  }
+  const exportRides = () =>
+    exportCsv(
+      `الرحلات-${day()}`,
+      [
+        { key: 'date', label: 'التاريخ' },
+        { key: 'service', label: 'المركبة' },
+        { key: 'status', label: 'الحالة' },
+        { key: 'pickup', label: 'الإقلاع' },
+        { key: 'dropoff', label: 'الوجهة' },
+        { key: 'fare', label: 'الأجرة' },
+      ],
+      filteredRides.map((r) => ({
+        date: new Date(r.created_at).toLocaleString('ar-SD'),
+        service: getService(r.service_id)?.name ?? r.service_id,
+        status: statusAr[r.status] ?? r.status,
+        pickup: r.pickup_address ?? '',
+        dropoff: r.dropoff_address ?? '',
+        fare: Math.round(r.fare ?? 0),
+      })),
+    )
+  const exportFinance = () =>
+    exportCsv(
+      `المالية-${day()}`,
+      [
+        { key: 'metric', label: 'البند' },
+        { key: 'value', label: 'القيمة (ج.س)' },
+      ],
+      [
+        { metric: 'عمولة المنصة', value: Math.round(finance?.platform_commission ?? 0) },
+        { metric: 'أرباح السائقين', value: Math.round(finance?.driver_earnings ?? 0) },
+        { metric: 'إجمالي التعبئات', value: Math.round(finance?.total_topups ?? 0) },
+        { metric: 'مدفوعات المحفظة', value: Math.round(finance?.ride_payments ?? 0) },
+        { metric: 'أرصدة المحافظ', value: Math.round(finance?.wallet_liability ?? 0) },
+        { metric: 'رحلات مكتملة', value: finance?.completed_rides ?? 0 },
+      ],
+    )
+  const exportAudit = () =>
+    exportCsv(
+      `سجل-النشاط-${day()}`,
+      [
+        { key: 'date', label: 'التاريخ' },
+        { key: 'actor', label: 'الفاعل' },
+        { key: 'action', label: 'الإجراء' },
+        { key: 'target', label: 'الهدف' },
+      ],
+      (audit ?? []).map((a) => ({
+        date: new Date(a.created_at).toLocaleString('ar-SD'),
+        actor: a.actor_name ?? '',
+        action: a.action,
+        target: a.target ?? '',
+      })),
+    )
 
   // التبويبات المرئية حسب صلاحياتي.
   const visibleTabs = tabs.filter((t) => {
@@ -755,7 +820,16 @@ export default function AdminDashboard() {
         {tab === 'rides' && (
           <div className="card p-4">
             <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-              <p className="font-bold">الرحلات ({filteredRides.length})</p>
+              <div className="flex items-center gap-2">
+                <p className="font-bold">الرحلات ({filteredRides.length})</p>
+                <button
+                  onClick={exportRides}
+                  disabled={filteredRides.length === 0}
+                  className="rounded-lg border border-green/40 px-2.5 py-1 text-xs font-bold text-green hover:bg-green/5 disabled:opacity-40"
+                >
+                  ⬇️ تصدير CSV
+                </button>
+              </div>
               <div className="flex flex-wrap gap-2">
                 <select
                   className="field w-auto"
@@ -808,6 +882,15 @@ export default function AdminDashboard() {
 
         {tab === 'finance' && access.is_admin && (
           <>
+            <div className="flex items-center justify-between">
+              <p className="font-bold">الملخّص المالي</p>
+              <button
+                onClick={exportFinance}
+                className="rounded-lg border border-green/40 px-2.5 py-1 text-xs font-bold text-green hover:bg-green/5"
+              >
+                ⬇️ تصدير CSV
+              </button>
+            </div>
             {/* ملخّص مالي تفصيلي */}
             <div className="grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-6">
               <StatCard label="عمولة المنصة" value={money(finance?.platform_commission ?? 0)} icon="🏦" iconBg="#E8F1EC" accent="#1B6B3F" />
@@ -1093,12 +1176,21 @@ export default function AdminDashboard() {
           <div className="card p-4">
             <div className="mb-3 flex items-center justify-between">
               <p className="font-bold">سجلّ النشاط</p>
-              <button
-                onClick={() => void listAuditLog().then((a) => setAudit(a as AuditEntry[]))}
-                className="text-sm text-info underline"
-              >
-                تحديث
-              </button>
+              <div className="flex items-center gap-3">
+                <button
+                  onClick={exportAudit}
+                  disabled={(audit ?? []).length === 0}
+                  className="rounded-lg border border-green/40 px-2.5 py-1 text-xs font-bold text-green hover:bg-green/5 disabled:opacity-40"
+                >
+                  ⬇️ تصدير CSV
+                </button>
+                <button
+                  onClick={() => void listAuditLog().then((a) => setAudit(a as AuditEntry[]))}
+                  className="text-sm text-info underline"
+                >
+                  تحديث
+                </button>
+              </div>
             </div>
             <p className="mb-3 text-xs text-ink-muted">
               كل اعتماد/رفض/حذف يُسجَّل باسم فاعله ووقته — مساءلة كاملة.
