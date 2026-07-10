@@ -493,6 +493,31 @@ create trigger prevent_role_change
   for each row execute function public.prevent_role_change();
 
 -- ============================================================
+--  ترقية رقم هاتف إلى أدمن (تجاوز آمن لحاجز تغيير الدور)
+--  الاستخدام في محرّر SQL:  select public.bootstrap_admin('916460666');
+--  الرقم = نفس ما تكتبه في شاشة الدخول (أرقام فقط، البريد يُشتق منه).
+--  اشترط تسجيل الدخول مرّة أولاً بالرقم من موقع الأدمن ليُنشأ الحساب.
+-- ============================================================
+create or replace function public.bootstrap_admin(p_phone text)
+returns text language plpgsql security definer set search_path = public as $$
+declare v_id uuid; v_n int;
+begin
+  select id into v_id from auth.users
+    where email = regexp_replace(p_phone, '\D', '', 'g') || '@qareeb.sd';
+  if v_id is null then
+    return 'لا يوجد حساب بهذا الرقم — سجّل الدخول أولاً بالرقم ' || p_phone || ' من موقع الأدمن ثم أعد المحاولة.';
+  end if;
+  alter table public.users disable trigger prevent_role_change;
+  update public.users set role = 'admin' where id = v_id;
+  get diagnostics v_n = row_count;
+  alter table public.users enable trigger prevent_role_change;
+  if v_n = 0 then
+    return 'الحساب موجود بالمصادقة بلا صف مستخدم — افتح موقع الأدمن مرّة ثم أعد المحاولة.';
+  end if;
+  return 'تم ✓ الرقم ' || p_phone || ' صار أدمن — سجّل خروجاً ثم دخولاً من جديد.';
+end $$;
+
+-- ============================================================
 --  السائق: قبول الرحلات وتسوية الأرباح (خصم العمولة)
 -- ============================================================
 
