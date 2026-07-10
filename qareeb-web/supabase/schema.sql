@@ -168,10 +168,13 @@ create table if not exists public.service_pricing (
   per_km_urban numeric(12,2) not null default 0,   -- الشريحة الحضرية (tier1..tier2)
   per_km_far   numeric(12,2) not null default 0,   -- الشريحة التعويضية (> tier2)
   per_minute   numeric(12,2) not null default 0,   -- سعر الدقيقة
+  commission_rate numeric(4,3),                     -- نسبة العمولة لهذا النوع (0..1)؛ null = استخدم العمولة العامة
   sort_order   int not null default 0,
   active       boolean not null default true,
   updated_at   timestamptz not null default now()
 );
+-- ترقية القواعد القديمة (إضافة عمود العمولة إن لم يكن موجوداً)
+alter table public.service_pricing add column if not exists commission_rate numeric(4,3);
 
 -- بذور التسعير الابتدائية (بالجنيه السوداني — تُعدَّل من لوحة الأدمن)
 insert into public.service_pricing
@@ -917,6 +920,7 @@ declare
   v_fare        numeric;
   v_status      ride_status;
   v_payment     payment_method;
+  v_service     text;
   v_rate        numeric;
   v_commission  numeric;
   v_net         numeric;
@@ -924,8 +928,8 @@ declare
   v_cwallet     uuid;
   v_cbalance    numeric;
 begin
-  select driver_id, customer_id, fare, status, payment_method
-    into v_driver_user, v_customer, v_fare, v_status, v_payment
+  select driver_id, customer_id, fare, status, payment_method, service_id
+    into v_driver_user, v_customer, v_fare, v_status, v_payment, v_service
     from public.rides where id = p_ride for update;
 
   if v_driver_user is null then raise exception 'الرحلة بلا سائق'; end if;
@@ -935,7 +939,11 @@ begin
   if v_status = 'completed' then raise exception 'الرحلة مسوّاة مسبقاً'; end if;
   if v_status = 'cancelled' then raise exception 'الرحلة ملغاة'; end if;
 
-  select commission_rate into v_rate from public.settings where id = 1;
+  -- عمولة النوع إن ضُبطت، وإلا العمولة العامة من الإعدادات.
+  v_rate := coalesce(
+    (select commission_rate from public.service_pricing where service_id = v_service),
+    (select commission_rate from public.settings where id = 1)
+  );
   v_fare       := coalesce(v_fare, 0);
   v_commission := round(v_fare * coalesce(v_rate, 0));
   v_net        := v_fare - v_commission;

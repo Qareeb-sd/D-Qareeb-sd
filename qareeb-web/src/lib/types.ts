@@ -110,6 +110,7 @@ export interface ServicePricing {
   per_km_urban: number // سعر الكيلومتر في الشريحة الحضرية (tier1..tier2)
   per_km_far: number // سعر الكيلومتر التعويضي (> tier2)
   per_minute: number // سعر الدقيقة
+  commission_rate: number | null // نسبة العمولة لهذا النوع (0..1)؛ null = العمولة العامة
   sort_order: number
   active: boolean
   updated_at: string

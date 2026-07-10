@@ -621,6 +621,7 @@ export default function AdminDashboard() {
       per_km_urban: p.per_km_urban,
       per_km_far: p.per_km_far,
       per_minute: p.per_minute,
+      commission_rate: p.commission_rate,
     })
     setBusyId(null)
     setPriceMsg(error ? `خطأ: ${error}` : `تم حفظ تسعيرة «${p.name}» ✓`)
@@ -1434,6 +1435,36 @@ export default function AdminDashboard() {
                         value={p.per_minute}
                         onChange={(v) => setPrice(p.service_id, 'per_minute', v)}
                       />
+                      <label className="block">
+                        <span className="mb-1 block text-xs text-ink-soft">
+                          نسبة العمولة % (فارغ = العامة)
+                        </span>
+                        <input
+                          type="number"
+                          inputMode="decimal"
+                          step={1}
+                          min={0}
+                          max={100}
+                          placeholder={`${commissionPct} (عام)`}
+                          value={p.commission_rate == null ? '' : Math.round(p.commission_rate * 100)}
+                          onChange={(e) =>
+                            setPricing((cur) =>
+                              cur.map((x) =>
+                                x.service_id === p.service_id
+                                  ? {
+                                      ...x,
+                                      commission_rate:
+                                        e.target.value === ''
+                                          ? null
+                                          : Number(e.target.value) / 100,
+                                    }
+                                  : x,
+                              ),
+                            )
+                          }
+                          className="w-full rounded-xl border border-hairline bg-white px-3 py-2 text-ink outline-none focus:border-green"
+                        />
+                      </label>
                     </div>
                   </div>
                 ))}
