@@ -33,6 +33,8 @@
   /* حاوية الشاشة بعرض الموبايل، ممركزة على الشاشات الكبيرة */
   .screen {
     @apply mx-auto w-full max-w-md min-h-screen bg-bg flex flex-col;
+    /* مسافة أمان أعلى الشاشة حتى لا يغطّي شريط حالة الهاتف المحتوى */
+    padding-top: env(safe-area-inset-top);
   }
 
   .btn {

@@ -17,7 +17,11 @@ export default function Screen({ title, back, right, children, bare }: ScreenPro
   return (
     <div className="screen">
       {(title || back) && (
-        <header className="sticky top-0 z-10 flex items-center gap-2 border-b border-hairline bg-bg/90 px-4 py-3 backdrop-blur">
+        <header
+          className="sticky z-10 flex items-center gap-2 border-b border-hairline bg-bg/90 px-4 py-3 backdrop-blur"
+          // يلتصق أسفل شريط حالة الهاتف لا خلفه
+          style={{ top: 'env(safe-area-inset-top)' }}
+        >
           {back && (
             <button
               onClick={() => navigate(-1)}

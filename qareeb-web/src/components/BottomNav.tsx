@@ -27,7 +27,11 @@ const items: NavItem[] = [
 
 export default function BottomNav() {
   return (
-    <nav className="sticky bottom-0 z-10 mx-auto flex w-full max-w-md items-stretch border-t border-hairline bg-white/90 backdrop-blur-md">
+    <nav
+      className="sticky bottom-0 z-10 mx-auto flex w-full max-w-md items-stretch border-t border-hairline bg-white/90 backdrop-blur-md"
+      // مسافة أمان أسفل الشريط حتى لا يغطّي شريط تنقّل الهاتف الأيقونات
+      style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}
+    >
       {items.map(({ to, label, Icon, IconActive }) => (
         <NavLink
           key={to}
