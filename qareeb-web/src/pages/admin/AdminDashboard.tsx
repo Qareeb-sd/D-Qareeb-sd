@@ -617,12 +617,12 @@ export default function AdminDashboard() {
                         onChange={(v) => setPrice(p.service_id, 'base_fare', v)}
                       />
                       <NumField
-                        label="حضري / كم"
+                        label="داخل المدينة / كم"
                         value={p.per_km_urban}
                         onChange={(v) => setPrice(p.service_id, 'per_km_urban', v)}
                       />
                       <NumField
-                        label="بعيد / كم"
+                        label="خارج المدينة / كم"
                         value={p.per_km_far}
                         onChange={(v) => setPrice(p.service_id, 'per_km_far', v)}
                       />
@@ -672,7 +672,7 @@ export default function AdminDashboard() {
                     onChange={(v) => setSettings({ ...settings, tier1_max_km: v })}
                   />
                   <NumField
-                    label="نهاية الحضري (كم)"
+                    label="نهاية داخل المدينة (كم)"
                     value={settings.tier2_max_km}
                     onChange={(v) => setSettings({ ...settings, tier2_max_km: v })}
                   />
