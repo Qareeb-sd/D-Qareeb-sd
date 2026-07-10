@@ -181,7 +181,7 @@ export default function AdminDashboard() {
   const pendingCount = topups.length + driverApps.length
 
   return (
-    <div className="screen mx-auto max-w-2xl">
+    <div className="screen mx-auto w-full max-w-7xl px-2 sm:px-4">
       <header className="flex items-center gap-3 border-b border-hairline px-4 py-4">
         <Logo size={36} rounded={10} />
         <h1 className="flex-1 text-lg font-bold">لوحة تحكم قريب</h1>
@@ -268,7 +268,7 @@ export default function AdminDashboard() {
               {!finance ? (
                 <p className="py-4 text-center text-sm text-ink-muted">…</p>
               ) : (
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-6">
                   <Metric label="عمولة المنصة" value={money(finance.platform_commission)} accent />
                   <Metric label="أرباح السائقين" value={money(finance.driver_earnings)} />
                   <Metric label="إجمالي التعبئات" value={money(finance.total_topups)} />
