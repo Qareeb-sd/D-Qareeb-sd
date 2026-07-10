@@ -36,7 +36,7 @@ import {
   type AdminDriverRow,
   type FinancialSummary,
 } from '@/lib/api'
-import { subscribeToSos } from '@/lib/realtime'
+import { subscribeToSos, subscribeToTopups, subscribeToDriverApplications } from '@/lib/realtime'
 import { getService } from '@/data/services'
 import type {
   Settings,
@@ -265,6 +265,49 @@ export default function AdminDashboard() {
     return subscribeToSos(load)
   }, [])
 
+  // إشعار الأدمن: عند طلب تعبئة/سائق جديد → حدّث القائمة + تنبيه صوتي.
+  useEffect(() => {
+    const ping = () => {
+      try {
+        // نغمة قصيرة عبر Web Audio (بلا ملفات).
+        const AC = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext
+        const ctx = new AC()
+        const osc = ctx.createOscillator()
+        const gain = ctx.createGain()
+        osc.connect(gain)
+        gain.connect(ctx.destination)
+        osc.frequency.value = 880
+        gain.gain.setValueAtTime(0.001, ctx.currentTime)
+        gain.gain.exponentialRampToValueAtTime(0.2, ctx.currentTime + 0.02)
+        gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.35)
+        osc.start()
+        osc.stop(ctx.currentTime + 0.36)
+      } catch {
+        /* الصوت غير متاح — تجاهل */
+      }
+    }
+    const reloadTopups = () => listPendingTopups().then(setTopups)
+    const reloadApps = () => listDriverApplications('pending').then(setDriverApps)
+    const primed = { current: false }
+    // أول تحميل لا يصدر صوتاً؛ التغيّرات اللاحقة تصدر.
+    const onTopup = () => {
+      reloadTopups()
+      if (primed.current) ping()
+    }
+    const onApp = () => {
+      reloadApps()
+      if (primed.current) ping()
+    }
+    const t = setTimeout(() => (primed.current = true), 3000)
+    const un1 = subscribeToTopups(onTopup)
+    const un2 = subscribeToDriverApplications(onApp)
+    return () => {
+      clearTimeout(t)
+      un1()
+      un2()
+    }
+  }, [])
+
   // خريطة النشاط المباشر — الرحلات النشطة (تحديث دوري خفيف).
   useEffect(() => {
     const load = () => void listActiveRides().then(setActiveRides)
@@ -359,6 +402,11 @@ export default function AdminDashboard() {
   const commissionPct = settings ? Math.round(settings.commission_rate * 100) : 0
   const pendingCount = topups.length + driverApps.length
 
+  // عنوان التبويب في المتصفح يعكس الطلبات المعلّقة (يظهر حتى لو اللوحة بالخلفية).
+  useEffect(() => {
+    document.title = pendingCount > 0 ? `(${pendingCount}) لوحة تحكم قريب` : 'لوحة تحكم قريب'
+  }, [pendingCount])
+
   return (
     <div className="screen mx-auto w-full max-w-7xl px-2 sm:px-4">
       <header className="flex items-center gap-3 bg-green px-4 py-4 text-white shadow-card">
@@ -385,7 +433,7 @@ export default function AdminDashboard() {
           >
             {tb.label}
             {tb.id === 'requests' && pendingCount > 0 && (
-              <span className="mr-1 rounded-full bg-gold px-1.5 text-xs text-white">
+              <span className="mr-1 inline-flex h-5 min-w-5 animate-pulse items-center justify-center rounded-full bg-danger px-1.5 text-xs font-bold text-white">
                 {pendingCount}
               </span>
             )}

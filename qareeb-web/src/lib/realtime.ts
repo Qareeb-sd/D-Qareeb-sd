@@ -84,6 +84,34 @@ export function subscribeToSos(onEvent: () => void): Unsubscribe {
   }
 }
 
+/** يستمع لطلبات التعبئة الجديدة/المتغيّرة (للوحة الأدمن). */
+export function subscribeToTopups(onEvent: () => void): Unsubscribe {
+  if (!isSupabaseConfigured) return () => {}
+  const channel = supabase
+    .channel('topups:feed')
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'topups' }, () => onEvent())
+    .subscribe()
+  return () => {
+    void supabase.removeChannel(channel)
+  }
+}
+
+/** يستمع لطلبات انضمام السائقين (للوحة الأدمن). */
+export function subscribeToDriverApplications(onEvent: () => void): Unsubscribe {
+  if (!isSupabaseConfigured) return () => {}
+  const channel = supabase
+    .channel('driver-apps:feed')
+    .on(
+      'postgres_changes',
+      { event: '*', schema: 'public', table: 'driver_applications' },
+      () => onEvent(),
+    )
+    .subscribe()
+  return () => {
+    void supabase.removeChannel(channel)
+  }
+}
+
 /** يستمع لتغيّرات طلبات الترحيل (لواجهة السائق). */
 export function subscribeToCommuteOrders(onEvent: () => void): Unsubscribe {
   if (!isSupabaseConfigured) return () => {}
