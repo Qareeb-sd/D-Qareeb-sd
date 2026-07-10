@@ -11,14 +11,34 @@ npm run dev:admin
 ```
 ثم افتح الرابط الظاهر (مثل `http://localhost:5173`) في المتصفح.
 
-## البناء للنشر (موقع دائم)
-```
-npm run build:admin      # يُنتج dist/ جاهزاً للنشر
-```
-ارفع مجلد `dist/` إلى أي استضافة ثابتة (Netlify / Vercel / Cloudflare Pages…).
-ملف `public/_redirects` يضبط توجيه صفحات SPA على Netlify.
+## النشر على Cloudflare Pages (موصى — رابط دائم بدون خادم)
+لوحة الأدمن **موقع ثابت (SPA)** يتصل بـ Supabase مباشرة، فينشر على Cloudflare Pages بسهولة.
 
-> انشره على **نطاق/نطاق فرعي منفصل** (مثل `admin.qareeb.sd`) — ليس نفس موقع العملاء.
+**من لوحة Cloudflare → Workers & Pages → Create → Pages → Connect to Git:**
+1. اربط مستودع GitHub: `Qareeb-sd/D-Qareeb-sd`.
+2. **Production branch:** `claude/development-continuation-nxfgub` (أو `main` بعد الدمج).
+3. **Build settings:**
+   - Framework preset: **None**
+   - **Root directory (advanced):** `qareeb-web`
+   - **Build command:** `npm run build:admin`
+   - **Build output directory:** `dist`
+4. **Environment variables** (Production + Preview):
+   ```
+   VITE_SUPABASE_URL       = https://xxxx.supabase.co
+   VITE_SUPABASE_ANON_KEY  = eyJ…
+   ```
+   (مفتاح الخرائط غير مطلوب للأدمن.) الإصدار Node يُقرأ من `.nvmrc` (20).
+5. **Save and Deploy.** بعد البناء يعطيك رابطاً مثل `qareeb-admin.pages.dev`.
+6. **نطاق مخصّص (اختياري):** Custom domains → أضِف مثل `admin.qareeb.sd`.
+
+أي دفع جديد للفرع يُعيد النشر تلقائياً. توجيه SPA مضبوط عبر `public/_redirects`.
+
+## أو بناء يدوي محلي
+```
+npm run build:admin      # يُنتج dist/ للرفع على أي استضافة ثابتة
+```
+
+> انشره على **نطاق فرعي منفصل** (مثل `admin.qareeb.sd`) — ليس نفس موقع العملاء.
 
 ## الدخول
 - الرابط الجذر للموقع = **شاشة دخول الإدارة**.
