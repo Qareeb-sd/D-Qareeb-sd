@@ -501,6 +501,25 @@ export async function listAllRides(limit = 50): Promise<Ride[]> {
   return data ?? []
 }
 
+/** الرحلات النشطة (لخريطة النشاط المباشر في لوحة الأدمن). */
+export async function listActiveRides(): Promise<Ride[]> {
+  if (!isSupabaseConfigured) return []
+  const { data } = await supabase
+    .from('rides')
+    .select('*')
+    .in('status', ['searching', 'accepted', 'arrived', 'in_progress'])
+    .order('created_at', { ascending: false })
+    .limit(100)
+  return data ?? []
+}
+
+/** حذف سائق (يزيل صف السائق ويعيد دور المستخدم لعميل) — عبر دالة أدمن آمنة. */
+export async function deleteDriver(userId: string): Promise<{ error?: string }> {
+  if (!isSupabaseConfigured) return {}
+  const { error } = await supabase.rpc('admin_delete_driver', { p_user: userId })
+  return error ? { error: error.message } : {}
+}
+
 export interface FinancialSummary {
   platform_commission: number
   total_topups: number

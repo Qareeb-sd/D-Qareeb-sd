@@ -18,8 +18,13 @@ interface MapViewProps {
   marker?: google.maps.LatLngLiteral
   /** موقع السائق المباشر — يُعرض بأيقونة سيارة مميّزة. */
   driver?: google.maps.LatLngLiteral
+  /** علامات متعددة (مثل نقاط انطلاق الرحلات النشطة في لوحة الأدمن). */
+  markers?: google.maps.LatLngLiteral[]
+  /** مواقع سائقين متعددة (أيقونة سيارة). */
+  driverMarkers?: google.maps.LatLngLiteral[]
   /** خط اتجاه مستقيم (مجاني) بين نقطتين، مثل السائق ← الوجهة. */
   line?: [google.maps.LatLngLiteral, google.maps.LatLngLiteral]
+  zoom?: number
   onCenterChanged?: (pos: google.maps.LatLngLiteral) => void
   /** يُستدعى عند سحب المستخدم للخريطة فعلياً (تفاعل حقيقي). */
   onUserDrag?: () => void
@@ -34,7 +39,10 @@ export default function MapView({
   center = KHARTOUM,
   marker,
   driver,
+  markers,
+  driverMarkers,
   line,
+  zoom = 14,
   onCenterChanged,
   onUserDrag,
   className = 'h-64 w-full rounded-2xl',
@@ -103,7 +111,7 @@ export default function MapView({
       <GoogleMap
         mapContainerStyle={{ width: '100%', height: '100%' }}
         center={center}
-        zoom={14}
+        zoom={zoom}
         options={MAP_OPTIONS}
         onLoad={(map) => {
           mapRef.current = map
@@ -112,6 +120,19 @@ export default function MapView({
         onDragEnd={onUserDrag}
       >
         {marker && <MarkerF position={marker} />}
+        {markers?.map((m, i) => <MarkerF key={`m${i}`} position={m} />)}
+        {driverMarkers?.map((d, i) => (
+          <MarkerF
+            key={`dm${i}`}
+            position={d}
+            icon={{
+              url: CAR_ICON,
+              scaledSize: new google.maps.Size(40, 40),
+              anchor: new google.maps.Point(20, 20),
+            }}
+            zIndex={998}
+          />
+        ))}
         {driver && (
           <MarkerF
             position={driver}

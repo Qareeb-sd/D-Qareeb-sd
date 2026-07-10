@@ -552,6 +552,15 @@ begin
   update public.drivers set status = 'rejected' where id = p_driver;
 end $$;
 
+-- الأدمن يحذف سائقاً: يزيل صفّه من drivers ويعيد دور المستخدم لعميل.
+create or replace function public.admin_delete_driver(p_user uuid)
+returns void language plpgsql security definer set search_path = public as $$
+begin
+  if not public.is_admin() then raise exception 'غير مصرّح'; end if;
+  delete from public.drivers where user_id = p_user;
+  update public.users set role = 'customer' where id = p_user and role = 'driver';
+end $$;
+
 -- السائق يرى الرحلات المنتظرة سائقاً
 drop policy if exists "drivers see open rides" on public.rides;
 create policy "drivers see open rides" on public.rides

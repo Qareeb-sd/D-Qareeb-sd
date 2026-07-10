@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import Logo from '@/components/Logo'
+import MapView from '@/components/MapView'
 import { money } from '@/lib/format'
 import { useAuth } from '@/store/AuthContext'
 import {
@@ -18,6 +19,8 @@ import {
   getDriverDocUrl,
   listAllDrivers,
   listAllRides,
+  listActiveRides,
+  deleteDriver,
   getFinancialSummary,
   listSosAlerts,
   resolveSos,
@@ -65,6 +68,7 @@ export default function AdminDashboard() {
   const [driverApps, setDriverApps] = useState<DriverApplication[]>([])
   const [drivers, setDrivers] = useState<AdminDriverRow[] | null>(null)
   const [rides, setRides] = useState<Ride[] | null>(null)
+  const [activeRides, setActiveRides] = useState<Ride[]>([])
   const [sos, setSos] = useState<SosAlert[]>([])
 
   const [busyId, setBusyId] = useState<string | null>(null)
@@ -102,6 +106,23 @@ export default function AdminDashboard() {
     void load()
     return subscribeToSos(load)
   }, [])
+
+  // خريطة النشاط المباشر — الرحلات النشطة (تحديث دوري خفيف).
+  useEffect(() => {
+    const load = () => void listActiveRides().then(setActiveRides)
+    load()
+    const iv = setInterval(load, 15000)
+    return () => clearInterval(iv)
+  }, [])
+
+  const removeDriver = async (userId: string, name: string) => {
+    if (!window.confirm(`حذف السائق «${name}»؟ سيعود حسابه عميلاً.`)) return
+    setBusyId(userId)
+    const { error } = await deleteDriver(userId)
+    setBusyId(null)
+    if (error) return alert(error)
+    setDrivers((cur) => (cur ? cur.filter((d) => d.user_id !== userId) : cur))
+  }
 
   const clearSos = async (id: string) => {
     setBusyId(id)
@@ -182,10 +203,14 @@ export default function AdminDashboard() {
 
   return (
     <div className="screen mx-auto w-full max-w-7xl px-2 sm:px-4">
-      <header className="flex items-center gap-3 border-b border-hairline px-4 py-4">
+      <header className="flex items-center gap-3 bg-green px-4 py-4 text-white shadow-card">
         <Logo size={36} rounded={10} />
-        <h1 className="flex-1 text-lg font-bold">لوحة تحكم قريب</h1>
-        <button onClick={() => void signOut()} className="text-sm text-danger">
+        <h1 className="flex-1 text-lg font-extrabold">لوحة تحكم قريب</h1>
+        <span className="rounded-full bg-white/15 px-3 py-1 text-xs font-bold">الإدارة</span>
+        <button
+          onClick={() => void signOut()}
+          className="rounded-full bg-white/15 px-3 py-1.5 text-sm font-bold hover:bg-white/25"
+        >
           خروج
         </button>
       </header>
@@ -261,6 +286,32 @@ export default function AdminDashboard() {
                   <p className="text-xs text-ink-muted">{s.label}</p>
                 </div>
               ))}
+            </div>
+
+            {/* خريطة النشاط المباشر — نقاط انطلاق الرحلات النشطة ومواقع السائقين */}
+            <div className="card p-4">
+              <div className="mb-3 flex items-center justify-between">
+                <p className="font-bold">النشاط المباشر على الخريطة</p>
+                <span className="chip bg-green-soft text-green">
+                  {activeRides.length} رحلة نشطة
+                </span>
+              </div>
+              <MapView
+                zoom={activeRides.length ? 11 : 6}
+                center={
+                  activeRides[0]
+                    ? { lat: activeRides[0].pickup_lat, lng: activeRides[0].pickup_lng }
+                    : undefined
+                }
+                markers={activeRides.map((r) => ({ lat: r.pickup_lat, lng: r.pickup_lng }))}
+                driverMarkers={activeRides
+                  .filter((r) => r.driver_lat != null && r.driver_lng != null)
+                  .map((r) => ({ lat: r.driver_lat as number, lng: r.driver_lng as number }))}
+                className="h-72 w-full rounded-2xl"
+              />
+              <p className="mt-2 text-xs text-ink-muted">
+                📍 نقطة انطلاق الرحلة · 🚗 موقع السائق المباشر — يتحدّث تلقائياً.
+              </p>
             </div>
 
             <div className="card p-4">
@@ -436,6 +487,13 @@ export default function AdminDashboard() {
                         {d.plate_number ?? '—'} · ⭐ {d.rating ?? '—'}
                       </p>
                     </div>
+                    <button
+                      onClick={() => removeDriver(d.user_id, d.users?.full_name ?? 'سائق')}
+                      disabled={busyId === d.user_id}
+                      className="shrink-0 rounded-lg border border-danger/40 px-2.5 py-1 text-xs font-bold text-danger hover:bg-danger/5"
+                    >
+                      حذف
+                    </button>
                   </div>
                 ))}
               </div>
