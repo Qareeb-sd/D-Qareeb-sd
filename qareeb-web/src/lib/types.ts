@@ -214,6 +214,16 @@ export interface AdminAccess {
   perms: StaffPerm[]
 }
 
+/** سجلّ نشاط — من فعل ماذا ومتى. */
+export interface AuditEntry {
+  id: number
+  actor_id: string | null
+  actor_name: string | null
+  action: string
+  target: string | null
+  created_at: string
+}
+
 /** اشتراك Web Push مخزّن لمستخدم. */
 export interface PushSubscriptionRow {
   id: string

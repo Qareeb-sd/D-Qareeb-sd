@@ -30,6 +30,8 @@ import {
   listStaff,
   setStaff,
   removeStaff,
+  setStaffActive,
+  listAuditLog,
   type AdminStats,
   type AdminDriverRow,
   type FinancialSummary,
@@ -46,9 +48,10 @@ import type {
   AdminAccess,
   StaffRow,
   StaffPerm,
+  AuditEntry,
 } from '@/lib/types'
 
-type Tab = 'overview' | 'requests' | 'drivers' | 'rides' | 'finance' | 'settings' | 'staff'
+type Tab = 'overview' | 'requests' | 'drivers' | 'rides' | 'finance' | 'settings' | 'staff' | 'audit'
 
 /** التبويبات مع الصلاحية المطلوبة لكلٍّ (null = تكفي أي صلاحية). */
 const tabs: { id: Tab; label: string; perm: StaffPerm | null; ownerOnly?: boolean }[] = [
@@ -59,6 +62,7 @@ const tabs: { id: Tab; label: string; perm: StaffPerm | null; ownerOnly?: boolea
   { id: 'finance', label: 'المالية', perm: null, ownerOnly: true },
   { id: 'settings', label: 'الإعدادات', perm: 'settings' },
   { id: 'staff', label: 'الموظفون', perm: null, ownerOnly: true },
+  { id: 'audit', label: 'سجلّ النشاط', perm: null, ownerOnly: true },
 ]
 
 /** أسماء الصلاحيات المعروضة للمالك عند إضافة موظف. */
@@ -94,6 +98,12 @@ export default function AdminDashboard() {
   const [staffPhone, setStaffPhone] = useState('')
   const [staffPerms, setStaffPerms] = useState<StaffPerm[]>(['requests'])
   const [staffMsg, setStaffMsg] = useState('')
+  const [audit, setAudit] = useState<AuditEntry[] | null>(null)
+
+  // بحث/فلترة
+  const [rideQuery, setRideQuery] = useState('')
+  const [rideStatus, setRideStatus] = useState('')
+  const [driverQuery, setDriverQuery] = useState('')
 
   const [busyId, setBusyId] = useState<string | null>(null)
   const [savedMsg, setSavedMsg] = useState('')
@@ -131,7 +141,39 @@ export default function AdminDashboard() {
   }, [])
   useEffect(() => {
     if (tab === 'staff' && staffList === null) void listStaff().then(setStaffList)
-  }, [tab, staffList])
+    if (tab === 'audit' && audit === null) void listAuditLog().then((a) => setAudit(a as AuditEntry[]))
+  }, [tab, staffList, audit])
+
+  const toggleStaffActive = async (s: StaffRow) => {
+    setBusyId(s.user_id)
+    const { error } = await setStaffActive(s.user_id, !s.active)
+    setBusyId(null)
+    if (error) return alert(error)
+    setStaffList((cur) =>
+      cur ? cur.map((x) => (x.user_id === s.user_id ? { ...x, active: !s.active } : x)) : cur,
+    )
+  }
+
+  // قوائم مفلترة
+  const filteredRides = (rides ?? []).filter((r) => {
+    const okStatus = !rideStatus || r.status === rideStatus
+    const q = rideQuery.trim()
+    const okQuery =
+      !q ||
+      (r.pickup_address ?? '').includes(q) ||
+      (r.dropoff_address ?? '').includes(q) ||
+      (getService(r.service_id)?.name ?? '').includes(q)
+    return okStatus && okQuery
+  })
+  const filteredDrivers = (drivers ?? []).filter((d) => {
+    const q = driverQuery.trim()
+    return (
+      !q ||
+      (d.users?.full_name ?? '').includes(q) ||
+      (d.users?.phone ?? '').includes(q) ||
+      (d.plate_number ?? '').includes(q)
+    )
+  })
 
   const togglePerm = (p: StaffPerm) =>
     setStaffPerms((cur) => (cur.includes(p) ? cur.filter((x) => x !== p) : [...cur, p]))
@@ -611,14 +653,24 @@ export default function AdminDashboard() {
 
         {tab === 'drivers' && (
           <div className="card p-4">
-            <p className="mb-3 font-bold">كل السائقين</p>
+            <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+              <p className="font-bold">كل السائقين ({filteredDrivers.length})</p>
+              <input
+                className="field w-full max-w-xs"
+                value={driverQuery}
+                onChange={(e) => setDriverQuery(e.target.value)}
+                placeholder="🔍 بحث بالاسم أو الهاتف أو اللوحة"
+              />
+            </div>
             {drivers === null ? (
               <p className="py-6 text-center text-sm text-ink-muted">…</p>
-            ) : drivers.length === 0 ? (
-              <p className="py-6 text-center text-sm text-ink-muted">لا يوجد سائقون بعد</p>
+            ) : filteredDrivers.length === 0 ? (
+              <p className="py-6 text-center text-sm text-ink-muted">
+                {drivers.length === 0 ? 'لا يوجد سائقون بعد' : 'لا نتائج مطابقة'}
+              </p>
             ) : (
               <div className="divide-y divide-hairline">
-                {drivers.map((d) => (
+                {filteredDrivers.map((d) => (
                   <div key={d.id} className="flex items-center gap-3 py-3">
                     <span
                       className={`h-2.5 w-2.5 shrink-0 rounded-full ${
@@ -654,14 +706,38 @@ export default function AdminDashboard() {
 
         {tab === 'rides' && (
           <div className="card p-4">
-            <p className="mb-3 font-bold">أحدث الرحلات</p>
+            <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+              <p className="font-bold">الرحلات ({filteredRides.length})</p>
+              <div className="flex flex-wrap gap-2">
+                <select
+                  className="field w-auto"
+                  value={rideStatus}
+                  onChange={(e) => setRideStatus(e.target.value)}
+                >
+                  <option value="">كل الحالات</option>
+                  <option value="searching">بحث عن سائق</option>
+                  <option value="accepted">مقبولة</option>
+                  <option value="in_progress">جارية</option>
+                  <option value="completed">مكتملة</option>
+                  <option value="cancelled">ملغاة</option>
+                </select>
+                <input
+                  className="field w-full max-w-xs"
+                  value={rideQuery}
+                  onChange={(e) => setRideQuery(e.target.value)}
+                  placeholder="🔍 بحث بالعنوان أو نوع المركبة"
+                />
+              </div>
+            </div>
             {rides === null ? (
               <p className="py-6 text-center text-sm text-ink-muted">…</p>
-            ) : rides.length === 0 ? (
-              <p className="py-6 text-center text-sm text-ink-muted">لا توجد رحلات بعد</p>
+            ) : filteredRides.length === 0 ? (
+              <p className="py-6 text-center text-sm text-ink-muted">
+                {rides.length === 0 ? 'لا توجد رحلات بعد' : 'لا نتائج مطابقة'}
+              </p>
             ) : (
               <div className="divide-y divide-hairline">
-                {rides.map((r) => (
+                {filteredRides.map((r) => (
                   <div key={r.id} className="flex items-center gap-3 py-3">
                     <div className="min-w-0 flex-1">
                       <p className="truncate font-bold">
@@ -920,7 +996,14 @@ export default function AdminDashboard() {
                         🧑🏽‍💼
                       </div>
                       <div className="min-w-0 flex-1">
-                        <p className="truncate font-bold">{s.users?.full_name ?? 'موظف'}</p>
+                        <p className="truncate font-bold">
+                          {s.users?.full_name ?? 'موظف'}
+                          {!s.active && (
+                            <span className="chip mr-2 bg-hairline text-[10px] text-ink-muted">
+                              معطّل
+                            </span>
+                          )}
+                        </p>
                         <p className="truncate text-xs text-ink-muted" dir="ltr">
                           {s.users?.phone ?? '—'}
                         </p>
@@ -932,6 +1015,17 @@ export default function AdminDashboard() {
                           </span>
                         ))}
                       </div>
+                      <button
+                        onClick={() => toggleStaffActive(s)}
+                        disabled={busyId === s.user_id}
+                        className={`shrink-0 rounded-lg border px-2.5 py-1 text-xs font-bold ${
+                          s.active
+                            ? 'border-warning/40 text-warning hover:bg-warning/5'
+                            : 'border-green/40 text-green hover:bg-green/5'
+                        }`}
+                      >
+                        {s.active ? 'تعطيل' : 'تفعيل'}
+                      </button>
                       <button
                         onClick={() => deleteStaff(s.user_id, s.users?.full_name ?? 'موظف')}
                         disabled={busyId === s.user_id}
@@ -945,6 +1039,48 @@ export default function AdminDashboard() {
               )}
             </div>
           </>
+        )}
+
+        {tab === 'audit' && access.is_admin && (
+          <div className="card p-4">
+            <div className="mb-3 flex items-center justify-between">
+              <p className="font-bold">سجلّ النشاط</p>
+              <button
+                onClick={() => void listAuditLog().then((a) => setAudit(a as AuditEntry[]))}
+                className="text-sm text-info underline"
+              >
+                تحديث
+              </button>
+            </div>
+            <p className="mb-3 text-xs text-ink-muted">
+              كل اعتماد/رفض/حذف يُسجَّل باسم فاعله ووقته — مساءلة كاملة.
+            </p>
+            {audit === null ? (
+              <p className="py-6 text-center text-sm text-ink-muted">…</p>
+            ) : audit.length === 0 ? (
+              <p className="py-6 text-center text-sm text-ink-muted">لا يوجد نشاط مسجّل بعد</p>
+            ) : (
+              <div className="divide-y divide-hairline">
+                {audit.map((a) => (
+                  <div key={a.id} className="flex items-center gap-3 py-2.5">
+                    <span className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-green-soft text-sm">
+                      📝
+                    </span>
+                    <div className="min-w-0 flex-1">
+                      <p className="text-sm">
+                        <span className="font-bold">{a.actor_name ?? 'مستخدم'}</span>{' '}
+                        <span className="text-ink-soft">{a.action}</span>
+                        {a.target ? <span className="text-ink-muted"> · {a.target}</span> : null}
+                      </p>
+                    </div>
+                    <span className="shrink-0 text-xs text-ink-muted">
+                      {new Date(a.created_at).toLocaleString('ar-SD')}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
         )}
       </main>
     </div>

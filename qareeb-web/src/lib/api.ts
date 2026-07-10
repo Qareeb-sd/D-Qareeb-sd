@@ -569,6 +569,30 @@ export async function removeStaff(userId: string): Promise<{ error?: string }> {
   return error ? { error: error.message } : {}
 }
 
+/** تفعيل/تعطيل موظف مؤقّتاً (للمالك فقط). */
+export async function setStaffActive(
+  userId: string,
+  active: boolean,
+): Promise<{ error?: string }> {
+  if (!isSupabaseConfigured) return {}
+  const { error } = await supabase.rpc('admin_set_staff_active', {
+    p_user: userId,
+    p_active: active,
+  })
+  return error ? { error: error.message } : {}
+}
+
+/** سجلّ النشاط (أحدث الأحداث). */
+export async function listAuditLog(limit = 100) {
+  if (!isSupabaseConfigured) return []
+  const { data } = await supabase
+    .from('audit_log')
+    .select('*')
+    .order('created_at', { ascending: false })
+    .limit(limit)
+  return data ?? []
+}
+
 export interface FinancialSummary {
   platform_commission: number
   total_topups: number

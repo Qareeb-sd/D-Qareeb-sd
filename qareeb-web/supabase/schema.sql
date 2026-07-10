@@ -348,6 +348,42 @@ begin
   delete from public.staff where user_id = p_user;
 end $$;
 
+-- المالك يفعّل/يعطّل موظفاً مؤقّتاً (بدون حذف صلاحياته).
+create or replace function public.admin_set_staff_active(p_user uuid, p_active boolean)
+returns void language plpgsql security definer set search_path = public as $$
+begin
+  if not public.is_admin() then raise exception 'غير مصرّح'; end if;
+  update public.staff set active = p_active where user_id = p_user;
+end $$;
+
+-- ============================================================
+--  سجلّ النشاط (Audit log) — من فعل ماذا ومتى
+-- ============================================================
+create table if not exists public.audit_log (
+  id         bigint generated always as identity primary key,
+  actor_id   uuid references public.users(id) on delete set null,
+  actor_name text,           -- اسم الفاعل وقت الحدث (لقطة)
+  action     text not null,  -- approve_topup / reject_topup / approve_driver / ...
+  target     text,           -- وصف مختصر للهدف (رقم/اسم)
+  created_at timestamptz not null default now()
+);
+create index if not exists audit_log_created_idx on public.audit_log(created_at desc);
+alter table public.audit_log enable row level security;
+
+drop policy if exists "staff read audit" on public.audit_log;
+create policy "staff read audit" on public.audit_log
+  for select using (public.is_staff_or_admin());
+
+-- تسجيل حدث في السجلّ (يُستدعى داخل الدوال الآمنة).
+create or replace function public.log_action(p_action text, p_target text)
+returns void language plpgsql security definer set search_path = public as $$
+declare v_name text;
+begin
+  select full_name into v_name from public.users where id = auth.uid();
+  insert into public.audit_log (actor_id, actor_name, action, target)
+    values (auth.uid(), coalesce(v_name, 'مستخدم'), p_action, p_target);
+end $$;
+
 -- التسعير: قراءة للجميع (المصادَق عليهم)
 drop policy if exists "read pricing" on public.service_pricing;
 create policy "read pricing" on public.service_pricing
@@ -526,6 +562,8 @@ begin
 
   insert into public.transactions (wallet_id, type, amount, note)
     values (v_wallet, 'topup', v_amount, 'تعبئة رصيد (معتمدة)');
+
+  perform public.log_action('اعتماد تعبئة', v_amount::text || ' ج.س');
 end $$;
 
 -- رفض تعبئة
@@ -536,6 +574,7 @@ begin
   update public.topups
     set status = 'rejected', reviewed_by = auth.uid()
     where id = p_topup and status = 'pending';
+  perform public.log_action('رفض تعبئة', 'طلب ' || substr(p_topup::text,1,8));
 end $$;
 
 -- ملاحظة: لتعيين أول أدمن:  update public.users set role = 'admin' where phone = '+249...';
@@ -638,6 +677,7 @@ begin
   if not public.has_perm('drivers') then raise exception 'غير مصرّح'; end if;
   delete from public.drivers where user_id = p_user;
   update public.users set role = 'customer' where id = p_user and role = 'driver';
+  perform public.log_action('حذف سائق', (select full_name from public.users where id = p_user));
 end $$;
 
 -- السائق يرى الرحلات المنتظرة سائقاً
@@ -916,16 +956,21 @@ begin
   end if;
 
   update public.users set role = 'driver' where id = v_user;
+  perform public.log_action('اعتماد سائق',
+    (select full_name from public.users where id = v_user) || ' — ' || v_plate);
 end $$;
 
 -- رفض طلب سائق (مع سبب اختياري)
 create or replace function public.reject_driver_application(p_app uuid, p_note text default null)
 returns void language plpgsql security definer set search_path = public as $$
+declare v_name text;
 begin
   if not public.has_perm('requests') then raise exception 'غير مصرّح'; end if;
+  select full_name into v_name from public.driver_applications where id = p_app;
   update public.driver_applications
     set status = 'rejected', review_note = p_note, reviewed_by = auth.uid(), updated_at = now()
     where id = p_app and status = 'pending';
+  perform public.log_action('رفض سائق', coalesce(v_name, '') || coalesce(' — ' || p_note, ''));
 end $$;
 
 -- التخزين: وثائق السائق (bucket خاص driver-docs)
