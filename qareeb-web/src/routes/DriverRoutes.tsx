@@ -1,6 +1,7 @@
 import { Routes, Route, Navigate } from 'react-router-dom'
 import DriverRoute from '@/components/DriverRoute'
 
+import DriverOnboarding from '@/pages/driver/DriverOnboarding'
 import DriverLogin from '@/pages/driver/DriverLogin'
 import DriverRegister from '@/pages/driver/DriverRegister'
 import DriverHome from '@/pages/driver/DriverHome'
@@ -15,8 +16,8 @@ const driverGuard = (el: React.ReactNode) => <DriverRoute>{el}</DriverRoute>
 export default function DriverRoutes() {
   return (
     <Routes>
-      {/* جذر التطبيق = دخول السائق */}
-      <Route path="/" element={<DriverLogin />} />
+      {/* جذر التطبيق = صفحة ترحيب السائق (خريطة السودان) */}
+      <Route path="/" element={<DriverOnboarding />} />
       <Route path="/driver/login" element={<DriverLogin />} />
       {/* التسجيل يحمي نفسه: يوجّه غير المسجّل إلى /driver/login */}
       <Route path="/driver/register" element={<DriverRegister />} />
