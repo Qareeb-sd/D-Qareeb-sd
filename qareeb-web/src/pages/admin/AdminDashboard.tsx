@@ -48,7 +48,7 @@ import type {
   StaffPerm,
 } from '@/lib/types'
 
-type Tab = 'overview' | 'requests' | 'drivers' | 'rides' | 'settings' | 'staff'
+type Tab = 'overview' | 'requests' | 'drivers' | 'rides' | 'finance' | 'settings' | 'staff'
 
 /** التبويبات مع الصلاحية المطلوبة لكلٍّ (null = تكفي أي صلاحية). */
 const tabs: { id: Tab; label: string; perm: StaffPerm | null; ownerOnly?: boolean }[] = [
@@ -56,6 +56,7 @@ const tabs: { id: Tab; label: string; perm: StaffPerm | null; ownerOnly?: boolea
   { id: 'requests', label: 'الطلبات', perm: 'requests' },
   { id: 'drivers', label: 'السائقون', perm: 'drivers' },
   { id: 'rides', label: 'الرحلات', perm: 'rides' },
+  { id: 'finance', label: 'المالية', perm: null, ownerOnly: true },
   { id: 'settings', label: 'الإعدادات', perm: 'settings' },
   { id: 'staff', label: 'الموظفون', perm: null, ownerOnly: true },
 ]
@@ -191,7 +192,28 @@ export default function AdminDashboard() {
     // إيرادات الرحلات المكتملة
     const completed = rs.filter((r) => r.status === 'completed')
     const revenue = completed.reduce((sum, r) => sum + (r.fare ?? 0), 0)
-    return { weekly, vehicle, completedCount: completed.length, revenue }
+    // إيرادات آخر ٧ أيام (من الرحلات المكتملة)
+    const weeklyRevenue: { label: string; value: number }[] = []
+    for (let i = 6; i >= 0; i--) {
+      const d = new Date()
+      d.setDate(d.getDate() - i)
+      const amt = completed
+        .filter((r) => new Date(r.created_at).toDateString() === d.toDateString())
+        .reduce((sum, r) => sum + (r.fare ?? 0), 0)
+      weeklyRevenue.push({ label: dayNames[d.getDay()], value: Math.round(amt) })
+    }
+    // إيرادات حسب المركبة
+    const vehicleRevenue = services
+      .map((s) => ({
+        label: s.name,
+        value: Math.round(
+          completed.filter((r) => r.service_id === s.id).reduce((sum, r) => sum + (r.fare ?? 0), 0),
+        ),
+        color: s.tint === '#EDEFEC' ? '#1B6B3F' : s.tint,
+      }))
+      .filter((v) => v.value > 0)
+    const recentCompleted = completed.slice(0, 12)
+    return { weekly, vehicle, completedCount: completed.length, revenue, weeklyRevenue, vehicleRevenue, recentCompleted }
   }, [rides])
 
   // تنبيهات الطوارئ — تُحمَّل وتُتابَع لحظياً (تظهر فوق كل التبويبات).
@@ -660,6 +682,54 @@ export default function AdminDashboard() {
           </div>
         )}
 
+        {tab === 'finance' && access.is_admin && (
+          <>
+            {/* ملخّص مالي تفصيلي */}
+            <div className="grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-6">
+              <StatCard label="عمولة المنصة" value={money(finance?.platform_commission ?? 0)} icon="🏦" iconBg="#E8F1EC" accent="#1B6B3F" />
+              <StatCard label="أرباح السائقين" value={money(finance?.driver_earnings ?? 0)} icon="🧑🏾‍✈️" iconBg="#FBF4DD" accent="#A88528" />
+              <StatCard label="إجمالي التعبئات" value={money(finance?.total_topups ?? 0)} icon="💵" iconBg="#E3EEF7" accent="#3A6FB0" />
+              <StatCard label="مدفوعات المحفظة" value={money(finance?.ride_payments ?? 0)} icon="💳" iconBg="#E8F1EC" accent="#1B6B3F" />
+              <StatCard label="أرصدة المحافظ" value={money(finance?.wallet_liability ?? 0)} icon="👛" iconBg="#FDECEB" accent="#C5453B" />
+              <StatCard label="رحلات مكتملة" value={num(finance?.completed_rides ?? 0)} icon="✅" iconBg="#E8F1EC" accent="#1B6B3F" />
+            </div>
+
+            {/* إيرادات الأسبوع + الإيراد حسب المركبة */}
+            <div className="grid gap-4 lg:grid-cols-2">
+              <ChartCard title="إيرادات آخر ٧ أيام" subtitle="من الرحلات المكتملة (ج.س)">
+                <BarChart data={analytics.weeklyRevenue} color="#C9A138" format={money} />
+              </ChartCard>
+              <ChartCard title="الإيرادات حسب المركبة" subtitle="مجموع الأجرة لكل نوع">
+                <DonutChart segments={analytics.vehicleRevenue} />
+              </ChartCard>
+            </div>
+
+            {/* أحدث الرحلات المكتملة */}
+            <div className="card p-4">
+              <p className="mb-3 font-bold">أحدث الرحلات المكتملة</p>
+              {analytics.recentCompleted.length === 0 ? (
+                <p className="py-6 text-center text-sm text-ink-muted">لا توجد رحلات مكتملة بعد</p>
+              ) : (
+                <div className="divide-y divide-hairline">
+                  {analytics.recentCompleted.map((r) => (
+                    <div key={r.id} className="flex items-center gap-3 py-2.5">
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-sm font-bold">
+                          {getService(r.service_id)?.name ?? r.service_id}
+                        </p>
+                        <p className="truncate text-xs text-ink-muted">
+                          {new Date(r.created_at).toLocaleString('ar-SD')}
+                        </p>
+                      </div>
+                      <span className="shrink-0 text-sm font-bold text-green">{money(r.fare ?? 0)}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </>
+        )}
+
         {tab === 'settings' && (
           <>
             {/* تسعير المركبات */}
@@ -789,8 +859,9 @@ export default function AdminDashboard() {
             <div className="card p-4">
               <p className="font-bold">إضافة موظف</p>
               <p className="mb-3 text-xs text-ink-muted">
-                يجب أن يكون الموظف قد سجّل دخوله مرّة واحدة من موقع الإدارة بهاتفه
-                (ستظهر له «لا يملك صلاحية» — هذا طبيعي)، ثم أضِفه هنا بصلاحياته.
+                يكفي أن يسجّل الموظف حساباً في <span className="font-bold">تطبيق «قريب» العادي</span>{' '}
+                برقم هاتفه (كأي عميل). ثم أدخل رقمه هنا واختر صلاحياته — يحصل على وصول اللوحة تلقائياً
+                دون الحاجة لرؤيتها مسبقاً.
               </p>
               <div className="grid gap-3 md:grid-cols-2">
                 <input
