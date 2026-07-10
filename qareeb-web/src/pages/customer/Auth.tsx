@@ -86,7 +86,7 @@ export default function Auth() {
 
       {/* السائقون لهم تطبيق منفصل «كابتن قريب» */}
       <p className="mt-5 text-center text-xs text-ink-soft">
-        🚗 سائق؟ حمّل تطبيق <span className="font-bold text-green-dark">«كابتن قريب»</span> من المتجر.
+        🚗 سائق؟ حمّل تطبيق <span className="font-bold text-green-dark">«قريب كابتن»</span> من المتجر.
       </p>
 
       <p className="mt-3 text-center text-[10px] text-ink-muted/70">إصدار 2 · دخول بكلمة السر</p>

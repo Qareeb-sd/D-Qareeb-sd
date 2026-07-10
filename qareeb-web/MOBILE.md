@@ -8,7 +8,7 @@
 | التطبيق | المعرّف | الاسم | الأيقونة | هدف البناء |
 |---|---|---|---|---|
 | العميل | `sd.qareeb.app` | قريب | خضراء · دبوس أبيض | `VITE_APP=customer` |
-| السائق | `sd.qareeb.captain` | كابتن قريب | صفراء · دبوس أخضر | `VITE_APP=driver` |
+| السائق | `sd.qareeb.captain` | قريب كابتن | صفراء · دبوس أخضر | `VITE_APP=driver` |
 
 - كل تطبيق يحمل **كوده فقط** (`VITE_APP` يستبعد كود الآخر) فيكون التحميل أصغر.
 - الفصل الأصلي عبر **product flavors** في `android/app/build.gradle` (customer / driver).
@@ -33,7 +33,7 @@ cp .env.example .env    # ثم املأ القيم الحقيقية
 ## 2) بناء APK للتجربة (تطبيقان)
 ```
 npm run apk:customer   # قريب (العميل)
-npm run apk:driver     # كابتن قريب (السائق)
+npm run apk:driver     # قريب كابتن (السائق)
 ```
 يُنتجان:
 - `android/app/build/outputs/apk/customer/debug/app-customer-debug.apk`

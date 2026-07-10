@@ -1,7 +1,7 @@
 <?xml version='1.0' encoding='utf-8'?>
 <resources>
-    <string name="app_name">كابتن قريب</string>
-    <string name="title_activity_main">كابتن قريب</string>
+    <string name="app_name">قريب كابتن</string>
+    <string name="title_activity_main">قريب كابتن</string>
     <string name="package_name">sd.qareeb.captain</string>
     <string name="custom_url_scheme">sd.qareeb.captain</string>
 </resources>
