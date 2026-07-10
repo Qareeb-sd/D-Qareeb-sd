@@ -474,6 +474,51 @@ begin
   return v_total;
 end $$;
 
+-- ============================================================
+--  الميزانية حسب البنود (نِسَب من الإيراد) — شهري/سنوي
+-- ============================================================
+create table if not exists public.budget_plan (
+  category text primary key,           -- salary/rent/fuel/maintenance/marketing/other
+  percent  numeric(5,2) not null default 0
+);
+insert into public.budget_plan (category, percent) values
+  ('salary',30),('rent',10),('fuel',10),('maintenance',10),('marketing',5),('other',5)
+  on conflict (category) do nothing;
+alter table public.budget_plan enable row level security;
+drop policy if exists "owner budget" on public.budget_plan;
+create policy "owner budget" on public.budget_plan
+  for all using (public.is_admin()) with check (public.is_admin());
+
+-- المالك يضبط نسبة بند.
+create or replace function public.set_budget(p_category text, p_percent numeric)
+returns void language plpgsql security definer set search_path = public as $$
+begin
+  if not public.is_admin() then raise exception 'غير مصرّح'; end if;
+  insert into public.budget_plan (category, percent) values (p_category, p_percent)
+    on conflict (category) do update set percent = excluded.percent;
+end $$;
+
+-- تقرير الميزانية للفترة: الإيراد (عمولة المنصة) موزّعاً بالنِّسب مقابل المصروف الفعلي.
+create or replace function public.budget_report(p_scope text)
+returns table (category text, percent numeric, allocated numeric, spent numeric, income numeric)
+language plpgsql stable security definer set search_path = public as $$
+declare v_start date; v_income numeric;
+begin
+  if not public.is_admin() then raise exception 'غير مصرّح'; end if;
+  v_start := case when p_scope = 'year' then date_trunc('year', now())::date
+                  else date_trunc('month', now())::date end;
+  select coalesce(-sum(amount),0) into v_income from public.transactions
+    where type = 'commission' and created_at >= v_start;
+  return query
+    select b.category, b.percent,
+           round(v_income * b.percent / 100, 2) as allocated,
+           coalesce((select sum(e.amount) from public.expenses e
+                     where e.category = b.category and e.spent_at >= v_start), 0) as spent,
+           v_income as income
+    from public.budget_plan b
+    order by b.percent desc;
+end $$;
+
 
 -- التسعير: قراءة للجميع (المصادَق عليهم)
 drop policy if exists "read pricing" on public.service_pricing;

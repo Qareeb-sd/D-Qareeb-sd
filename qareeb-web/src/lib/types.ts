@@ -267,6 +267,15 @@ export interface Expense {
   created_at: string
 }
 
+/** بند ميزانية للفترة (نتيجة budget_report). */
+export interface BudgetRow {
+  category: ExpenseCategory
+  percent: number
+  allocated: number
+  spent: number
+  income: number
+}
+
 /** اشتراك Web Push مخزّن لمستخدم. */
 export interface PushSubscriptionRow {
   id: string

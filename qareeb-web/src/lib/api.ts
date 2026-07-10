@@ -661,6 +661,20 @@ export async function paySalaries(accountId: string | null, note?: string): Prom
   return error ? { error: error.message } : { total: Number(data) }
 }
 
+/** تقرير الميزانية للفترة (شهري/سنوي). */
+export async function getBudgetReport(scope: 'month' | 'year') {
+  if (!isSupabaseConfigured) return []
+  const { data } = await supabase.rpc('budget_report', { p_scope: scope })
+  return (data ?? []) as { category: string; percent: number; allocated: number; spent: number; income: number }[]
+}
+
+/** ضبط نسبة بند في الميزانية. */
+export async function setBudget(category: string, percent: number) {
+  if (!isSupabaseConfigured) return {}
+  const { error } = await supabase.rpc('set_budget', { p_category: category, p_percent: percent })
+  return error ? { error: error.message } : {}
+}
+
 export interface FinancialSummary {
   platform_commission: number
   total_topups: number

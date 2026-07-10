@@ -41,6 +41,8 @@ import {
   listExpenses,
   addExpense,
   paySalaries,
+  getBudgetReport,
+  setBudget,
   type AdminStats,
   type AdminDriverRow,
   type FinancialSummary,
@@ -62,6 +64,7 @@ import type {
   CompanyAccount,
   HrEmployee,
   Expense,
+  BudgetRow,
 } from '@/lib/types'
 
 type Tab =
@@ -132,6 +135,8 @@ export default function AdminDashboard() {
   const [empForm, setEmpForm] = useState({ name: '', role: '', phone: '', salary: '' })
   const [accForm, setAccForm] = useState({ name: '', bank: '', number: '', balance: '' })
   const [hrMsg, setHrMsg] = useState('')
+  const [budget, setBudgetState] = useState<BudgetRow[]>([])
+  const [budgetScope, setBudgetScope] = useState<'month' | 'year'>('month')
 
   // بحث/فلترة
   const [rideQuery, setRideQuery] = useState('')
@@ -182,10 +187,21 @@ export default function AdminDashboard() {
     }
   }, [tab, staffList, audit, accounts])
 
+  // تقرير الميزانية عند فتح HR أو تغيير الفترة.
+  useEffect(() => {
+    if (tab === 'hr') void getBudgetReport(budgetScope).then((b) => setBudgetState(b as BudgetRow[]))
+  }, [tab, budgetScope])
+
+  const saveBudgetPercent = async (category: string, percent: number) => {
+    await setBudget(category, percent)
+    void getBudgetReport(budgetScope).then((b) => setBudgetState(b as BudgetRow[]))
+  }
+
   const reloadHr = () => {
     void listCompanyAccounts().then((a) => setAccounts(a as CompanyAccount[]))
     void listHrEmployees().then((e) => setEmployees(e as HrEmployee[]))
     void listExpenses().then((x) => setExpenses(x as Expense[]))
+    void getBudgetReport(budgetScope).then((b) => setBudgetState(b as BudgetRow[]))
   }
 
   const submitAccount = async () => {
@@ -212,13 +228,13 @@ export default function AdminDashboard() {
   }
   const submitExpense = async () => {
     const amount = Number(expForm.amount)
-    if (!amount) return
+    if (!amount || !expForm.account) return
     setHrMsg('')
     const { error } = await addExpense({
       category: expForm.category,
       description: expForm.description.trim() || undefined,
       amount,
-      account: expForm.account || null,
+      account: expForm.account,
     })
     if (error) return setHrMsg(error)
     setExpForm({ category: 'other', description: '', amount: '', account: '' })
@@ -1097,6 +1113,79 @@ export default function AdminDashboard() {
               )
             })()}
 
+            {/* الميزانية حسب البنود (نِسَب من الإيراد) */}
+            <div className="card p-4">
+              <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+                <div>
+                  <p className="font-bold">الميزانية حسب البنود</p>
+                  <p className="text-xs text-ink-muted">
+                    توزيع الإيراد (عمولة المنصة) على البنود بالنِّسب، مقابل المصروف الفعلي.
+                  </p>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="text-sm text-ink-soft">
+                    الإيراد: <span className="font-bold text-green">{money(budget[0]?.income ?? 0)}</span>
+                  </span>
+                  <div className="flex rounded-xl border border-hairline p-1">
+                    {(['month', 'year'] as const).map((s) => (
+                      <button
+                        key={s}
+                        onClick={() => setBudgetScope(s)}
+                        className={`rounded-lg px-3 py-1 text-sm font-bold ${
+                          budgetScope === s ? 'bg-green text-white' : 'text-ink-soft'
+                        }`}
+                      >
+                        {s === 'month' ? 'شهري' : 'سنوي'}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+              {budget.length === 0 ? (
+                <p className="py-4 text-center text-sm text-ink-muted">…</p>
+              ) : (
+                <div className="space-y-3">
+                  {budget.map((b) => {
+                    const pct = b.allocated > 0 ? Math.min(100, (b.spent / b.allocated) * 100) : 0
+                    const over = b.spent > b.allocated && b.allocated > 0
+                    return (
+                      <div key={b.category}>
+                        <div className="mb-1 flex items-center gap-2 text-sm">
+                          <span className="w-20 font-bold">{expenseCatLabels[b.category] ?? b.category}</span>
+                          <input
+                            type="number"
+                            min={0}
+                            max={100}
+                            defaultValue={b.percent}
+                            onBlur={(e) => {
+                              const v = Number(e.target.value)
+                              if (v !== b.percent) void saveBudgetPercent(b.category, v)
+                            }}
+                            className="w-16 rounded-lg border border-hairline px-2 py-1 text-center text-sm"
+                          />
+                          <span className="text-ink-muted">%</span>
+                          <span className="flex-1" />
+                          <span className="text-xs text-ink-soft">
+                            {money(b.spent)} / {money(b.allocated)}
+                          </span>
+                        </div>
+                        <div className="h-2 w-full overflow-hidden rounded-full bg-hairline">
+                          <div
+                            className="h-full rounded-full"
+                            style={{ width: `${pct}%`, backgroundColor: over ? '#C5453B' : '#1B6B3F' }}
+                          />
+                        </div>
+                        {over && <p className="mt-0.5 text-[11px] text-danger">تجاوز المخصّص!</p>}
+                      </div>
+                    )
+                  })}
+                  <p className="pt-1 text-xs text-ink-muted">
+                    مجموع النِّسب: {budget.reduce((s, b) => s + Number(b.percent), 0)}% — عدّل الأرقام واخرج من الحقل للحفظ.
+                  </p>
+                </div>
+              )}
+            </div>
+
             {/* الحسابات البنكية */}
             <div className="card p-4">
               <p className="mb-3 font-bold">الحسابات البنكية / الخزائن</p>
@@ -1164,11 +1253,14 @@ export default function AdminDashboard() {
                 <input className="field" placeholder="الوصف" value={expForm.description} onChange={(e) => setExpForm({ ...expForm, description: e.target.value })} />
                 <input className="field" inputMode="decimal" placeholder="المبلغ" value={expForm.amount} onChange={(e) => setExpForm({ ...expForm, amount: e.target.value })} />
                 <select className="field" value={expForm.account} onChange={(e) => setExpForm({ ...expForm, account: e.target.value })}>
-                  <option value="">بدون خصم من حساب</option>
-                  {(accounts ?? []).map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
+                  <option value="">اختر الحساب (مصدر الدفع)</option>
+                  {(accounts ?? []).map((a) => <option key={a.id} value={a.id}>{a.name} ({money(a.balance)})</option>)}
                 </select>
-                <button onClick={submitExpense} className="btn-primary">تسجيل</button>
+                <button onClick={submitExpense} disabled={!expForm.account} className="btn-primary disabled:opacity-50">تسجيل</button>
               </div>
+              {(accounts ?? []).length === 0 && (
+                <p className="mb-2 text-xs text-warning">أضِف حساباً بنكياً أولاً ليُخصم منه المنصرف.</p>
+              )}
               {hrMsg && <p className="mb-2 text-sm text-green">{hrMsg}</p>}
               {expenses && expenses.length > 0 && (
                 <div className="divide-y divide-hairline">
