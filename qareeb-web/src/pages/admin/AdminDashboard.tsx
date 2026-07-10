@@ -1,7 +1,9 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import Logo from '@/components/Logo'
 import MapView from '@/components/MapView'
-import { money } from '@/lib/format'
+import { StatCard, ChartCard, StatusBadge, BarChart, DonutChart } from '@/components/admin/AdminUI'
+import { services } from '@/data/services'
+import { money, num } from '@/lib/format'
 import { useAuth } from '@/store/AuthContext'
 import {
   getAdminStats,
@@ -42,16 +44,6 @@ const tabs: { id: Tab; label: string }[] = [
   { id: 'settings', label: 'الإعدادات' },
 ]
 
-const rideStatusLabel: Record<string, string> = {
-  requested: 'مطلوبة',
-  searching: 'بحث عن سائق',
-  accepted: 'مقبولة',
-  arrived: 'وصل السائق',
-  in_progress: 'جارية',
-  completed: 'مكتملة',
-  cancelled: 'ملغاة',
-}
-
 /**
  * لوحة الأدمن — أقسام مستقلة (تبويبات): نظرة عامة + الطلبات (تعبئات/سائقون)
  * + السائقون + الرحلات + الإعدادات والتسعير. الأمان مفروض عبر RLS ودوال Postgres.
@@ -77,13 +69,14 @@ export default function AdminDashboard() {
 
   useEffect(() => {
     void (async () => {
-      const [s, fin, t, cfg, pr, apps] = await Promise.all([
+      const [s, fin, t, cfg, pr, apps, rd] = await Promise.all([
         getAdminStats(),
         getFinancialSummary(),
         listPendingTopups(),
         getSettings(),
         listServicePricing(),
         listDriverApplications('pending'),
+        listAllRides(500),
       ])
       setStats(s)
       setFinance(fin)
@@ -91,14 +84,44 @@ export default function AdminDashboard() {
       setSettings(cfg)
       setPricing(pr)
       setDriverApps(apps)
+      setRides(rd)
     })()
   }, [])
 
-  // تحميل كسول للقوائم الثقيلة عند فتح تبويبها أول مرة.
+  // تحميل كسول لقائمة السائقين عند فتح تبويبها أول مرة.
   useEffect(() => {
     if (tab === 'drivers' && drivers === null) void listAllDrivers().then(setDrivers)
-    if (tab === 'rides' && rides === null) void listAllRides().then(setRides)
-  }, [tab, drivers, rides])
+  }, [tab, drivers])
+
+  // ===== تحليلات محسوبة من الرحلات الحقيقية =====
+  const analytics = useMemo(() => {
+    const rs = rides ?? []
+    const dayNames = ['الأحد', 'الاثنين', 'الثلاثاء', 'الأربعاء', 'الخميس', 'الجمعة', 'السبت']
+    // رحلات آخر 7 أيام حسب اليوم
+    const weekly: { label: string; value: number }[] = []
+    for (let i = 6; i >= 0; i--) {
+      const d = new Date()
+      d.setDate(d.getDate() - i)
+      const label = dayNames[d.getDay()]
+      const count = rs.filter((r) => {
+        const rd = new Date(r.created_at)
+        return rd.toDateString() === d.toDateString()
+      }).length
+      weekly.push({ label, value: count })
+    }
+    // توزيع المركبات (عدد الرحلات لكل نوع)
+    const vehicle = services
+      .map((s) => ({
+        label: s.name,
+        value: rs.filter((r) => r.service_id === s.id).length,
+        color: s.tint === '#EDEFEC' ? '#1B6B3F' : s.tint,
+      }))
+      .filter((v) => v.value > 0)
+    // إيرادات الرحلات المكتملة
+    const completed = rs.filter((r) => r.status === 'completed')
+    const revenue = completed.reduce((sum, r) => sum + (r.fare ?? 0), 0)
+    return { weekly, vehicle, completedCount: completed.length, revenue }
+  }, [rides])
 
   // تنبيهات الطوارئ — تُحمَّل وتُتابَع لحظياً (تظهر فوق كل التبويبات).
   useEffect(() => {
@@ -275,17 +298,52 @@ export default function AdminDashboard() {
 
         {tab === 'overview' && (
           <>
-            <div className="grid grid-cols-3 gap-3">
-              {[
-                { label: 'رحلات اليوم', value: stats?.ridesToday },
-                { label: 'سائقون متصلون', value: stats?.onlineDrivers },
-                { label: 'تعبئات معلّقة', value: stats?.pendingTopups },
-              ].map((s) => (
-                <div key={s.label} className="card p-4 text-center">
-                  <p className="text-2xl font-extrabold text-green">{s.value ?? '…'}</p>
-                  <p className="text-xs text-ink-muted">{s.label}</p>
+            {/* بطاقات المؤشّرات (KPI) — بيانات حقيقية */}
+            <div className="grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-6">
+              <StatCard label="طلبات نشطة" value={num(activeRides.length)} icon="⚡" iconBg="#E8F1EC" accent="#1B6B3F" />
+              <StatCard label="رحلات اليوم" value={num(stats?.ridesToday ?? 0)} icon="🚗" iconBg="#E3EEF7" accent="#3A6FB0" />
+              <StatCard label="سائقون متصلون" value={num(stats?.onlineDrivers ?? 0)} icon="🧑🏾‍✈️" iconBg="#FBF4DD" accent="#A88528" />
+              <StatCard label="طلبات معلّقة" value={num(pendingCount)} hint={`${topups.length} تعبئة · ${driverApps.length} سائق`} icon="⏳" iconBg="#FBF4DD" accent="#A88528" />
+              <StatCard label="رحلات مكتملة" value={num(analytics.completedCount)} icon="✅" iconBg="#E8F1EC" accent="#1B6B3F" />
+              <StatCard label="إيرادات الرحلات" value={money(analytics.revenue)} icon="💰" iconBg="#E8F1EC" accent="#1B6B3F" />
+            </div>
+
+            {/* رسوم بيانية — رحلات الأسبوع + توزيع المركبات */}
+            <div className="grid gap-4 lg:grid-cols-2">
+              <ChartCard title="الرحلات آخر ٧ أيام" subtitle="عدد الرحلات اليومية">
+                <BarChart data={analytics.weekly} />
+              </ChartCard>
+              <ChartCard title="توزيع المركبات" subtitle="عدد الرحلات لكل نوع">
+                <DonutChart segments={analytics.vehicle} />
+              </ChartCard>
+            </div>
+
+            {/* الطلبات النشطة الآن */}
+            <div className="card p-4">
+              <div className="mb-3 flex items-center gap-2">
+                <span className="h-2.5 w-2.5 animate-pulse rounded-full bg-green" />
+                <p className="font-bold">الطلبات النشطة الآن ({activeRides.length})</p>
+              </div>
+              {activeRides.length === 0 ? (
+                <p className="py-6 text-center text-sm text-ink-muted">لا توجد رحلات نشطة حالياً</p>
+              ) : (
+                <div className="divide-y divide-hairline">
+                  {activeRides.map((r) => (
+                    <div key={r.id} className="flex items-center gap-3 py-2.5">
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-sm font-bold">
+                          {getService(r.service_id)?.name ?? r.service_id}
+                        </p>
+                        <p className="truncate text-xs text-ink-muted">
+                          {r.pickup_address ?? '—'} ← {r.dropoff_address ?? 'مفتوح'}
+                        </p>
+                      </div>
+                      <StatusBadge status={r.status} />
+                      <span className="shrink-0 text-sm font-bold text-green">{money(r.fare ?? 0)}</span>
+                    </div>
+                  ))}
                 </div>
-              ))}
+              )}
             </div>
 
             {/* خريطة النشاط المباشر — نقاط انطلاق الرحلات النشطة ومواقع السائقين */}
@@ -520,11 +578,9 @@ export default function AdminDashboard() {
                         {r.pickup_address ?? '—'} ← {r.dropoff_address ?? '—'}
                       </p>
                     </div>
-                    <div className="text-left">
+                    <div className="flex flex-col items-end gap-1">
                       <p className="font-bold text-green">{money(r.fare ?? 0)}</p>
-                      <p className="text-xs text-ink-muted">
-                        {rideStatusLabel[r.status] ?? r.status}
-                      </p>
+                      <StatusBadge status={r.status} />
                     </div>
                   </div>
                 ))}
