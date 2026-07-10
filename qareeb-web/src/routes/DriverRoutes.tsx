@@ -12,7 +12,7 @@ import DriverProfile from '@/pages/driver/DriverProfile'
 
 const driverGuard = (el: React.ReactNode) => <DriverRoute>{el}</DriverRoute>
 
-/** مسارات تطبيق «كابتن قريب» (السائق) — مستقلّ عن تطبيق العميل. */
+/** مسارات تطبيق «قريب كابتن» (السائق) — مستقلّ عن تطبيق العميل. */
 export default function DriverRoutes() {
   return (
     <Routes>

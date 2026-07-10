@@ -84,7 +84,7 @@ export default function Auth() {
         تسجيل حساب جديد عبر واتساب — قريباً.
       </p>
 
-      {/* السائقون لهم تطبيق منفصل «كابتن قريب» */}
+      {/* السائقون لهم تطبيق منفصل «قريب كابتن» */}
       <p className="mt-5 text-center text-xs text-ink-soft">
         🚗 سائق؟ حمّل تطبيق <span className="font-bold text-green-dark">«قريب كابتن»</span> من المتجر.
       </p>
