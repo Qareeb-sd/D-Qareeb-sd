@@ -100,6 +100,7 @@ export default function AdminDashboard() {
   const [staffPerms, setStaffPerms] = useState<StaffPerm[]>(['requests'])
   const [staffMsg, setStaffMsg] = useState('')
   const [audit, setAudit] = useState<AuditEntry[] | null>(null)
+  const [toast, setToast] = useState('')
 
   // بحث/فلترة
   const [rideQuery, setRideQuery] = useState('')
@@ -357,11 +358,17 @@ export default function AdminDashboard() {
     // أول تحميل لا يصدر صوتاً؛ التغيّرات اللاحقة تصدر.
     const onTopup = () => {
       reloadTopups()
-      if (primed.current) ping()
+      if (primed.current) {
+        ping()
+        setToast('🔔 طلب تعبئة رصيد جديد')
+      }
     }
     const onApp = () => {
       reloadApps()
-      if (primed.current) ping()
+      if (primed.current) {
+        ping()
+        setToast('🔔 طلب انضمام سائق جديد')
+      }
     }
     const t = setTimeout(() => (primed.current = true), 3000)
     const un1 = subscribeToTopups(onTopup)
@@ -372,6 +379,13 @@ export default function AdminDashboard() {
       un2()
     }
   }, [])
+
+  // إخفاء التنبيه المنبثق تلقائياً بعد ٦ ثوانٍ.
+  useEffect(() => {
+    if (!toast) return
+    const t = setTimeout(() => setToast(''), 6000)
+    return () => clearTimeout(t)
+  }, [toast])
 
   // خريطة النشاط المباشر — الرحلات النشطة (تحديث دوري خفيف).
   useEffect(() => {
@@ -474,9 +488,36 @@ export default function AdminDashboard() {
 
   return (
     <div className="screen mx-auto w-full max-w-7xl px-2 sm:px-4">
+      {/* تنبيه منبثق عند وصول طلب جديد */}
+      {toast && (
+        <button
+          onClick={() => {
+            setTab('requests')
+            setToast('')
+          }}
+          className="fixed left-1/2 top-4 z-50 -translate-x-1/2 rounded-2xl bg-green px-5 py-3 text-sm font-bold text-white shadow-lift"
+          style={{ animation: 'pulse 1.2s ease-in-out 2' }}
+        >
+          {toast} — اضغط للعرض
+        </button>
+      )}
+
       <header className="flex items-center gap-3 bg-green px-4 py-4 text-white shadow-card">
         <Logo size={36} rounded={10} />
         <h1 className="flex-1 text-lg font-extrabold">لوحة تحكم قريب</h1>
+        {/* جرس الطلبات المعلّقة */}
+        <button
+          onClick={() => setTab('requests')}
+          title="الطلبات المعلّقة"
+          className="relative grid h-9 w-9 place-items-center rounded-full bg-white/15 text-lg hover:bg-white/25"
+        >
+          🔔
+          {pendingCount > 0 && (
+            <span className="absolute -left-1 -top-1 grid h-5 min-w-5 place-items-center rounded-full bg-lemon px-1 text-[10px] font-extrabold text-green-dark">
+              {pendingCount}
+            </span>
+          )}
+        </button>
         <span className="rounded-full bg-white/15 px-3 py-1 text-xs font-bold">الإدارة</span>
         <button
           onClick={() => void signOut()}
