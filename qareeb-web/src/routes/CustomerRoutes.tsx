@@ -6,6 +6,7 @@ import Onboarding from '@/pages/customer/Onboarding'
 import Auth from '@/pages/customer/Auth'
 import Register from '@/pages/customer/Register'
 import Home from '@/pages/customer/Home'
+import Services from '@/pages/customer/Services'
 import SelectLocation from '@/pages/customer/SelectLocation'
 import FindDriver from '@/pages/customer/FindDriver'
 import Trip from '@/pages/customer/Trip'
@@ -33,6 +34,7 @@ export default function CustomerRoutes() {
       <Route path="/track/:token" element={<TrackRide />} />
 
       <Route path="/home" element={guard(<Home />)} />
+      <Route path="/services" element={guard(<Services />)} />
       <Route path="/select-location" element={guard(<SelectLocation />)} />
       <Route path="/find-driver" element={guard(<FindDriver />)} />
       <Route path="/trip" element={guard(<Trip />)} />

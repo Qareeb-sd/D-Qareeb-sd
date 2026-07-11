@@ -252,18 +252,19 @@ export default function SelectLocation() {
           <div className="mx-auto mb-3 h-1.5 w-12 rounded-full bg-hairline" />
 
           {/* نقطة الانطلاق */}
-          <div className="flex items-center gap-3">
-            <span className="h-3 w-3 shrink-0 rounded-full bg-green" />
-            <div className="min-w-0 flex-1">
-              <p className="text-xs text-ink-muted">نقطة الانطلاق</p>
-              <p className="truncate font-bold">{pickupLabel}</p>
-            </div>
+          <div className="mb-1 flex items-center justify-end gap-2">
+            <p className="text-sm font-bold text-ink-soft">نقطة الانطلاق</p>
+            <span className="h-3 w-3 rounded-full bg-green" />
+          </div>
+          <div className="flex items-center gap-2 rounded-2xl border border-hairline px-3 py-3">
             <button
               onClick={active === 'pickup' && pickupMode === 'other' ? useMyLocation : changePickup}
-              className="shrink-0 rounded-xl border border-green/40 px-3 py-1.5 text-xs font-bold text-green"
+              className="shrink-0 rounded-xl border border-green/50 px-3 py-1.5 text-xs font-bold text-green"
             >
               {active === 'pickup' && pickupMode === 'other' ? '📍 موقعي' : 'تغيير'}
             </button>
+            <p className="min-w-0 flex-1 truncate text-right font-bold">{pickupLabel}</p>
+            <span className="shrink-0 text-ink-soft">📍</span>
           </div>
 
           {gpsErr && (
@@ -278,7 +279,7 @@ export default function SelectLocation() {
             <button
               onClick={swap}
               aria-label="تبديل الانطلاق والوجهة"
-              className="mx-2 grid h-8 w-8 place-items-center rounded-full border border-hairline bg-white text-ink-soft shadow-sm"
+              className="mx-2 grid h-9 w-9 place-items-center rounded-full border border-green/30 bg-white text-green shadow-sm"
             >
               ⇅
             </button>
@@ -286,23 +287,24 @@ export default function SelectLocation() {
           </div>
 
           {/* الوجهة */}
-          <div className="flex items-center gap-3">
-            <span className="grid h-3 w-3 shrink-0 place-items-center text-danger">📍</span>
-            <div className="min-w-0 flex-1">
-              <p className="text-xs text-ink-muted">
-                الوجهة {destOptional && <span className="text-ink-muted/70">(اختياري)</span>}
-              </p>
-              <input
-                className="w-full bg-transparent py-1 text-base font-bold outline-none placeholder:font-normal placeholder:text-ink-muted"
-                value={dropoffAddr}
-                onFocus={() => setActive('dropoff')}
-                onChange={(e) => {
-                  setDropoffAddr(e.target.value)
-                  setDropoffSet(true)
-                }}
-                placeholder="إلى أين؟ 🔎"
-              />
-            </div>
+          <div className="mb-1 flex items-center justify-end gap-2">
+            <p className="text-sm font-bold text-ink-soft">
+              الوجهة {destOptional && <span className="text-ink-muted/70">(اختياري)</span>}
+            </p>
+            <span className="text-danger">📍</span>
+          </div>
+          <div className="flex items-center gap-2 rounded-2xl border border-hairline px-3 py-1">
+            <input
+              className="w-full bg-transparent py-2.5 text-base font-bold outline-none placeholder:font-normal placeholder:text-ink-muted"
+              value={dropoffAddr}
+              onFocus={() => setActive('dropoff')}
+              onChange={(e) => {
+                setDropoffAddr(e.target.value)
+                setDropoffSet(true)
+              }}
+              placeholder="إلى أين؟"
+            />
+            <span className="shrink-0 text-ink-soft">🔎</span>
           </div>
 
           {/* الأماكن المحفوظة */}
@@ -326,7 +328,7 @@ export default function SelectLocation() {
           </div>
 
           {/* المسافة · المدة · السعر التقديري */}
-          <div className="mt-3 grid grid-cols-3 divide-x divide-x-reverse divide-hairline text-center">
+          <div className="mt-3 grid grid-cols-3 divide-x divide-x-reverse divide-hairline rounded-2xl border border-hairline py-1 text-center">
             <Stat label="المسافة" value={quote ? km(quote.distanceKm) : '—'} />
             <Stat label="المدة" value={quote ? mins(quote.durationMin) : '—'} />
             <Stat
