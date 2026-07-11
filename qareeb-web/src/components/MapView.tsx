@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Capacitor } from '@capacitor/core'
 import { KHARTOUM } from '@/theme'
 import { GOOGLE_MAPS_API_KEY } from '@/lib/maps'
@@ -32,11 +32,36 @@ interface MapViewProps {
   className?: string
 }
 
-const useNative = Capacitor.isNativePlatform() && Boolean(GOOGLE_MAPS_API_KEY)
+const isNative = Capacitor.isNativePlatform()
+const useNative = isNative && Boolean(GOOGLE_MAPS_API_KEY)
+
+/** شارة تشخيص مؤقتة — تُظهر سبب عدم ظهور الخريطة الأصلية من لقطة واحدة. */
+function DiagBadge({ text, tone }: { text: string; tone: 'ok' | 'warn' | 'err' }) {
+  const bg = tone === 'ok' ? '#0F7B3F' : tone === 'warn' ? '#B07E00' : '#C1121F'
+  return (
+    <div
+      dir="ltr"
+      className="pointer-events-none absolute left-1 top-1 z-[600] rounded px-1.5 py-0.5 text-[10px] font-bold text-white"
+      style={{ backgroundColor: bg, maxWidth: '90%' }}
+    >
+      {text}
+    </div>
+  )
+}
 
 export default function MapView(props: MapViewProps) {
-  // على الويب: نستخدم Leaflet مباشرة.
-  if (!useNative) return <LeafletMap {...props} />
+  // على الويب: Leaflet. لكن إن كنّا على الجهاز بلا مفتاح — نبيّن السبب.
+  if (!useNative) {
+    const reason = !isNative
+      ? null // ويب عادي: لا حاجة لشارة
+      : 'MAP: native but API key EMPTY — أضف VITE_GOOGLE_MAPS_API_KEY في .env ثم أعد البناء'
+    return (
+      <div className={`relative ${props.className ?? ''}`}>
+        <LeafletMap {...props} className="absolute inset-0" />
+        {reason && <DiagBadge text={reason} tone="err" />}
+      </div>
+    )
+  }
   return <NativeGoogleMap {...props} />
 }
 
@@ -64,6 +89,9 @@ function NativeGoogleMap({
   const cbRef = useRef({ onCenterChanged, onUserDrag })
   cbRef.current = { onCenterChanged, onUserDrag }
 
+  const [status, setStatus] = useState<'creating' | 'ready' | 'error'>('creating')
+  const [errMsg, setErrMsg] = useState('')
+
   // إنشاء الخريطة مرّة واحدة.
   useEffect(() => {
     const el = divRef.current
@@ -72,40 +100,45 @@ function NativeGoogleMap({
     let created: GMap | null = null
 
     void (async () => {
-      const { GoogleMap } = await import('@capacitor/google-maps')
-      if (cancelled) return
-      acquireMapTransparency()
-      const map = await GoogleMap.create({
-        id: `qareeb-map-${Math.round(el.getBoundingClientRect().top)}-${el.offsetWidth}`,
-        element: el,
-        apiKey: GOOGLE_MAPS_API_KEY,
-        config: {
-          center: { lat: center.lat, lng: center.lng },
-          zoom,
-          // مظهر نظيف: إخفاء نقاط الاهتمام والمواصلات (مطابق لهوية "قريب").
-          styles: [
-            { featureType: 'poi', stylers: [{ visibility: 'off' }] },
-            { featureType: 'transit', stylers: [{ visibility: 'off' }] },
-          ],
-        },
-      })
-      if (cancelled) {
-        await map.destroy()
-        releaseMapTransparency()
-        return
-      }
-      created = map
-      mapRef.current = map
-      lastCam.current = { lat: center.lat, lng: center.lng }
+      try {
+        const { GoogleMap } = await import('@capacitor/google-maps')
+        if (cancelled) return
+        acquireMapTransparency()
+        const map = await GoogleMap.create({
+          id: `qareeb-map-${Math.round(el.getBoundingClientRect().top)}-${el.offsetWidth}`,
+          element: el,
+          apiKey: GOOGLE_MAPS_API_KEY,
+          config: {
+            center: { lat: center.lat, lng: center.lng },
+            zoom,
+            styles: [
+              { featureType: 'poi', stylers: [{ visibility: 'off' }] },
+              { featureType: 'transit', stylers: [{ visibility: 'off' }] },
+            ],
+          },
+        })
+        if (cancelled) {
+          await map.destroy()
+          releaseMapTransparency()
+          return
+        }
+        created = map
+        mapRef.current = map
+        lastCam.current = { lat: center.lat, lng: center.lng }
 
-      await map.setOnCameraIdleListener((e) => {
-        lastCam.current = { lat: e.latitude, lng: e.longitude }
-        cbRef.current.onCenterChanged?.({ lat: e.latitude, lng: e.longitude })
-      })
-      await map.setOnCameraMoveStartedListener((e) => {
-        if (e.isGesture) cbRef.current.onUserDrag?.()
-      })
-      await syncMarkers(map)
+        await map.setOnCameraIdleListener((e) => {
+          lastCam.current = { lat: e.latitude, lng: e.longitude }
+          cbRef.current.onCenterChanged?.({ lat: e.latitude, lng: e.longitude })
+        })
+        await map.setOnCameraMoveStartedListener((e) => {
+          if (e.isGesture) cbRef.current.onUserDrag?.()
+        })
+        await syncMarkers(map)
+        setStatus('ready')
+      } catch (e) {
+        setStatus('error')
+        setErrMsg(e instanceof Error ? e.message : String(e))
+      }
     })()
 
     return () => {
@@ -171,10 +204,11 @@ function NativeGoogleMap({
 
   // dir=ltr: تخطيط الخريطة يفترض LTR. الخلفيّة شفّافة لتظهر الخريطة الأصلية خلفها.
   return (
-    <div
-      ref={divRef}
-      dir="ltr"
-      className={`overflow-hidden bg-transparent ${className}`}
-    />
+    <div className={`relative ${className}`}>
+      <div ref={divRef} dir="ltr" className="absolute inset-0 overflow-hidden bg-transparent" />
+      {status === 'creating' && <DiagBadge text="MAP: native — creating…" tone="warn" />}
+      {status === 'ready' && <DiagBadge text="MAP: native READY ✓" tone="ok" />}
+      {status === 'error' && <DiagBadge text={`MAP native ERROR: ${errMsg}`} tone="err" />}
+    </div>
   )
 }
