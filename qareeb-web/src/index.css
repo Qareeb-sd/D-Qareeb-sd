@@ -105,3 +105,16 @@
     animation: shake 0.3s ease-in-out;
   }
 }
+
+/* ---------- خريطة Leaflet (OpenStreetMap) ---------- */
+/* Tailwind preflight يضبط img{max-width:100%} فيكسر بلاطات الخريطة — نلغيه داخلها. */
+.leaflet-container img {
+  max-width: none !important;
+  max-height: none !important;
+}
+/* عزل طبقات الخريطة حتى لا تعلو فوق عناصر التطبيق (الدبوس، الأزرار…) */
+.leaflet-container {
+  isolation: isolate;
+  z-index: 0;
+  font: inherit;
+}
