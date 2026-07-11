@@ -44,7 +44,7 @@ export default function Home() {
 
   return (
     <div className="screen">
-      <header className="flex items-center gap-3 px-4 py-3">
+      <header className="flex items-center gap-3 bg-bg px-4 py-3">
         <Logo size={38} rounded={11} />
         <div className="flex-1">
           <p className="text-xs text-ink-muted">أهلاً بك في</p>

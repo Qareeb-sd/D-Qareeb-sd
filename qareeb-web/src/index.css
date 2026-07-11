@@ -106,7 +106,7 @@
   }
 }
 
-/* ---------- خريطة Leaflet (OpenStreetMap) ---------- */
+/* ---------- خريطة Leaflet (OpenStreetMap) — الويب/الأدمن ---------- */
 /* Tailwind preflight يضبط img{max-width:100%} فيكسر بلاطات الخريطة — نلغيه داخلها. */
 .leaflet-container img {
   max-width: none !important;
@@ -117,4 +117,17 @@
   isolation: isolate;
   z-index: 0;
   font: inherit;
+}
+
+/* ---------- خريطة قوقل الأصلية (Native) — الجهاز ---------- */
+/* المكوّن الأصلي يرسم الخريطة خلف الـWebView ويجعل خلفيّته شفّافة. لكي تظهر
+   الخريطة يجب أن تكون سلسلة العناصر فوقها شفّافة أيضاً. نُفعّل ذلك فقط أثناء
+   وجود خريطة أصلية حيّة (الصنف native-map-open على <html>)، فلا يتأثّر بقيّة
+   التطبيق. العناصر التي يجب أن تبقى معتمة (اللوحة السفلية، البطاقات) تحتفظ
+   بخلفيّتها الخاصّة فتُرسم فوق الخريطة كالمعتاد. */
+html.native-map-open,
+html.native-map-open body,
+html.native-map-open #root,
+html.native-map-open .screen {
+  background-color: transparent !important;
 }

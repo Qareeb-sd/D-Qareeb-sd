@@ -1,46 +1,29 @@
 import { useEffect, useRef } from 'react'
-import L from 'leaflet'
-import 'leaflet/dist/leaflet.css'
+import { Capacitor } from '@capacitor/core'
 import { KHARTOUM } from '@/theme'
+import { GOOGLE_MAPS_API_KEY } from '@/lib/maps'
+import { acquireMapTransparency, releaseMapTransparency } from '@/lib/nativeMapHost'
+import LeafletMap from './LeafletMap'
 
 /**
- * خريطة التطبيق — تعمل بمحرّك Leaflet وبلاطات OpenStreetMap:
- * مجانية، بلا مفتاح، وتصل من داخل السودان بثبات (بعكس بلاطات خرائط قوقل
- * التي فشل عرضها داخل WebView). خدمات قوقل (اقتراحات الأماكن + المسافة)
- * تبقى كما هي في PlaceSearch/fetchRoute.
- * الواجهة نفسها السابقة: center/marker/driver/markers/driverMarkers/zoom/أحداث.
+ * خريطة التطبيق — مسارَان:
+ *  • على الجهاز (Android): محرّك خرائط قوقل **الأصلي** (@capacitor/google-maps).
+ *    يُرسم أصلاً خارج الـWebView فيعطي نفس جودة تطبيقات المنافسين، ويعمل داخل
+ *    السودان (بعكس بلاطات قوقل داخل الـWebView التي كانت تظهر فارغة).
+ *  • على الويب (لوحة الأدمن/التطوير): محرّك Leaflet (OpenStreetMap) بلا مفتاح.
+ *
+ * الواجهة نفسها في الحالتين: center/marker/driver/markers/driverMarkers/zoom/أحداث.
+ * الدبوس المركزي (MapPin) واللوحة السفلية تُرسم فوق الخريطة داخل الـWebView.
  */
-
-// أيقونة السائق: سيارة داخل دائرة خضراء (SVG مضمّن — لا يعتمد على أصول خارجية).
-const carIcon = L.divIcon({
-  className: '',
-  html:
-    `<svg xmlns="http://www.w3.org/2000/svg" width="46" height="46">` +
-    `<circle cx="23" cy="23" r="18" fill="#0F7B3F" stroke="#fff" stroke-width="3"/>` +
-    `<text x="23" y="30" font-size="20" text-anchor="middle">🚗</text></svg>`,
-  iconSize: [46, 46],
-  iconAnchor: [23, 23],
-})
-
-// دبوس موقع (أحمر) للعلامات الثابتة.
-const pinIcon = L.divIcon({
-  className: '',
-  html:
-    `<svg xmlns="http://www.w3.org/2000/svg" width="30" height="42" viewBox="0 0 30 42">` +
-    `<path d="M15 0C6.7 0 0 6.6 0 14.8 0 25.9 15 42 15 42s15-16.1 15-27.2C30 6.6 23.3 0 15 0Z" fill="#E11D48"/>` +
-    `<circle cx="15" cy="14.5" r="5.5" fill="#fff"/></svg>`,
-  iconSize: [30, 42],
-  iconAnchor: [15, 42],
-})
 
 interface MapViewProps {
   center?: google.maps.LatLngLiteral
   marker?: google.maps.LatLngLiteral
-  /** موقع السائق المباشر — يُعرض بأيقونة سيارة مميّزة. */
+  /** موقع السائق المباشر — يُعرض بأيقونة سيارة/تلوين أخضر. */
   driver?: google.maps.LatLngLiteral
-  /** علامات متعددة (مثل نقاط انطلاق الرحلات النشطة في لوحة الأدمن). */
+  /** علامات متعددة (نقاط انطلاق الرحلات في لوحة الأدمن). */
   markers?: google.maps.LatLngLiteral[]
-  /** مواقع سائقين متعددة (أيقونة سيارة). */
+  /** مواقع سائقين متعددة. */
   driverMarkers?: google.maps.LatLngLiteral[]
   zoom?: number
   onCenterChanged?: (pos: google.maps.LatLngLiteral) => void
@@ -49,7 +32,20 @@ interface MapViewProps {
   className?: string
 }
 
-export default function MapView({
+const useNative = Capacitor.isNativePlatform() && Boolean(GOOGLE_MAPS_API_KEY)
+
+export default function MapView(props: MapViewProps) {
+  // على الويب: نستخدم Leaflet مباشرة.
+  if (!useNative) return <LeafletMap {...props} />
+  return <NativeGoogleMap {...props} />
+}
+
+/* ------------------------------ الخريطة الأصلية ------------------------------ */
+
+type GMap = import('@capacitor/google-maps').GoogleMap
+const DRIVER_TINT = { r: 15, g: 123, b: 63, a: 1 } // أخضر قريب
+
+function NativeGoogleMap({
   center = KHARTOUM,
   marker,
   driver,
@@ -61,75 +57,86 @@ export default function MapView({
   className = 'h-64 w-full rounded-2xl',
 }: MapViewProps) {
   const divRef = useRef<HTMLDivElement | null>(null)
-  const mapRef = useRef<L.Map | null>(null)
-  const layerRef = useRef<L.LayerGroup | null>(null)
-
-  // مراجع حيّة للأحداث حتى لا نعيد الاشتراك عند كل render.
+  const mapRef = useRef<GMap | null>(null)
+  const markerIds = useRef<string[]>([])
+  // آخر مركز عرفته الكاميرا — لتفادي حلقة setCamera↔onCameraIdle.
+  const lastCam = useRef<google.maps.LatLngLiteral>(center)
   const cbRef = useRef({ onCenterChanged, onUserDrag })
   cbRef.current = { onCenterChanged, onUserDrag }
 
   // إنشاء الخريطة مرّة واحدة.
   useEffect(() => {
     const el = divRef.current
-    if (!el || mapRef.current) return
+    if (!el) return
+    let cancelled = false
+    let created: GMap | null = null
 
-    const map = L.map(el, {
-      center: [center.lat, center.lng],
-      zoom,
-      zoomControl: false,
-      attributionControl: true,
-    })
-    L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      maxZoom: 19,
-      attribution: '© OpenStreetMap',
-    }).addTo(map)
-    layerRef.current = L.layerGroup().addTo(map)
+    void (async () => {
+      const { GoogleMap } = await import('@capacitor/google-maps')
+      if (cancelled) return
+      acquireMapTransparency()
+      const map = await GoogleMap.create({
+        id: `qareeb-map-${Math.round(el.getBoundingClientRect().top)}-${el.offsetWidth}`,
+        element: el,
+        apiKey: GOOGLE_MAPS_API_KEY,
+        config: {
+          center: { lat: center.lat, lng: center.lng },
+          zoom,
+          // مظهر نظيف: إخفاء نقاط الاهتمام والمواصلات (مطابق لهوية "قريب").
+          styles: [
+            { featureType: 'poi', stylers: [{ visibility: 'off' }] },
+            { featureType: 'transit', stylers: [{ visibility: 'off' }] },
+          ],
+        },
+      })
+      if (cancelled) {
+        await map.destroy()
+        releaseMapTransparency()
+        return
+      }
+      created = map
+      mapRef.current = map
+      lastCam.current = { lat: center.lat, lng: center.lng }
 
-    map.on('moveend', () => {
-      const c = map.getCenter()
-      cbRef.current.onCenterChanged?.({ lat: c.lat, lng: c.lng })
-    })
-    map.on('dragend', () => cbRef.current.onUserDrag?.())
-
-    mapRef.current = map
-
-    // الحاويات المرنة (flex/absolute) قد تتأخر أبعادها — أعد الحساب عند أي تغيّر.
-    const ro = new ResizeObserver(() => map.invalidateSize())
-    ro.observe(el)
-    setTimeout(() => map.invalidateSize(), 0)
+      await map.setOnCameraIdleListener((e) => {
+        lastCam.current = { lat: e.latitude, lng: e.longitude }
+        cbRef.current.onCenterChanged?.({ lat: e.latitude, lng: e.longitude })
+      })
+      await map.setOnCameraMoveStartedListener((e) => {
+        if (e.isGesture) cbRef.current.onUserDrag?.()
+      })
+      await syncMarkers(map)
+    })()
 
     return () => {
-      ro.disconnect()
-      map.remove()
+      cancelled = true
+      markerIds.current = []
+      if (created) {
+        void created.destroy()
+        releaseMapTransparency()
+      }
       mapRef.current = null
-      layerRef.current = null
     }
-    // إنشاء لمرة واحدة — التحديثات عبر التأثيرات أدناه.
+    // إنشاء لمرة واحدة؛ التحديثات في التأثيرات أدناه.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  // تحديث المركز من الخارج (دون حلقة مع moveend).
+  // تحديث المركز من الخارج (تخطّي إن كان قريباً من موضع الكاميرا الحالي).
   useEffect(() => {
     const map = mapRef.current
     if (!map) return
-    const c = map.getCenter()
-    if (Math.abs(c.lat - center.lat) > 1e-7 || Math.abs(c.lng - center.lng) > 1e-7) {
-      map.setView([center.lat, center.lng], map.getZoom() || zoom)
+    const c = lastCam.current
+    if (Math.abs(c.lat - center.lat) > 1e-6 || Math.abs(c.lng - center.lng) > 1e-6) {
+      lastCam.current = { lat: center.lat, lng: center.lng }
+      void map.setCamera({ coordinate: { lat: center.lat, lng: center.lng }, animate: true })
     }
-  }, [center.lat, center.lng, zoom])
+  }, [center.lat, center.lng])
 
-  // تحديث العلامات.
+  // تحديث العلامات عند أي تغيّر.
   useEffect(() => {
-    const layer = layerRef.current
-    if (!layer) return
-    layer.clearLayers()
-    if (marker) L.marker([marker.lat, marker.lng], { icon: pinIcon }).addTo(layer)
-    markers?.forEach((m) => L.marker([m.lat, m.lng], { icon: pinIcon }).addTo(layer))
-    driverMarkers?.forEach((d) =>
-      L.marker([d.lat, d.lng], { icon: carIcon, zIndexOffset: 500 }).addTo(layer),
-    )
-    if (driver)
-      L.marker([driver.lat, driver.lng], { icon: carIcon, zIndexOffset: 1000 }).addTo(layer)
+    const map = mapRef.current
+    if (map) void syncMarkers(map)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
     marker?.lat,
     marker?.lng,
@@ -139,6 +146,35 @@ export default function MapView({
     JSON.stringify(driverMarkers ?? []),
   ])
 
-  // dir=ltr: تخطيط الخريطة الداخلي يفترض LTR؛ لا يؤثر على واجهة التطبيق.
-  return <div ref={divRef} dir="ltr" className={`overflow-hidden ${className}`} />
+  async function syncMarkers(map: GMap) {
+    if (markerIds.current.length) {
+      try {
+        await map.removeMarkers(markerIds.current)
+      } catch {
+        /* قد تكون أُزيلت مع إعادة الإنشاء */
+      }
+      markerIds.current = []
+    }
+    const toAdd: import('@capacitor/google-maps').Marker[] = []
+    if (marker) toAdd.push({ coordinate: marker })
+    markers?.forEach((m) => toAdd.push({ coordinate: m }))
+    driverMarkers?.forEach((d) => toAdd.push({ coordinate: d, tintColor: DRIVER_TINT }))
+    if (driver) toAdd.push({ coordinate: driver, tintColor: DRIVER_TINT })
+    if (toAdd.length) {
+      try {
+        markerIds.current = await map.addMarkers(toAdd)
+      } catch {
+        /* تجاهل فشل العلامات — الخريطة تبقى صالحة */
+      }
+    }
+  }
+
+  // dir=ltr: تخطيط الخريطة يفترض LTR. الخلفيّة شفّافة لتظهر الخريطة الأصلية خلفها.
+  return (
+    <div
+      ref={divRef}
+      dir="ltr"
+      className={`overflow-hidden bg-transparent ${className}`}
+    />
+  )
 }
