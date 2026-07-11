@@ -47,9 +47,9 @@ export default function Services() {
         <div className="grid grid-cols-2 gap-3 pt-2">
           {services.map((s) => {
             const accent = s.femaleDriver
-              ? { color: '#E85C9E', badge: 'سائقة' }
+              ? { color: '#E85C9E', text: '#C13584', badge: 'سائقة', badgeText: '#fff' }
               : s.id === 'open'
-                ? { color: '#E8730C', badge: 'مفتوح' }
+                ? { color: '#F2C200', text: '#B07E00', badge: 'مفتوح', badgeText: '#4A3A00' }
                 : null
             return (
               <button
@@ -59,14 +59,14 @@ export default function Services() {
               >
                 {accent && (
                   <span
-                    className="absolute right-2 top-2 rounded-full px-2 py-0.5 text-[11px] font-bold text-white"
-                    style={{ backgroundColor: accent.color }}
+                    className="absolute right-2 top-2 rounded-full px-2 py-0.5 text-[11px] font-bold"
+                    style={{ backgroundColor: accent.color, color: accent.badgeText }}
                   >
                     {accent.badge}
                   </span>
                 )}
                 <VehicleImage service={s} className="mt-2 h-20 w-full" />
-                <p className="mt-2 font-bold" style={accent ? { color: accent.color } : undefined}>
+                <p className="mt-2 font-bold" style={accent ? { color: accent.text } : undefined}>
                   {s.name}
                 </p>
                 <p className="text-xs text-ink-soft">{s.tagline}</p>

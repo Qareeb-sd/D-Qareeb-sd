@@ -101,9 +101,9 @@ export default function Home() {
         <div className="-mx-4 flex gap-3 overflow-x-auto px-4 pb-4">
           {services.map((s) => {
             const accent = s.femaleDriver
-              ? '#E85C9E'
+              ? '#C13584'
               : s.id === 'open'
-                ? '#E8730C'
+                ? '#B07E00'
                 : null
             return (
               <button
@@ -115,6 +115,7 @@ export default function Home() {
                 <p className="mt-1 font-bold" style={accent ? { color: accent } : undefined}>
                   {s.name}
                 </p>
+                <p className="line-clamp-2 min-h-[28px] text-[11px] text-ink-soft">{s.tagline}</p>
                 <p className="text-[11px] text-ink-muted">{s.seats} مقاعد</p>
                 <p className="mt-0.5 text-sm font-extrabold text-green">
                   {prices[s.id] ? money(prices[s.id]) : '—'}
