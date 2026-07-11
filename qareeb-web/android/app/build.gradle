@@ -1,5 +1,22 @@
 apply plugin: 'com.android.application'
 
+// مفتاح خرائط قوقل الأصلية (Native) — يُقرأ من نفس ملف qareeb-web/.env المستخدم
+// للويب، فلا يُخزَّن في المستودع. مكوّن @capacitor/google-maps يشترط وجوده في
+// AndroidManifest.xml عبر placeholder، وإلا يتعطّل التطبيق عند فتح الخريطة.
+def googleMapsApiKey = ""
+def dotEnv = file("../../.env")
+if (dotEnv.exists()) {
+    dotEnv.eachLine { line ->
+        def m = (line =~ /^\s*VITE_GOOGLE_MAPS_API_KEY\s*=\s*(.+?)\s*$/)
+        if (m.find()) {
+            googleMapsApiKey = m.group(1).replaceAll(/^["']|["']$/, '').trim()
+        }
+    }
+}
+if (googleMapsApiKey == "") {
+    println "⚠️  تحذير: VITE_GOOGLE_MAPS_API_KEY غير موجود في qareeb-web/.env — لن تعمل الخريطة الأصلية."
+}
+
 android {
     namespace = "sd.qareeb.app"
     compileSdk = rootProject.ext.compileSdkVersion
@@ -9,6 +26,8 @@ android {
         targetSdkVersion rootProject.ext.targetSdkVersion
         versionCode 1
         versionName "1.0"
+        // يُحقن في <meta-data com.google.android.geo.API_KEY> بالمانيفست.
+        manifestPlaceholders = [MAPS_API_KEY: googleMapsApiKey]
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.
