@@ -1,5 +1,5 @@
 import { useRef } from 'react'
-import { GoogleMap, MarkerF, PolylineF } from '@react-google-maps/api'
+import { GoogleMap, MarkerF } from '@react-google-maps/api'
 import { MAP_OPTIONS, isMapsConfigured } from '@/lib/maps'
 import { useMaps } from '@/store/MapsContext'
 import { KHARTOUM } from '@/theme'
@@ -22,8 +22,6 @@ interface MapViewProps {
   markers?: google.maps.LatLngLiteral[]
   /** مواقع سائقين متعددة (أيقونة سيارة). */
   driverMarkers?: google.maps.LatLngLiteral[]
-  /** خط اتجاه مستقيم (مجاني) بين نقطتين، مثل السائق ← الوجهة. */
-  line?: [google.maps.LatLngLiteral, google.maps.LatLngLiteral]
   zoom?: number
   onCenterChanged?: (pos: google.maps.LatLngLiteral) => void
   /** يُستدعى عند سحب المستخدم للخريطة فعلياً (تفاعل حقيقي). */
@@ -41,7 +39,6 @@ export default function MapView({
   driver,
   markers,
   driverMarkers,
-  line,
   zoom = 14,
   onCenterChanged,
   onUserDrag,
@@ -143,23 +140,6 @@ export default function MapView({
               anchor: new google.maps.Point(23, 23),
             }}
             zIndex={999}
-          />
-        )}
-        {line && (
-          <PolylineF
-            path={line}
-            options={{
-              strokeColor: '#0F7B3F',
-              strokeOpacity: 0.6,
-              strokeWeight: 4,
-              icons: [
-                {
-                  icon: { path: 'M 0,-1 0,1', strokeOpacity: 1, scale: 3 },
-                  offset: '0',
-                  repeat: '14px',
-                },
-              ],
-            }}
           />
         )}
       </GoogleMap>

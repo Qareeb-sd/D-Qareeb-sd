@@ -243,7 +243,6 @@ export default function SelectLocation() {
               }
             }}
             markers={otherMarker ? [otherMarker] : undefined}
-            line={pickupSet && dropoffSet ? [pickupPos, dropoffPos] : undefined}
             className="absolute inset-0"
           />
           <MapPin variant={active === 'pickup' ? 'pickup' : 'dropoff'} />
