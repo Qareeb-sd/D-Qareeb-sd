@@ -19,6 +19,11 @@ export const MAP_OPTIONS: google.maps.MapOptions = {
   disableDefaultUI: true,
   clickableIcons: false,
   gestureHandling: 'greedy',
+  // إجبار الرسم النقطي (صور بلاطات) بدل Vector/WebGL —
+  // بعض أجهزة WebView تفشل في WebGL بصمت فتظهر الخريطة فارغة.
+  renderingType: 'RASTER' as google.maps.RenderingType,
+  // لون يظهر أثناء تحميل البلاطات (يؤكد أن حاوية الخريطة تُرسم).
+  backgroundColor: '#DCE9DF',
   styles: [
     { featureType: 'poi', stylers: [{ visibility: 'off' }] },
     { featureType: 'transit', stylers: [{ visibility: 'off' }] },

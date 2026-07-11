@@ -116,6 +116,7 @@ export default function MapView({
         }}
         onIdle={onCenterChanged ? handleIdle : undefined}
         onDragEnd={onUserDrag}
+        onTilesLoaded={() => console.log('[qareeb] tilesloaded ✓')}
       >
         {marker && <MarkerF position={marker} />}
         {markers?.map((m, i) => <MarkerF key={`m${i}`} position={m} />)}
