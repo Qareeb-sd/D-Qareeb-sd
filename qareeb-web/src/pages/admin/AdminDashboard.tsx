@@ -47,6 +47,9 @@ import {
   listLoans,
   borrowFromFloat,
   repayLoan,
+  listAdminCustomers,
+  listComplaints,
+  resolveComplaint,
   type AdminStats,
   type AdminDriverRow,
   type FinancialSummary,
@@ -71,13 +74,17 @@ import type {
   BudgetRow,
   CompanyFinance,
   Loan,
+  AdminCustomer,
+  Complaint,
 } from '@/lib/types'
 
 type Tab =
   | 'overview'
   | 'requests'
   | 'drivers'
+  | 'customers'
   | 'rides'
+  | 'complaints'
   | 'finance'
   | 'hr'
   | 'settings'
@@ -89,7 +96,9 @@ const tabs: { id: Tab; label: string; perm: StaffPerm | null; ownerOnly?: boolea
   { id: 'overview', label: 'نظرة عامة', perm: null },
   { id: 'requests', label: 'الطلبات', perm: 'requests' },
   { id: 'drivers', label: 'السائقون', perm: 'drivers' },
+  { id: 'customers', label: 'العملاء', perm: 'drivers' },
   { id: 'rides', label: 'الرحلات', perm: 'rides' },
+  { id: 'complaints', label: 'الشكاوى', perm: 'requests' },
   { id: 'finance', label: 'المالية', perm: null, ownerOnly: true },
   { id: 'hr', label: 'المنصرفات والرواتب', perm: null, ownerOnly: true },
   { id: 'settings', label: 'الإعدادات', perm: 'settings' },
@@ -120,6 +129,8 @@ export default function AdminDashboard() {
   const [pricing, setPricing] = useState<ServicePricing[]>([])
   const [driverApps, setDriverApps] = useState<DriverApplication[]>([])
   const [drivers, setDrivers] = useState<AdminDriverRow[] | null>(null)
+  const [customers, setCustomers] = useState<AdminCustomer[] | null>(null)
+  const [complaints, setComplaints] = useState<Complaint[] | null>(null)
   const [rides, setRides] = useState<Ride[] | null>(null)
   const [activeRides, setActiveRides] = useState<Ride[]>([])
   const [sos, setSos] = useState<SosAlert[]>([])
@@ -151,6 +162,7 @@ export default function AdminDashboard() {
   const [rideQuery, setRideQuery] = useState('')
   const [rideStatus, setRideStatus] = useState('')
   const [driverQuery, setDriverQuery] = useState('')
+  const [customerQuery, setCustomerQuery] = useState('')
 
   const [busyId, setBusyId] = useState<string | null>(null)
   const [savedMsg, setSavedMsg] = useState('')
@@ -177,10 +189,14 @@ export default function AdminDashboard() {
     })()
   }, [])
 
-  // تحميل كسول لقائمة السائقين عند فتح تبويبها أول مرة.
+  // تحميل كسول لقوائم السائقين/العملاء/الشكاوى عند فتح تبويبها أول مرة.
   useEffect(() => {
     if (tab === 'drivers' && drivers === null) void listAllDrivers().then(setDrivers)
-  }, [tab, drivers])
+    if (tab === 'customers' && customers === null)
+      void listAdminCustomers().then((c) => setCustomers(c as AdminCustomer[]))
+    if (tab === 'complaints' && complaints === null)
+      void listComplaints().then((c) => setComplaints(c as Complaint[]))
+  }, [tab, drivers, customers, complaints])
 
   // صلاحياتي + قائمة الموظفين (للمالك).
   useEffect(() => {
@@ -324,6 +340,20 @@ export default function AdminDashboard() {
       (d.plate_number ?? '').includes(q)
     )
   })
+  const filteredCustomers = (customers ?? []).filter((c) => {
+    const q = customerQuery.trim()
+    return !q || (c.full_name ?? '').includes(q) || (c.phone ?? '').includes(q)
+  })
+
+  const resolveOneComplaint = async (id: string) => {
+    setBusyId(id)
+    const { error } = await resolveComplaint(id)
+    setBusyId(null)
+    if (error) return alert(error)
+    setComplaints((cur) =>
+      (cur ?? []).map((c) => (c.id === id ? { ...c, complaint_status: 'resolved' } : c)),
+    )
+  }
 
   const togglePerm = (p: StaffPerm) =>
     setStaffPerms((cur) => (cur.includes(p) ? cur.filter((x) => x !== p) : [...cur, p]))
@@ -1000,6 +1030,104 @@ export default function AdminDashboard() {
                     >
                       حذف
                     </button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
+        {tab === 'customers' && (
+          <div className="card p-4">
+            <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+              <p className="font-bold">العملاء المسجّلون ({filteredCustomers.length})</p>
+              <input
+                className="field w-full max-w-xs"
+                value={customerQuery}
+                onChange={(e) => setCustomerQuery(e.target.value)}
+                placeholder="🔍 بحث بالاسم أو الهاتف"
+              />
+            </div>
+            {customers === null ? (
+              <p className="py-6 text-center text-sm text-ink-muted">…</p>
+            ) : filteredCustomers.length === 0 ? (
+              <p className="py-6 text-center text-sm text-ink-muted">
+                {customers.length === 0 ? 'لا يوجد عملاء بعد' : 'لا نتائج مطابقة'}
+              </p>
+            ) : (
+              <div className="divide-y divide-hairline">
+                {filteredCustomers.map((c) => (
+                  <div key={c.id} className="flex items-center gap-3 py-3">
+                    <div className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-green-soft text-base">
+                      🧑🏽
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate font-bold">{c.full_name ?? 'عميل'}</p>
+                      <p className="truncate text-xs text-ink-muted" dir="ltr">
+                        {c.phone}
+                      </p>
+                    </div>
+                    <div className="text-left text-xs text-ink-soft">
+                      <p className="font-medium text-gold">
+                        {c.rating != null ? `⭐ ${c.rating}` : '⭐ —'}
+                        <span className="text-ink-muted"> ({c.ratings_count})</span>
+                      </p>
+                      <p className="text-ink-muted">{c.rides_count} رحلة</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
+        {tab === 'complaints' && (
+          <div className="card p-4">
+            <p className="mb-3 font-bold">
+              الشكاوى
+              {complaints && complaints.length > 0 && (
+                <span className="text-ink-muted">
+                  {' '}
+                  ({complaints.filter((c) => c.complaint_status === 'open').length} مفتوحة)
+                </span>
+              )}
+            </p>
+            {complaints === null ? (
+              <p className="py-6 text-center text-sm text-ink-muted">…</p>
+            ) : complaints.length === 0 ? (
+              <p className="py-6 text-center text-sm text-ink-muted">لا توجد شكاوى</p>
+            ) : (
+              <div className="space-y-3">
+                {complaints.map((c) => (
+                  <div
+                    key={c.id}
+                    className={`rounded-2xl border p-3 ${
+                      c.complaint_status === 'open'
+                        ? 'border-danger/30 bg-danger/5'
+                        : 'border-hairline opacity-70'
+                    }`}
+                  >
+                    <div className="mb-1 flex items-center justify-between gap-2">
+                      <span className="text-xs font-bold text-ink-soft">
+                        {c.rater_role === 'customer' ? 'عميل ← سائق' : 'سائق ← عميل'} · ⭐ {c.stars}
+                      </span>
+                      {c.complaint_status === 'open' ? (
+                        <button
+                          onClick={() => resolveOneComplaint(c.id)}
+                          disabled={busyId === c.id}
+                          className="shrink-0 rounded-lg border border-green/40 px-2.5 py-1 text-xs font-bold text-green hover:bg-green-soft"
+                        >
+                          {busyId === c.id ? '…' : 'تعليم محلولة'}
+                        </button>
+                      ) : (
+                        <span className="text-xs font-bold text-green">✓ محلولة</span>
+                      )}
+                    </div>
+                    <p className="text-sm">{c.complaint}</p>
+                    <p className="mt-1 text-xs text-ink-muted">
+                      من: {c.rater_name ?? '—'} · بحق: {c.ratee_name ?? '—'} ·{' '}
+                      {new Date(c.created_at).toLocaleDateString('ar')}
+                    </p>
                   </div>
                 ))}
               </div>

@@ -1219,3 +1219,118 @@ begin
     end loop;
   end if;
 end $$;
+
+-- ============================================================
+--  التقييمات والشكاوى (متبادلة بين العميل والسائق)
+--  العميل يقيّم السائق ويشكوه، والسائق يقيّم العميل ويشكوه.
+--  الشكاوى تظهر للأدمن، ومتوسط التقييم يُخزَّن على المستخدم.
+-- ============================================================
+
+create table if not exists public.reviews (
+  id               uuid primary key default gen_random_uuid(),
+  ride_id          uuid not null references public.rides(id) on delete cascade,
+  rater_id         uuid not null references public.users(id) on delete cascade,  -- المُقيِّم
+  ratee_id         uuid not null references public.users(id) on delete cascade,  -- المُقيَّم
+  rater_role       text not null check (rater_role in ('customer','driver')),
+  stars            int  not null check (stars between 1 and 5),
+  complaint        text,                                     -- شكوى اختيارية
+  complaint_status text not null default 'open',             -- open / resolved (مع وجود شكوى)
+  created_at       timestamptz not null default now(),
+  unique (ride_id, rater_role)                               -- كل طرف يقيّم مرة واحدة لكل رحلة
+);
+create index if not exists reviews_ratee_idx on public.reviews(ratee_id);
+
+alter table public.reviews enable row level security;
+-- طرفا الرحلة يريان تقييماتها، والأدمن/الموظف يرى الكل. الإدراج عبر submit_review فقط.
+drop policy if exists "read own reviews" on public.reviews;
+create policy "read own reviews" on public.reviews
+  for select using (
+    rater_id = auth.uid() or ratee_id = auth.uid() or public.is_staff_or_admin()
+  );
+
+-- متوسط التقييم على المستخدم (يشمل العميل والسائق).
+alter table public.users add column if not exists rating        numeric(2,1);
+alter table public.users add column if not exists ratings_count int not null default 0;
+
+-- تقديم تقييم/شكوى — الدور (عميل/سائق) يُستنتج من الرحلة تلقائياً.
+create or replace function public.submit_review(
+  p_ride uuid, p_stars int, p_complaint text default null
+) returns void language plpgsql security definer set search_path = public as $$
+declare
+  v_customer uuid; v_driver uuid; v_status ride_status;
+  v_role text; v_ratee uuid; v_avg numeric; v_cnt int;
+begin
+  if p_stars is null or p_stars < 1 or p_stars > 5 then
+    raise exception 'التقييم يجب أن يكون بين 1 و5';
+  end if;
+  select customer_id, driver_id, status into v_customer, v_driver, v_status
+    from public.rides where id = p_ride;
+  if not found then raise exception 'الرحلة غير موجودة'; end if;
+  if v_status <> 'completed' then raise exception 'لا يمكن التقييم قبل انتهاء الرحلة'; end if;
+
+  if auth.uid() = v_customer then
+    v_role := 'customer'; v_ratee := v_driver;
+  elsif auth.uid() = v_driver then
+    v_role := 'driver'; v_ratee := v_customer;
+  else
+    raise exception 'غير مصرّح — لست طرفاً في هذه الرحلة';
+  end if;
+  if v_ratee is null then raise exception 'لا يوجد طرف آخر لتقييمه'; end if;
+
+  insert into public.reviews (ride_id, rater_id, ratee_id, rater_role, stars, complaint)
+    values (p_ride, auth.uid(), v_ratee, v_role, p_stars,
+            nullif(btrim(coalesce(p_complaint, '')), ''))
+  on conflict (ride_id, rater_role) do update
+    set stars            = excluded.stars,
+        complaint        = excluded.complaint,
+        complaint_status = case when excluded.complaint is not null then 'open' else 'resolved' end,
+        created_at       = now();
+
+  -- إعادة حساب متوسط تقييم المُقيَّم.
+  select round(avg(stars)::numeric, 1), count(*) into v_avg, v_cnt
+    from public.reviews where ratee_id = v_ratee;
+  update public.users   set rating = v_avg, ratings_count = v_cnt where id = v_ratee;
+  update public.drivers set rating = v_avg                        where user_id = v_ratee;
+end $$;
+grant execute on function public.submit_review(uuid, int, text) to authenticated;
+
+-- قائمة العملاء المسجّلين وتقييماتهم (للأدمن/الموظف).
+create or replace function public.admin_list_customers()
+returns table (
+  id uuid, full_name text, phone text, rating numeric,
+  ratings_count int, rides_count bigint, created_at timestamptz
+) language sql security definer set search_path = public as $$
+  select u.id, u.full_name, u.phone, u.rating, u.ratings_count,
+         (select count(*) from public.rides r where r.customer_id = u.id),
+         u.created_at
+    from public.users u
+   where u.role = 'customer' and public.is_staff_or_admin()
+   order by u.created_at desc
+$$;
+grant execute on function public.admin_list_customers() to authenticated;
+
+-- قائمة الشكاوى مع أسماء الطرفين (للأدمن/الموظف) — المفتوحة أولاً.
+create or replace function public.admin_list_complaints()
+returns table (
+  id uuid, ride_id uuid, stars int, complaint text, complaint_status text,
+  rater_role text, rater_name text, ratee_name text, created_at timestamptz
+) language sql security definer set search_path = public as $$
+  select rv.id, rv.ride_id, rv.stars, rv.complaint, rv.complaint_status,
+         rv.rater_role, ur.full_name, ue.full_name, rv.created_at
+    from public.reviews rv
+    join public.users ur on ur.id = rv.rater_id
+    join public.users ue on ue.id = rv.ratee_id
+   where rv.complaint is not null and public.is_staff_or_admin()
+   order by (rv.complaint_status = 'open') desc, rv.created_at desc
+$$;
+grant execute on function public.admin_list_complaints() to authenticated;
+
+-- إغلاق شكوى (تعليمها محلولة).
+create or replace function public.admin_resolve_complaint(p_review uuid)
+returns void language plpgsql security definer set search_path = public as $$
+begin
+  if not public.is_staff_or_admin() then raise exception 'غير مصرّح'; end if;
+  update public.reviews set complaint_status = 'resolved' where id = p_review;
+  perform public.log_action('حلّ شكوى', p_review::text);
+end $$;
+grant execute on function public.admin_resolve_complaint(uuid) to authenticated;

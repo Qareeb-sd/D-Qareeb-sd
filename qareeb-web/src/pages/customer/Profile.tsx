@@ -56,6 +56,12 @@ export default function Profile() {
             <p className="text-sm text-ink-soft" dir="ltr">
               {profile?.phone ?? '—'}
             </p>
+            {profile?.rating != null && (
+              <p className="mt-0.5 text-sm font-medium text-gold">
+                ⭐ {profile.rating}
+                <span className="text-ink-muted"> · {profile.ratings_count ?? 0} تقييم</span>
+              </p>
+            )}
           </div>
         </div>
 

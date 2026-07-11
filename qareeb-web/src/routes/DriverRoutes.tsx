@@ -6,6 +6,7 @@ import DriverLogin from '@/pages/driver/DriverLogin'
 import DriverRegister from '@/pages/driver/DriverRegister'
 import DriverHome from '@/pages/driver/DriverHome'
 import DriverTrip from '@/pages/driver/DriverTrip'
+import DriverRate from '@/pages/driver/DriverRate'
 import DriverWallet from '@/pages/driver/DriverWallet'
 import DriverCommute from '@/pages/driver/DriverCommute'
 import DriverProfile from '@/pages/driver/DriverProfile'
@@ -23,6 +24,7 @@ export default function DriverRoutes() {
       <Route path="/driver/register" element={<DriverRegister />} />
       <Route path="/driver" element={driverGuard(<DriverHome />)} />
       <Route path="/driver/trip" element={driverGuard(<DriverTrip />)} />
+      <Route path="/driver/rate" element={driverGuard(<DriverRate />)} />
       <Route path="/driver/commute" element={driverGuard(<DriverCommute />)} />
       <Route path="/driver/wallet" element={driverGuard(<DriverWallet />)} />
       <Route path="/driver/profile" element={driverGuard(<DriverProfile />)} />

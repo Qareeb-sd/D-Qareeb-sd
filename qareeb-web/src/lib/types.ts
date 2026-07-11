@@ -26,6 +26,8 @@ export interface AppUser {
   role: 'customer' | 'driver' | 'admin'
   sos_contact1?: string | null // جهة طوارئ 1 (يضبطها العميل)
   sos_contact2?: string | null // جهة طوارئ 2
+  rating?: number | null // متوسط تقييمه (من الطرف الآخر في الرحلات)
+  ratings_count?: number // عدد التقييمات المستلمة
   created_at: string
 }
 
@@ -297,6 +299,30 @@ export interface BudgetRow {
   income: number
 }
 
+/** عميل مسجّل كما يظهر للأدمن (مع تقييمه وعدد رحلاته). */
+export interface AdminCustomer {
+  id: string
+  full_name: string | null
+  phone: string
+  rating: number | null
+  ratings_count: number
+  rides_count: number
+  created_at: string
+}
+
+/** شكوى مرتبطة بتقييم رحلة — تظهر للأدمن. */
+export interface Complaint {
+  id: string
+  ride_id: string
+  stars: number
+  complaint: string
+  complaint_status: 'open' | 'resolved'
+  rater_role: 'customer' | 'driver'
+  rater_name: string | null // مقدّم الشكوى
+  ratee_name: string | null // المُشتكى عليه
+  created_at: string
+}
+
 /** اشتراك Web Push مخزّن لمستخدم. */
 export interface PushSubscriptionRow {
   id: string
@@ -389,6 +415,19 @@ export interface Database {
         Args: Record<string, never>
         Returns: { is_admin: boolean; perms: string[] }[]
       }
+      submit_review: {
+        Args: { p_ride: string; p_stars: number; p_complaint?: string | null }
+        Returns: undefined
+      }
+      admin_list_customers: {
+        Args: Record<string, never>
+        Returns: AdminCustomer[]
+      }
+      admin_list_complaints: {
+        Args: Record<string, never>
+        Returns: Complaint[]
+      }
+      admin_resolve_complaint: { Args: { p_review: string }; Returns: undefined }
       admin_set_staff: { Args: { p_phone: string; p_perms: string[] }; Returns: string }
       admin_remove_staff: { Args: { p_user: string }; Returns: undefined }
       admin_delete_driver: { Args: { p_user: string }; Returns: undefined }

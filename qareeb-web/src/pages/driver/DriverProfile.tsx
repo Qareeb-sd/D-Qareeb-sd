@@ -43,7 +43,14 @@ export default function DriverProfile() {
           <div className="card mt-4 divide-y divide-hairline p-0">
             <Row label="المركبة" value={getService(driver.vehicle_type)?.name ?? driver.vehicle_type} />
             <Row label="رقم اللوحة" value={driver.plate_number ?? '—'} />
-            <Row label="التقييم" value={`⭐ ${driver.rating ?? '—'}`} />
+            <Row
+              label="التقييم"
+              value={
+                driver.rating != null
+                  ? `⭐ ${driver.rating} · ${profile?.ratings_count ?? 0} تقييم`
+                  : '⭐ —'
+              }
+            />
           </div>
         )}
 

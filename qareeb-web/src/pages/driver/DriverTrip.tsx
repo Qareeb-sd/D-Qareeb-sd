@@ -115,8 +115,10 @@ export default function DriverTrip() {
     const { error } = await settleRide(activeRide.id)
     setBusy(false)
     if (error) return alert(error)
+    const rideId = activeRide.id
     setActiveRide(null)
-    navigate('/driver/wallet')
+    // تقييم العميل قبل العودة للمحفظة.
+    navigate('/driver/rate', { state: { rideId } })
   }
 
   const release = async () => {

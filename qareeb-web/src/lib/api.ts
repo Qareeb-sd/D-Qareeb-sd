@@ -180,12 +180,43 @@ export async function createRide(ride: Partial<Ride>): Promise<{ id?: string; er
 }
 
 /**
- * تقييم الرحلة من العميل (النجوم فقط) — لا يُنهي الرحلة ولا يسوّيها.
- * الإنهاء والتسوية يتمّان عبر السائق (settleRide) لتفادي إكمال الرحلة دون دفع.
+ * تقييم متبادل بعد الرحلة + شكوى اختيارية.
+ * الدور (عميل يقيّم السائق / سائق يقيّم العميل) يُستنتج من الرحلة في الخادم.
+ * لا يُنهي الرحلة ولا يسوّيها — التسوية عبر settleRide.
  */
-export async function rateRide(rideId: string, rating: number): Promise<void> {
-  if (!isSupabaseConfigured) return
-  await supabase.from('rides').update({ rating }).eq('id', rideId)
+export async function submitReview(
+  rideId: string,
+  stars: number,
+  complaint?: string | null,
+): Promise<{ error?: string }> {
+  if (!isSupabaseConfigured) return {}
+  const { error } = await supabase.rpc('submit_review', {
+    p_ride: rideId,
+    p_stars: stars,
+    p_complaint: complaint?.trim() || null,
+  })
+  return error ? { error: error.message } : {}
+}
+
+/** قائمة العملاء المسجّلين وتقييماتهم (للأدمن/الموظف). */
+export async function listAdminCustomers() {
+  if (!isSupabaseConfigured) return []
+  const { data } = await supabase.rpc('admin_list_customers')
+  return data ?? []
+}
+
+/** قائمة الشكاوى (للأدمن/الموظف). */
+export async function listComplaints() {
+  if (!isSupabaseConfigured) return []
+  const { data } = await supabase.rpc('admin_list_complaints')
+  return data ?? []
+}
+
+/** تعليم شكوى كمحلولة. */
+export async function resolveComplaint(reviewId: string): Promise<{ error?: string }> {
+  if (!isSupabaseConfigured) return {}
+  const { error } = await supabase.rpc('admin_resolve_complaint', { p_review: reviewId })
+  return error ? { error: error.message } : {}
 }
 
 /** بيانات السائق المُسنَد لرحلة (اسم، تقييم، هاتف، مركبة) عبر دالة آمنة. */

@@ -4,16 +4,18 @@ import Screen from '@/components/Screen'
 import { StarIcon } from '@/components/Icons'
 import { useRide } from '@/store/RideContext'
 import { getService } from '@/data/services'
-import { rateRide, getRideDriver } from '@/lib/api'
+import { submitReview, getRideDriver } from '@/lib/api'
 import { money } from '@/lib/format'
 
-/** تقييم الرحلة + إيصال مختصر. */
+/** تقييم الرحلة + شكوى اختيارية + إيصال مختصر. */
 export default function Rate() {
   const navigate = useNavigate()
   const { rideId, serviceId, dropoff, payment, fare, reset } = useRide()
   const service = serviceId ? getService(serviceId) : undefined
   const total = fare ?? 0
   const [stars, setStars] = useState(5)
+  const [complaint, setComplaint] = useState('')
+  const [showComplaint, setShowComplaint] = useState(false)
   const [busy, setBusy] = useState(false)
   const [driverName, setDriverName] = useState<string | null>(null)
 
@@ -27,7 +29,13 @@ export default function Rate() {
 
   const finish = async () => {
     setBusy(true)
-    if (rideId) await rateRide(rideId, stars)
+    if (rideId) {
+      const { error } = await submitReview(rideId, stars, complaint)
+      if (error) {
+        setBusy(false)
+        return alert(error)
+      }
+    }
     reset()
     navigate('/home')
   }
@@ -53,6 +61,28 @@ export default function Rate() {
             />
           </button>
         ))}
+      </div>
+
+      {/* شكوى اختيارية عن السائق */}
+      <div className="mt-4">
+        {showComplaint ? (
+          <div className="card p-4">
+            <p className="mb-2 text-sm font-bold">شكوى عن السائق (اختياري)</p>
+            <textarea
+              className="field min-h-[80px] resize-none"
+              placeholder="اكتب ما حدث… ستصل الشكوى لإدارة قريب."
+              value={complaint}
+              onChange={(e) => setComplaint(e.target.value)}
+            />
+          </div>
+        ) : (
+          <button
+            onClick={() => setShowComplaint(true)}
+            className="w-full text-center text-sm font-medium text-danger"
+          >
+            🚩 هل لديك شكوى عن السائق؟
+          </button>
+        )}
       </div>
 
       {/* الإيصال */}
