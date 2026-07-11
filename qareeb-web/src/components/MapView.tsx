@@ -50,15 +50,17 @@ function DiagBadge({ text, tone }: { text: string; tone: 'ok' | 'warn' | 'err' }
 }
 
 export default function MapView(props: MapViewProps) {
-  // على الويب: Leaflet. لكن إن كنّا على الجهاز بلا مفتاح — نبيّن السبب.
+  // على الويب العادي: Leaflet مباشرة (بلا غلاف حتى لا ينهار الارتفاع).
   if (!useNative) {
-    const reason = !isNative
-      ? null // ويب عادي: لا حاجة لشارة
-      : 'MAP: native but API key EMPTY — أضف VITE_GOOGLE_MAPS_API_KEY في .env ثم أعد البناء'
+    if (!isNative) return <LeafletMap {...props} />
+    // على الجهاز لكن بلا مفتاح — نُبقي Leaflet ونبيّن السبب.
     return (
-      <div className={`relative ${props.className ?? ''}`}>
+      <div className={`overflow-hidden ${props.className ?? ''}`}>
         <LeafletMap {...props} className="absolute inset-0" />
-        {reason && <DiagBadge text={reason} tone="err" />}
+        <DiagBadge
+          text="native but API key EMPTY — أضف VITE_GOOGLE_MAPS_API_KEY في .env"
+          tone="err"
+        />
       </div>
     )
   }
@@ -207,9 +209,10 @@ function NativeGoogleMap({
   }
 
   // dir=ltr: تخطيط الخريطة يفترض LTR. الخلفيّة شفّافة لتظهر الخريطة الأصلية خلفها.
+  // العنصر نفسه هو مرجع الخريطة (className يأتي من المستدعي: absolute inset-0)،
+  // فلا نغلّفه حتى لا ينهار ارتفاعه إلى صفر. الشارات أبناء له.
   return (
-    <div className={`relative ${className}`}>
-      <div ref={divRef} dir="ltr" className="absolute inset-0 overflow-hidden bg-transparent" />
+    <div ref={divRef} dir="ltr" className={`overflow-hidden bg-transparent ${className}`}>
       {status === 'creating' && <DiagBadge text={`native creating… ${diag}`} tone="warn" />}
       {status === 'ready' && <DiagBadge text={`native READY ✓ ${diag}`} tone="ok" />}
       {status === 'error' && <DiagBadge text={`native ERROR: ${errMsg}`} tone="err" />}
