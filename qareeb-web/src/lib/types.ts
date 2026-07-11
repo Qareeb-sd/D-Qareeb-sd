@@ -26,6 +26,7 @@ export interface AppUser {
   role: 'customer' | 'driver' | 'admin'
   sos_contact1?: string | null // جهة طوارئ 1 (يضبطها العميل)
   sos_contact2?: string | null // جهة طوارئ 2
+  birthdate?: string | null // تاريخ الميلاد (YYYY-MM-DD)
   rating?: number | null // متوسط تقييمه (من الطرف الآخر في الرحلات)
   ratings_count?: number // عدد التقييمات المستلمة
   created_at: string

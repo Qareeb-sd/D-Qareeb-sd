@@ -43,6 +43,7 @@ create table if not exists public.users (
 -- ترقية للقواعد القائمة
 alter table public.users add column if not exists sos_contact1 text;
 alter table public.users add column if not exists sos_contact2 text;
+alter table public.users add column if not exists birthdate date;   -- تاريخ الميلاد (يُدخَل عند إنشاء الحساب)
 
 -- ---------- السائقون ----------
 create table if not exists public.drivers (

@@ -1,9 +1,8 @@
-import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import Logo from '@/components/Logo'
 import SudanMap from '@/components/SudanMap'
 
-/** أونبوردنق — مع رسم توضيحي خفيف ونقاط تقدم */
+/** شاشة ترحيب — شعار وخريطة السودان ومميّزات الخدمة. */
 const points = [
   {
     title: 'نقل آمن في كل السودان',
@@ -21,7 +20,6 @@ const points = [
 
 export default function Onboarding() {
   const navigate = useNavigate()
-  const [activeDot, setActiveDot] = useState(0)
 
   return (
     <div className="screen justify-between px-6 py-8">
@@ -37,13 +35,8 @@ export default function Onboarding() {
 
         {/* بطاقات المميزات */}
         <ul className="mt-6 w-full space-y-3 text-right">
-          {points.map((p, i) => (
-            <li
-              key={p.title}
-              className="card flex items-start gap-3 p-4 transition-opacity"
-              style={{ opacity: activeDot === i ? 1 : 0.7 }}
-              onMouseEnter={() => setActiveDot(i)}
-            >
+          {points.map((p) => (
+            <li key={p.title} className="card flex items-start gap-3 p-4">
               <span className="mt-1.5 h-2.5 w-2.5 shrink-0 rounded-full bg-gold" />
               <div>
                 <p className="font-bold text-sm">{p.title}</p>
@@ -52,22 +45,6 @@ export default function Onboarding() {
             </li>
           ))}
         </ul>
-
-        {/* نقاط التقدم */}
-        <div className="mt-5 flex items-center gap-2">
-          {points.map((_, i) => (
-            <button
-              key={i}
-              onClick={() => setActiveDot(i)}
-              className={`rounded-full transition-all duration-300 ${
-                activeDot === i
-                  ? 'h-2.5 w-6 bg-green'
-                  : 'h-2.5 w-2.5 bg-hairline hover:bg-ink-muted'
-              }`}
-              aria-label={`نقطة ${i + 1}`}
-            />
-          ))}
-        </div>
       </div>
 
       <button
@@ -75,7 +52,7 @@ export default function Onboarding() {
         style={{ marginBottom: 'env(safe-area-inset-bottom)' }}
         onClick={() => navigate('/auth')}
       >
-        يلا نبدأ
+        لنبدأ
       </button>
     </div>
   )

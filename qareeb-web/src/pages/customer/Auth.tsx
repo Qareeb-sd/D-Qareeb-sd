@@ -3,17 +3,13 @@ import { useNavigate } from 'react-router-dom'
 import Logo from '@/components/Logo'
 import { useAuth } from '@/store/AuthContext'
 
-/**
- * دخول برقم الهاتف + كلمة السر (بلا SMS).
- * تسجيل حساب جديد سيكون عبر واتساب لاحقاً؛ حالياً الدخول يُنشئ الحساب تلقائياً.
- */
+/** دخول العميل برقم الهاتف + كلمة السر (بلا اسم). الإنشاء عبر صفحة التسجيل. */
 export default function Auth() {
   const navigate = useNavigate()
   const { signInWithPhone } = useAuth()
 
   const [phone, setPhone] = useState('')
   const [password, setPassword] = useState('')
-  const [name, setName] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
 
@@ -21,7 +17,9 @@ export default function Auth() {
     e.preventDefault()
     setError('')
     setBusy(true)
-    const { error } = await signInWithPhone(phone, password, name || undefined)
+    const { error } = await signInWithPhone(phone, password, undefined, {
+      createIfMissing: false,
+    })
     setBusy(false)
     if (error) return setError(error)
     navigate('/home')
@@ -45,15 +43,6 @@ export default function Auth() {
       )}
 
       <form onSubmit={submit} className="space-y-4">
-        <div>
-          <label className="label">الاسم (اختياري)</label>
-          <input
-            className="field"
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            placeholder="اسمك"
-          />
-        </div>
         <div>
           <label className="label">رقم الهاتف</label>
           <input
@@ -83,16 +72,21 @@ export default function Auth() {
         </button>
       </form>
 
-      <p className="mt-6 text-center text-xs text-ink-muted">
-        تسجيل حساب جديد عبر واتساب — قريباً.
-      </p>
+      {/* إنشاء حساب جديد */}
+      <div className="mt-6 text-center">
+        <p className="text-sm text-ink-soft">ليس لديك حساب؟</p>
+        <button
+          onClick={() => navigate('/register')}
+          className="btn-outline mt-2 w-full"
+        >
+          إنشاء حساب جديد
+        </button>
+      </div>
 
       {/* السائقون لهم تطبيق منفصل «قريب كابتن» */}
-      <p className="mt-5 text-center text-xs text-ink-soft">
+      <p className="mt-6 text-center text-xs text-ink-soft">
         🚗 سائق؟ حمّل تطبيق <span className="font-bold text-green-dark">«قريب كابتن»</span> من المتجر.
       </p>
-
-      <p className="mt-3 text-center text-[10px] text-ink-muted/70">إصدار 2 · دخول بكلمة السر</p>
     </div>
   )
 }

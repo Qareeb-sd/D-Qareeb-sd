@@ -4,6 +4,7 @@ import ProtectedRoute from '@/components/ProtectedRoute'
 // العميل
 import Onboarding from '@/pages/customer/Onboarding'
 import Auth from '@/pages/customer/Auth'
+import Register from '@/pages/customer/Register'
 import Home from '@/pages/customer/Home'
 import SelectLocation from '@/pages/customer/SelectLocation'
 import FindDriver from '@/pages/customer/FindDriver'
@@ -25,6 +26,7 @@ export default function CustomerRoutes() {
     <Routes>
       <Route path="/" element={<Onboarding />} />
       <Route path="/auth" element={<Auth />} />
+      <Route path="/register" element={<Register />} />
 
       {/* تتبّع رحلة مُشارَكة (عام — يفتحه متابِع لديه التطبيق) */}
       <Route path="/track" element={<TrackRide />} />
