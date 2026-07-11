@@ -13,7 +13,11 @@
     "lint": "tsc --noEmit",
     "cap:open": "npx cap open android",
     "apk:customer": "cross-env VITE_APP=customer npm run build && npx cap sync android && cd android && gradlew assembleCustomerDebug || ./gradlew assembleCustomerDebug",
-    "apk:driver": "cross-env VITE_APP=driver npm run build && npx cap sync android && cd android && gradlew assembleDriverDebug || ./gradlew assembleDriverDebug"
+    "apk:driver": "cross-env VITE_APP=driver npm run build && npx cap sync android && cd android && gradlew assembleDriverDebug || ./gradlew assembleDriverDebug",
+    "install:customer": "adb install -r android/app/build/outputs/apk/customer/debug/app-customer-debug.apk",
+    "install:driver": "adb install -r android/app/build/outputs/apk/driver/debug/app-driver-debug.apk",
+    "run:customer": "npm run apk:customer && npm run install:customer",
+    "run:driver": "npm run apk:driver && npm run install:driver"
   },
   "dependencies": {
     "@capacitor/android": "^8.4.1",
