@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import BottomNav from '@/components/BottomNav'
 import Logo from '@/components/Logo'
@@ -21,9 +21,10 @@ export default function Commute() {
   const { profile } = useAuth()
 
   const [serviceId, setServiceId] = useState(shareable[0].id)
-  const [name, setName] = useState(profile?.full_name ?? '')
   const [dest, setDest] = useState<google.maps.LatLngLiteral>(KHARTOUM)
   const [destAddress, setDestAddress] = useState('')
+  const [home, setHome] = useState<google.maps.LatLngLiteral>(KHARTOUM)
+  const [homeAddress, setHomeAddress] = useState('')
   const [time, setTime] = useState('07:30')
   const [returnTime, setReturnTime] = useState('15:30')
   const [selected, setSelected] = useState<string[]>([
@@ -35,12 +36,11 @@ export default function Commute() {
   // سعة المركبة = عدد نقاط الانطلاق (المنازل) الممكنة للذهاب/الإياب.
   const seats = services.find((s) => s.id === serviceId)?.seats ?? 4
 
-  // منزل المنظّم = موقعه الحالي (يمكن تعديله لاحقاً).
-  const home = useRef<google.maps.LatLngLiteral>(KHARTOUM)
+  // نقطة انطلاق المنظّم (منزله) = موقعه الحالي مبدئياً، ويمكن تعديلها على الخريطة.
   useEffect(() => {
     if (!navigator.geolocation) return
     navigator.geolocation.getCurrentPosition(
-      (p) => (home.current = { lat: p.coords.latitude, lng: p.coords.longitude }),
+      (p) => setHome({ lat: p.coords.latitude, lng: p.coords.longitude }),
       () => {},
       { timeout: 8000 },
     )
@@ -50,7 +50,7 @@ export default function Commute() {
     setSelected((cur) => (cur.includes(d) ? cur.filter((x) => x !== d) : [...cur, d]))
 
   const create = async () => {
-    if (!name.trim() || selected.length === 0) return
+    if (selected.length === 0) return
     setBusy(true)
     const order = await createCommuteOrder(
       {
@@ -60,7 +60,10 @@ export default function Commute() {
         return_time: roundTrip ? returnTime : null,
         days: selected,
         round_trip: roundTrip,
-        organizer: { name: name.trim(), home: { ...home.current, address: 'منزلي' } },
+        organizer: {
+          name: profile?.full_name?.trim() || 'المنظّم',
+          home: { ...home, address: homeAddress || 'منزلي' },
+        },
       },
       profile?.id ?? null,
     )
@@ -94,7 +97,7 @@ export default function Commute() {
                 }`}
                 style={{ width: 96 }}
               >
-                <VehicleImage service={s} className="h-10 w-full" />
+                <VehicleImage service={s} brand={false} className="h-10 w-full" />
                 <p className="mt-1 text-xs font-bold">{s.name}</p>
                 <p className="text-[10px] text-ink-muted">{s.seats} مقاعد</p>
               </button>
@@ -106,15 +109,19 @@ export default function Commute() {
           </p>
         </div>
 
-        {/* اسم المنظّم */}
+        {/* نقطة انطلاقك (منزلك) */}
         <div>
-          <label className="label">اسمك</label>
+          <p className="label">نقطة انطلاقك (منزلك)</p>
+          <LocationPicker center={home} onChange={setHome} />
           <input
-            className="field"
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            placeholder="اسمك"
+            className="field mt-2"
+            value={homeAddress}
+            onChange={(e) => setHomeAddress(e.target.value)}
+            placeholder="اسم نقطة انطلاقك (اختياري)"
           />
+          <p className="mt-1 text-xs text-ink-soft">
+            منها تبدأ رحلتك للعمل — يمكنك تحريك الدبوس لتحديدها بدقّة.
+          </p>
         </div>
 
         {/* مكان العمل (الوجهة) */}

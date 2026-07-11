@@ -10,9 +10,12 @@ import VehicleArt from './VehicleArt'
 export default function VehicleImage({
   service,
   className,
+  brand = true,
 }: {
   service: Service
   className?: string
+  /** إظهار شعار «قريب» فوق المركبة (كديكور الأبواب). */
+  brand?: boolean
 }) {
   const [failed, setFailed] = useState(false)
 
@@ -28,8 +31,14 @@ export default function VehicleImage({
     )
   }
 
+  // السحّاب شاحنة نقل — لا يحمل شعار الركاب.
+  const showBrand = brand && service.id !== 'tow'
+
   return (
-    <div className={`relative flex items-center justify-center overflow-hidden ${className ?? ''}`}>
+    <div
+      className={`relative flex items-center justify-center overflow-hidden ${className ?? ''}`}
+      style={{ containerType: 'inline-size' }}
+    >
       {/* object-contain: تُعرض المركبة كاملة دون قصّ */}
       <img
         src={service.image}
@@ -38,6 +47,18 @@ export default function VehicleImage({
         onError={() => setFailed(true)}
         className="h-full w-full object-contain"
       />
+      {showBrand && (
+        <span
+          className="pointer-events-none absolute left-1/2 top-[54%] -translate-x-1/2 -translate-y-1/2 font-extrabold leading-none"
+          style={{
+            fontSize: '12cqw',
+            color: service.femaleDriver ? '#C13584' : '#0F7B3F',
+            textShadow: '0 1px 3px rgba(255,255,255,0.85)',
+          }}
+        >
+          قريب
+        </span>
+      )}
     </div>
   )
 }

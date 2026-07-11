@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import Screen from '@/components/Screen'
 import MapView from '@/components/MapView'
 import MapPin from '@/components/MapPin'
+import PlaceSearch from '@/components/PlaceSearch'
 import { useRide } from '@/store/RideContext'
 import { useAuth } from '@/store/AuthContext'
 import { useMaps } from '@/store/MapsContext'
@@ -256,14 +257,33 @@ export default function SelectLocation() {
             <p className="text-sm font-bold text-ink-soft">نقطة الانطلاق</p>
             <span className="h-3 w-3 rounded-full bg-green" />
           </div>
-          <div className="flex items-center gap-2 rounded-2xl border border-hairline px-3 py-3">
+          <div className="flex items-center gap-2 rounded-2xl border border-hairline px-3 py-2">
             <button
               onClick={active === 'pickup' && pickupMode === 'other' ? useMyLocation : changePickup}
               className="shrink-0 rounded-xl border border-green/50 px-3 py-1.5 text-xs font-bold text-green"
             >
               {active === 'pickup' && pickupMode === 'other' ? '📍 موقعي' : 'تغيير'}
             </button>
-            <p className="min-w-0 flex-1 truncate text-right font-bold">{pickupLabel}</p>
+            {active === 'pickup' && pickupMode === 'other' ? (
+              <div className="min-w-0 flex-1">
+                <PlaceSearch
+                  value={pickupAddr}
+                  onChange={(v) => {
+                    setPickupAddr(v)
+                    setPickupSet(v.trim() !== '')
+                  }}
+                  onPick={({ pos, address }) => {
+                    setPickupPos(pos)
+                    setPickupAddr(address)
+                    setPickupSet(true)
+                  }}
+                  placeholder="اكتب نقطة الانطلاق"
+                  className="w-full bg-transparent py-1.5 text-right font-bold outline-none placeholder:font-normal placeholder:text-ink-muted"
+                />
+              </div>
+            ) : (
+              <p className="min-w-0 flex-1 truncate text-right font-bold">{pickupLabel}</p>
+            )}
             <span className="shrink-0 text-ink-soft">📍</span>
           </div>
 
@@ -294,16 +314,24 @@ export default function SelectLocation() {
             <span className="text-danger">📍</span>
           </div>
           <div className="flex items-center gap-2 rounded-2xl border border-hairline px-3 py-1">
-            <input
-              className="w-full bg-transparent py-2.5 text-base font-bold outline-none placeholder:font-normal placeholder:text-ink-muted"
-              value={dropoffAddr}
-              onFocus={() => setActive('dropoff')}
-              onChange={(e) => {
-                setDropoffAddr(e.target.value)
-                setDropoffSet(true)
-              }}
-              placeholder="إلى أين؟"
-            />
+            <div className="min-w-0 flex-1">
+              <PlaceSearch
+                value={dropoffAddr}
+                onFocus={() => setActive('dropoff')}
+                onChange={(v) => {
+                  setDropoffAddr(v)
+                  setDropoffSet(v.trim() !== '')
+                }}
+                onPick={({ pos, address }) => {
+                  setDropoffPos(pos)
+                  setDropoffAddr(address)
+                  setDropoffSet(true)
+                  setActive('dropoff')
+                }}
+                placeholder="إلى أين؟"
+                className="w-full bg-transparent py-2.5 text-base font-bold outline-none placeholder:font-normal placeholder:text-ink-muted"
+              />
+            </div>
             <span className="shrink-0 text-ink-soft">🔎</span>
           </div>
 

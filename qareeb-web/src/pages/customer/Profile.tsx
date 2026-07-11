@@ -56,16 +56,11 @@ export default function Profile() {
     <div className="screen">
       <main className="flex-1 px-4 pb-24 pt-5">
         {/* رأس الحساب */}
-        <div className="flex items-center justify-end gap-4">
-          <div className="text-right">
-            <p className="text-xl font-extrabold text-green">{profile?.full_name ?? 'مستخدم قريب'}</p>
-            <p className="text-sm text-ink-soft" dir="ltr">
-              {profile?.phone ?? '—'}
-            </p>
-          </div>
-          <div className="grid h-20 w-20 place-items-center rounded-full bg-green-soft text-4xl ring-4 ring-white">
-            🧑🏽
-          </div>
+        <div className="text-right">
+          <p className="text-xl font-extrabold text-green">{profile?.full_name ?? 'مستخدم قريب'}</p>
+          <p className="text-sm text-ink-soft" dir="ltr">
+            {profile?.phone ?? '—'}
+          </p>
         </div>
 
         {/* بطاقات الإحصاء */}
