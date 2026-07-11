@@ -55,10 +55,16 @@ export default function PlaceSearch({
   placeholder?: string
   className?: string
 }) {
-  const { isLoaded } = useMaps()
+  const { isLoaded, mapsError } = useMaps()
   const [preds, setPreds] = useState<Suggestion[]>([])
   const [open, setOpen] = useState(false)
   const boxRef = useRef<HTMLDivElement | null>(null)
+
+  const showLocal = (q: string) => {
+    const matches = LOCAL_PLACES.filter((p) => p.name.includes(q)).slice(0, 6)
+    setPreds(matches.map((p) => ({ id: p.name, main: p.name, pos: { lat: p.lat, lng: p.lng } })))
+    setOpen(true)
+  }
 
   useEffect(() => {
     const q = value.trim()
@@ -68,14 +74,27 @@ export default function PlaceSearch({
     }
     const t = setTimeout(() => {
       const usePlaces =
-        isMapsConfigured && isLoaded && typeof google !== 'undefined' && google.maps?.places
-      if (usePlaces) {
+        isMapsConfigured &&
+        isLoaded &&
+        !mapsError &&
+        typeof google !== 'undefined' &&
+        Boolean(google.maps?.places?.AutocompleteService)
+      if (!usePlaces) {
+        showLocal(q)
+        return
+      }
+      // أي فشل في Places (حجب/مصادقة) → نعود للأماكن المحلية بلا تعطّل.
+      try {
         const svc = new google.maps.places.AutocompleteService()
         svc.getPlacePredictions(
           { input: q, componentRestrictions: { country: 'sd' }, language: 'ar' },
-          (res) => {
+          (res, status) => {
+            if (status !== google.maps.places.PlacesServiceStatus.OK || !res || res.length === 0) {
+              showLocal(q)
+              return
+            }
             setPreds(
-              (res ?? []).slice(0, 6).map((p) => ({
+              res.slice(0, 6).map((p) => ({
                 id: p.place_id,
                 main: p.structured_formatting?.main_text ?? p.description,
                 sub: p.structured_formatting?.secondary_text,
@@ -85,14 +104,13 @@ export default function PlaceSearch({
             setOpen(true)
           },
         )
-      } else {
-        const matches = LOCAL_PLACES.filter((p) => p.name.includes(q)).slice(0, 6)
-        setPreds(matches.map((p) => ({ id: p.name, main: p.name, pos: { lat: p.lat, lng: p.lng } })))
-        setOpen(true)
+      } catch {
+        showLocal(q)
       }
     }, 300)
     return () => clearTimeout(t)
-  }, [value, isLoaded])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [value, isLoaded, mapsError])
 
   // إغلاق القائمة عند النقر خارجها.
   useEffect(() => {
@@ -110,12 +128,17 @@ export default function PlaceSearch({
       onPick({ pos: s.pos, address: s.main })
       return
     }
-    if (s.placeId && typeof google !== 'undefined' && google.maps?.places) {
-      const svc = new google.maps.places.PlacesService(document.createElement('div'))
-      svc.getDetails({ placeId: s.placeId, fields: ['geometry', 'name'] }, (place) => {
-        const loc = place?.geometry?.location
-        if (loc) onPick({ pos: { lat: loc.lat(), lng: loc.lng() }, address: place?.name || s.main })
-      })
+    if (s.placeId && typeof google !== 'undefined' && google.maps?.places?.PlacesService) {
+      try {
+        const svc = new google.maps.places.PlacesService(document.createElement('div'))
+        svc.getDetails({ placeId: s.placeId, fields: ['geometry', 'name'] }, (place) => {
+          const loc = place?.geometry?.location
+          if (loc)
+            onPick({ pos: { lat: loc.lat(), lng: loc.lng() }, address: place?.name || s.main })
+        })
+      } catch {
+        /* تعذّر جلب التفاصيل — نكتفي بالنصّ */
+      }
     }
   }
 

@@ -48,9 +48,10 @@ export default function MapView({
   className = 'h-64 w-full rounded-2xl',
 }: MapViewProps) {
   const mapRef = useRef<google.maps.Map | null>(null)
-  const { isLoaded } = useMaps()
+  const { isLoaded, mapsError } = useMaps()
 
-  if (!isMapsConfigured) {
+  // لا مفتاح، أو فشلت خرائط قوقل (حجب/مصادقة) → الخريطة المبسّطة الأنيقة.
+  if (!isMapsConfigured || mapsError) {
     return (
       <div className={`relative overflow-hidden ${className}`}>
         {/* بديل أنيق للخريطة قبل ضبط مفتاح قوقل — رسم شوارع مبسّط */}
