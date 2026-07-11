@@ -54,7 +54,7 @@ export default function Home() {
 
       {/* الخريطة مع السيّارات القريبة */}
       <div className="relative min-h-[200px] flex-1 overflow-hidden">
-        <MapView center={KHARTOUM} driverMarkers={nearbyCars} className="h-full w-full" />
+        <MapView center={KHARTOUM} driverMarkers={nearbyCars} className="absolute inset-0" />
         {/* نبضة موقعي في المنتصف */}
         <div className="pointer-events-none absolute inset-0 grid place-items-center">
           <span className="relative grid h-6 w-6 place-items-center">

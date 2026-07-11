@@ -244,7 +244,7 @@ export default function SelectLocation() {
             }}
             markers={otherMarker ? [otherMarker] : undefined}
             line={pickupSet && dropoffSet ? [pickupPos, dropoffPos] : undefined}
-            className="h-full w-full"
+            className="absolute inset-0"
           />
           <MapPin variant={active === 'pickup' ? 'pickup' : 'dropoff'} />
           {/* مفتاح تحديد الدبوس: الانطلاق أم الوجهة */}
