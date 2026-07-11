@@ -47,27 +47,26 @@ export default function Services() {
         <div className="grid grid-cols-2 gap-3 pt-2">
           {services.map((s) => {
             const accent = s.femaleDriver
-              ? { border: '#E85C9E', bg: '#FDF2F8', title: '#C13584', badge: 'سائقة' }
+              ? { color: '#E85C9E', badge: 'سائقة' }
               : s.id === 'open'
-                ? { border: '#E5B800', bg: '#FFF9E0', title: '#A87A00', badge: 'مفتوح' }
+                ? { color: '#E8730C', badge: 'مفتوح' }
                 : null
             return (
               <button
                 key={s.id}
                 onClick={() => choose(s.id)}
                 className="card relative flex flex-col p-3 text-center transition hover:shadow-lift"
-                style={accent ? { border: `1.5px solid ${accent.border}`, backgroundColor: accent.bg } : undefined}
               >
                 {accent && (
                   <span
                     className="absolute right-2 top-2 rounded-full px-2 py-0.5 text-[11px] font-bold text-white"
-                    style={{ backgroundColor: accent.border }}
+                    style={{ backgroundColor: accent.color }}
                   >
                     {accent.badge}
                   </span>
                 )}
                 <VehicleImage service={s} className="mt-2 h-20 w-full" />
-                <p className="mt-2 font-bold" style={accent ? { color: accent.title } : undefined}>
+                <p className="mt-2 font-bold" style={accent ? { color: accent.color } : undefined}>
                   {s.name}
                 </p>
                 <p className="text-xs text-ink-soft">{s.tagline}</p>

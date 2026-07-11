@@ -101,19 +101,18 @@ export default function Home() {
         <div className="-mx-4 flex gap-3 overflow-x-auto px-4 pb-4">
           {services.map((s) => {
             const accent = s.femaleDriver
-              ? { border: '#E85C9E', bg: '#FDF2F8', title: '#C13584' }
+              ? '#E85C9E'
               : s.id === 'open'
-                ? { border: '#E5B800', bg: '#FFF9E0', title: '#A87A00' }
+                ? '#E8730C'
                 : null
             return (
               <button
                 key={s.id}
                 onClick={() => chooseService(s.id)}
                 className="card w-36 shrink-0 p-3 text-center"
-                style={accent ? { border: `1.5px solid ${accent.border}`, backgroundColor: accent.bg } : undefined}
               >
                 <VehicleImage service={s} className="h-14 w-full" />
-                <p className="mt-1 font-bold" style={accent ? { color: accent.title } : undefined}>
+                <p className="mt-1 font-bold" style={accent ? { color: accent } : undefined}>
                   {s.name}
                 </p>
                 <p className="text-[11px] text-ink-muted">{s.seats} مقاعد</p>
