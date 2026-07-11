@@ -232,15 +232,48 @@ export default function SelectLocation() {
           <MapView
             center={activePos}
             onCenterChanged={setActivePos}
-            onUserDrag={() => (active === 'pickup' ? setPickupSet(true) : setDropoffSet(true))}
+            onUserDrag={() => {
+              // سحب الخريطة = اختيار بالدبوس؛ نملأ العنوان إن كان فارغاً ليظهر الاختيار.
+              if (active === 'pickup') {
+                setPickupSet(true)
+                if (!pickupAddr.trim()) setPickupAddr('موقع محدّد من الخريطة')
+              } else {
+                setDropoffSet(true)
+                if (!dropoffAddr.trim()) setDropoffAddr('موقع محدّد من الخريطة')
+              }
+            }}
             markers={otherMarker ? [otherMarker] : undefined}
             line={pickupSet && dropoffSet ? [pickupPos, dropoffPos] : undefined}
             className="h-full w-full"
           />
           <MapPin variant={active === 'pickup' ? 'pickup' : 'dropoff'} />
-          <div className="pointer-events-none absolute inset-x-0 top-2 flex justify-center">
-            <span className="rounded-full bg-black/55 px-3 py-1 text-xs font-medium text-white">
-              حرّك الخريطة لتحديد {active === 'pickup' ? 'نقطة الانطلاق' : 'الوجهة'}
+          {/* مفتاح تحديد الدبوس: الانطلاق أم الوجهة */}
+          <div className="absolute inset-x-0 top-2 flex justify-center">
+            <div className="flex items-center gap-1 rounded-full bg-white/95 p-1 shadow-lift">
+              <button
+                onClick={() => {
+                  setActive('pickup')
+                  setPickupMode('other')
+                }}
+                className={`rounded-full px-3 py-1.5 text-xs font-bold transition ${
+                  active === 'pickup' ? 'bg-green text-white' : 'text-ink-soft'
+                }`}
+              >
+                🟢 الانطلاق
+              </button>
+              <button
+                onClick={() => setActive('dropoff')}
+                className={`rounded-full px-3 py-1.5 text-xs font-bold transition ${
+                  active === 'dropoff' ? 'bg-danger text-white' : 'text-ink-soft'
+                }`}
+              >
+                📍 الوجهة
+              </button>
+            </div>
+          </div>
+          <div className="pointer-events-none absolute inset-x-0 bottom-8 flex justify-center">
+            <span className="rounded-full bg-black/55 px-3 py-1 text-[11px] font-medium text-white">
+              حرّك الخريطة ليستقرّ الدبوس على {active === 'pickup' ? 'نقطة الانطلاق' : 'الوجهة'}
             </span>
           </div>
         </div>

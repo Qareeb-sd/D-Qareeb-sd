@@ -3,14 +3,23 @@ import { useNavigate } from 'react-router-dom'
 import BottomNav from '@/components/BottomNav'
 import Logo from '@/components/Logo'
 import LocationPicker from '@/components/LocationPicker'
+import PlaceSearch from '@/components/PlaceSearch'
 import VehicleImage from '@/components/VehicleImage'
 import { services } from '@/data/services'
 import { useAuth } from '@/store/AuthContext'
-import { createCommuteOrder } from '@/lib/commute'
+import { createCommuteOrder, joinCommuteOrder } from '@/lib/commute'
 import { KHARTOUM } from '@/theme'
 
 const days = ['السبت', 'الأحد', 'الاثنين', 'الثلاثاء', 'الأربعاء', 'الخميس', 'الجمعة']
 const shareable = services.filter((s) => s.sharable)
+
+/** نقطة انطلاق راكب واحد في الترحيل. */
+interface PickPoint {
+  name: string
+  addr: string
+  pos: google.maps.LatLngLiteral
+  placed: boolean // حُدّدت فعلاً (خريطة/اقتراح/GPS)
+}
 
 /**
  * ترحيل — إنشاء طلب مشترك: مركبة + مكان العمل (وجهة) + وقت + أيام.
@@ -23,8 +32,12 @@ export default function Commute() {
   const [serviceId, setServiceId] = useState(shareable[0].id)
   const [dest, setDest] = useState<google.maps.LatLngLiteral>(KHARTOUM)
   const [destAddress, setDestAddress] = useState('')
-  const [home, setHome] = useState<google.maps.LatLngLiteral>(KHARTOUM)
-  const [homeAddress, setHomeAddress] = useState('')
+
+  // نقاط الانطلاق (منازل الركاب) — الأولى للمنظّم، والبقية يضيفها حتى سعة المركبة.
+  const [points, setPoints] = useState<PickPoint[]>([
+    { name: '', addr: '', pos: KHARTOUM, placed: false },
+  ])
+  const [activeIdx, setActiveIdx] = useState(0)
   const [time, setTime] = useState('07:30')
   const [returnTime, setReturnTime] = useState('15:30')
   const [selected, setSelected] = useState<string[]>([
@@ -36,15 +49,41 @@ export default function Commute() {
   // سعة المركبة = عدد نقاط الانطلاق (المنازل) الممكنة للذهاب/الإياب.
   const seats = services.find((s) => s.id === serviceId)?.seats ?? 4
 
-  // نقطة انطلاق المنظّم (منزله) = موقعه الحالي مبدئياً، ويمكن تعديلها على الخريطة.
+  // عند اختيار مركبة أصغر: لا تتجاوز النقاط سعتها.
+  useEffect(() => {
+    setPoints((cur) => (cur.length > seats ? cur.slice(0, seats) : cur))
+    setActiveIdx(0)
+  }, [seats])
+
+  // نقطة انطلاق المنظّم = موقعه الحالي مبدئياً، ويمكن تعديلها.
   useEffect(() => {
     if (!navigator.geolocation) return
     navigator.geolocation.getCurrentPosition(
-      (p) => setHome({ lat: p.coords.latitude, lng: p.coords.longitude }),
+      (p) =>
+        setPoints((cur) =>
+          cur.map((pt, i) =>
+            i === 0 && !pt.placed
+              ? { ...pt, pos: { lat: p.coords.latitude, lng: p.coords.longitude }, placed: true, addr: pt.addr || 'موقعي الحالي' }
+              : pt,
+          ),
+        ),
       () => {},
       { timeout: 8000 },
     )
   }, [])
+
+  const setPoint = (i: number, patch: Partial<PickPoint>) =>
+    setPoints((cur) => cur.map((p, x) => (x === i ? { ...p, ...patch } : p)))
+
+  const addPoint = () => {
+    setPoints((cur) => [...cur, { name: '', addr: '', pos: cur[0].pos, placed: false }])
+    setActiveIdx(points.length)
+  }
+
+  const removePoint = (i: number) => {
+    setPoints((cur) => cur.filter((_, x) => x !== i))
+    setActiveIdx(0)
+  }
 
   const toggleDay = (d: string) =>
     setSelected((cur) => (cur.includes(d) ? cur.filter((x) => x !== d) : [...cur, d]))
@@ -62,11 +101,19 @@ export default function Commute() {
         round_trip: roundTrip,
         organizer: {
           name: profile?.full_name?.trim() || 'المنظّم',
-          home: { ...home, address: homeAddress || 'منزلي' },
+          home: { ...points[0].pos, address: points[0].addr || 'منزل المنظّم' },
         },
       },
       profile?.id ?? null,
     )
+    // بقية نقاط الانطلاق تُسجَّل كأعضاء في نفس الطلب.
+    for (let i = 1; i < points.length; i++) {
+      const p = points[i]
+      await joinCommuteOrder(order.id, {
+        name: p.name.trim() || `راكب ${i + 1}`,
+        home: { ...p.pos, address: p.addr || `نقطة انطلاق ${i + 1}` },
+      })
+    }
     setBusy(false)
     navigate(`/commute/${order.id}`)
   }
@@ -109,19 +156,92 @@ export default function Commute() {
           </p>
         </div>
 
-        {/* نقطة انطلاقك (منزلك) */}
-        <div>
-          <p className="label">نقطة انطلاقك (منزلك)</p>
-          <LocationPicker center={home} onChange={setHome} />
-          <input
-            className="field mt-2"
-            value={homeAddress}
-            onChange={(e) => setHomeAddress(e.target.value)}
-            placeholder="اسم نقطة انطلاقك (اختياري)"
-          />
-          <p className="mt-1 text-xs text-ink-soft">
-            منها تبدأ رحلتك للعمل — يمكنك تحريك الدبوس لتحديدها بدقّة.
+        {/* نقاط الانطلاق (منازل الركاب) — حتى سعة المركبة */}
+        <div className="card p-4">
+          <div className="mb-1 flex items-center justify-between">
+            <p className="font-bold">نقاط الانطلاق</p>
+            <span className="text-xs font-bold text-green">
+              {points.length} / {seats}
+            </span>
+          </div>
+          <p className="mb-3 text-xs text-ink-soft">
+            كل راكب من منزله إلى الوجهة المشتركة — والإياب بالعكس. أضف نقطة لكل راكب،
+            أو شارك رابط الدعوة بعد الإنشاء لينضمّ كلٌّ بنفسه.
           </p>
+
+          <div className="space-y-3">
+            {points.map((p, i) => (
+              <div
+                key={i}
+                className={`rounded-2xl border p-3 ${
+                  activeIdx === i ? 'border-green bg-green-soft/40' : 'border-hairline'
+                }`}
+              >
+                <div className="mb-2 flex items-center justify-between">
+                  <p className="text-sm font-bold">
+                    {i === 0 ? '🟢 انطلاقي (المنظّم)' : `🟢 راكب ${i + 1}`}
+                    {p.placed && <span className="mr-1 text-green"> ✓</span>}
+                  </p>
+                  {i > 0 && (
+                    <button
+                      onClick={() => removePoint(i)}
+                      className="text-xs font-bold text-danger"
+                    >
+                      حذف
+                    </button>
+                  )}
+                </div>
+                {i > 0 && (
+                  <input
+                    className="field mb-2"
+                    value={p.name}
+                    onChange={(e) => setPoint(i, { name: e.target.value })}
+                    placeholder={`اسم الراكب ${i + 1} (اختياري)`}
+                  />
+                )}
+                <div className="flex items-center gap-2">
+                  <div className="min-w-0 flex-1">
+                    <PlaceSearch
+                      value={p.addr}
+                      onFocus={() => setActiveIdx(i)}
+                      onChange={(v) => setPoint(i, { addr: v, placed: v.trim() !== '' || p.placed })}
+                      onPick={({ pos, address }) => setPoint(i, { pos, addr: address, placed: true })}
+                      placeholder="اكتب اسم المكان أو حدّده بالخريطة"
+                      className="field"
+                    />
+                  </div>
+                  <button
+                    onClick={() => setActiveIdx(i)}
+                    className={`shrink-0 rounded-xl border px-3 py-2.5 text-sm font-bold ${
+                      activeIdx === i
+                        ? 'border-green bg-green text-white'
+                        : 'border-green/40 text-green'
+                    }`}
+                  >
+                    🗺️
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {points.length < seats && (
+            <button onClick={addPoint} className="btn-outline mt-3 w-full">
+              ➕ إضافة نقطة انطلاق ({points.length}/{seats})
+            </button>
+          )}
+
+          {/* خريطة النقطة النشطة */}
+          <p className="mb-1 mt-3 text-xs text-ink-soft">
+            حرّك الخريطة لتحديد{' '}
+            <span className="font-bold text-green">
+              {activeIdx === 0 ? 'انطلاق المنظّم' : `انطلاق الراكب ${activeIdx + 1}`}
+            </span>
+          </p>
+          <LocationPicker
+            center={points[activeIdx]?.pos ?? KHARTOUM}
+            onChange={(pos) => setPoint(activeIdx, { pos, placed: true })}
+          />
         </div>
 
         {/* مكان العمل (الوجهة) */}
