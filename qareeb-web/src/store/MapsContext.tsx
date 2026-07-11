@@ -19,6 +19,9 @@ export function MapsProvider({ children }: { children: ReactNode }) {
     id: MAPS_LOADER_ID,
     googleMapsApiKey: GOOGLE_MAPS_API_KEY,
     libraries: MAPS_LIBRARIES,
+    // تثبيت القناة المستقرّة (ربع سنوية) لتفادي أعطال الإصدار الأسبوعي الأحدث
+    // مع هذه المكتبة (مثل خطأ setAt/setPath).
+    version: 'quarterly',
   })
 
   // خرائط قوقل تستدعي هذه الدالة عند فشل المصادقة/الترخيص (مفتاح/حجب).
