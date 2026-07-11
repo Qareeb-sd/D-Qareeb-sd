@@ -18,7 +18,6 @@
   "dependencies": {
     "@capacitor/android": "^8.4.1",
     "@capacitor/core": "^8.4.1",
-    "@fontsource/baloo-bhaijaan-2": "^5.2.7",
     "@react-google-maps/api": "^2.20.3",
     "@supabase/supabase-js": "^2.45.4",
     "@tanstack/react-query": "^5.101.2",

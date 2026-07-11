@@ -144,7 +144,7 @@ export default function Commute() {
                 }`}
                 style={{ width: 96 }}
               >
-                <VehicleImage service={s} brand={false} className="h-10 w-full" />
+                <VehicleImage service={s} className="h-10 w-full" />
                 <p className="mt-1 text-xs font-bold">{s.name}</p>
                 <p className="text-[10px] text-ink-muted">{s.seats} مقاعد</p>
               </button>
