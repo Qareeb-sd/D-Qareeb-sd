@@ -34,7 +34,15 @@ export default function VehicleImage({
   // السحّاب شاحنة نقل — لا يحمل شعار الركاب.
   const showBrand = brand && service.id !== 'tow'
   const pink = Boolean(service.femaleDriver)
-  const accent = pink ? '#C13584' : '#1B6B3F'
+
+  // أسلوب الكتابة على جسم المركبة حسب لون الهيكل (بلا خلفية — كطلاء على الباب، كالصورة المرجعية).
+  const paint = pink
+    ? { color: '#E85C9E', size: '8cqw', shadow: '0 0.3cqw 1.2cqw rgba(255,255,255,0.9)' } // وردي على الأبيض
+    : service.id === 'amjad'
+      ? { color: '#FFFFFF', size: '10cqw', shadow: '0 0.4cqw 1.5cqw rgba(0,40,90,0.5)' } // أبيض على الأزرق
+      : service.id === 'rickshaw'
+        ? { color: '#F2E21C', size: '9cqw', shadow: '0 0.4cqw 1.5cqw rgba(0,0,0,0.55)' } // ليموني على الأسود
+        : { color: '#1B6B3F', size: '12.5cqw', shadow: '0 0.3cqw 1.2cqw rgba(255,255,255,0.9)' } // أخضر على الأبيض
 
   return (
     <div
@@ -49,38 +57,29 @@ export default function VehicleImage({
         onError={() => setFailed(true)}
         className="h-full w-full object-contain"
       />
-      {/* ملصق العلامة على باب المركبة — دبوس الشعار + «قريب» بخط الهوية */}
+      {/* «قريب» مكتوبة مباشرة على باب المركبة بخط مستدير (كالطلاء) */}
       {showBrand && (
         <span
-          className="pointer-events-none absolute left-1/2 top-[55%]"
-          style={{ transform: 'translate(-50%, -50%) skewX(-4deg)' }}
+          className="pointer-events-none absolute left-1/2 top-[56%] text-center leading-[0.95]"
+          style={{
+            transform: 'translate(-50%, -50%) rotate(-3deg)',
+            fontFamily: "'Baloo Bhaijaan 2', 'Tajawal', sans-serif",
+            fontWeight: 800,
+            fontSize: paint.size,
+            color: paint.color,
+            textShadow: paint.shadow,
+            whiteSpace: 'nowrap',
+          }}
         >
-          <span
-            className="inline-flex items-center leading-none"
-            style={{
-              gap: '1.5cqw',
-              background: 'rgba(255,255,255,0.92)',
-              border: `0.4cqw solid ${accent}22`,
-              borderRadius: '999px',
-              padding: pink ? '1.2cqw 3cqw' : '1.2cqw 3.5cqw',
-              boxShadow: '0 0.5cqw 2cqw rgba(0,0,0,0.18)',
-            }}
-          >
-            <svg viewBox="0 0 64 64" style={{ width: '7cqw', height: '7cqw' }} aria-hidden>
-              <path
-                d="M32 6C19.8 6 10 15.5 10 27.4 10 42.5 29.1 60.8 30.8 62.4a1.7 1.7 0 0 0 2.4 0C34.9 60.8 54 42.5 54 27.4 54 15.5 44.2 6 32 6Z"
-                fill={accent}
-              />
-              <circle cx="32" cy="27" r="11" fill="none" stroke="#fff" strokeWidth="4.5" />
-              <circle cx="32" cy="27" r="4.5" fill="#fff" />
-            </svg>
-            <span
-              className="whitespace-nowrap font-extrabold"
-              style={{ fontSize: pink ? '6.5cqw' : '9.5cqw', color: accent }}
-            >
-              {pink ? 'قريب نسائي' : 'قريب'}
-            </span>
-          </span>
+          {pink ? (
+            <>
+              قريب
+              <br />
+              نسائي
+            </>
+          ) : (
+            'قريب'
+          )}
         </span>
       )}
     </div>
