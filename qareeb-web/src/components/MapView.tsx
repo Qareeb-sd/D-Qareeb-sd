@@ -91,6 +91,7 @@ function NativeGoogleMap({
 
   const [status, setStatus] = useState<'creating' | 'ready' | 'error'>('creating')
   const [errMsg, setErrMsg] = useState('')
+  const [diag, setDiag] = useState('')
 
   // إنشاء الخريطة مرّة واحدة.
   useEffect(() => {
@@ -104,6 +105,9 @@ function NativeGoogleMap({
         const { GoogleMap } = await import('@capacitor/google-maps')
         if (cancelled) return
         acquireMapTransparency()
+        const r = el.getBoundingClientRect()
+        const hasCls = document.documentElement.classList.contains('native-map-open')
+        setDiag(`cls:${hasCls ? 'Y' : 'N'} ${Math.round(r.width)}x${Math.round(r.height)}`)
         const map = await GoogleMap.create({
           id: `qareeb-map-${Math.round(el.getBoundingClientRect().top)}-${el.offsetWidth}`,
           element: el,
@@ -206,9 +210,9 @@ function NativeGoogleMap({
   return (
     <div className={`relative ${className}`}>
       <div ref={divRef} dir="ltr" className="absolute inset-0 overflow-hidden bg-transparent" />
-      {status === 'creating' && <DiagBadge text="MAP: native — creating…" tone="warn" />}
-      {status === 'ready' && <DiagBadge text="MAP: native READY ✓" tone="ok" />}
-      {status === 'error' && <DiagBadge text={`MAP native ERROR: ${errMsg}`} tone="err" />}
+      {status === 'creating' && <DiagBadge text={`native creating… ${diag}`} tone="warn" />}
+      {status === 'ready' && <DiagBadge text={`native READY ✓ ${diag}`} tone="ok" />}
+      {status === 'error' && <DiagBadge text={`native ERROR: ${errMsg}`} tone="err" />}
     </div>
   )
 }
