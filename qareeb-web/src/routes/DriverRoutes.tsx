@@ -10,6 +10,7 @@ import DriverRate from '@/pages/driver/DriverRate'
 import DriverWallet from '@/pages/driver/DriverWallet'
 import DriverCommute from '@/pages/driver/DriverCommute'
 import DriverProfile from '@/pages/driver/DriverProfile'
+import TrackRide from '@/pages/shared/TrackRide'
 
 const driverGuard = (el: React.ReactNode) => <DriverRoute>{el}</DriverRoute>
 
@@ -20,6 +21,10 @@ export default function DriverRoutes() {
       {/* جذر التطبيق = صفحة ترحيب السائق (خريطة السودان) */}
       <Route path="/" element={<DriverOnboarding />} />
       <Route path="/driver/login" element={<DriverLogin />} />
+
+      {/* تتبّع رحلة مُشارَكة (عام) */}
+      <Route path="/track" element={<TrackRide />} />
+      <Route path="/track/:token" element={<TrackRide />} />
       {/* التسجيل يحمي نفسه: يوجّه غير المسجّل إلى /driver/login */}
       <Route path="/driver/register" element={<DriverRegister />} />
       <Route path="/driver" element={driverGuard(<DriverHome />)} />

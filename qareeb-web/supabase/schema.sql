@@ -1334,3 +1334,52 @@ begin
   perform public.log_action('حلّ شكوى', p_review::text);
 end $$;
 grant execute on function public.admin_resolve_complaint(uuid) to authenticated;
+
+-- ============================================================
+--  مشاركة الرحلة المباشرة (تتبّع لطرف ثالث برمز)
+--  العميل أو السائق يولّد رمزاً، ويشاركه مع شخص يتابع الرحلة لحظياً.
+-- ============================================================
+
+alter table public.rides add column if not exists share_token text;
+create unique index if not exists rides_share_token_idx on public.rides(share_token);
+
+-- توليد/إرجاع رمز مشاركة لرحلة (لطرفَيها فقط).
+create or replace function public.ensure_ride_share(p_ride uuid)
+returns text language plpgsql security definer set search_path = public as $$
+declare v_customer uuid; v_driver uuid; v_token text;
+begin
+  select customer_id, driver_id, share_token
+    into v_customer, v_driver, v_token
+    from public.rides where id = p_ride;
+  if not found then raise exception 'الرحلة غير موجودة'; end if;
+  if auth.uid() is null
+     or (auth.uid() <> v_customer and auth.uid() is distinct from v_driver) then
+    raise exception 'غير مصرّح';
+  end if;
+  if v_token is null then
+    v_token := substr(md5(gen_random_uuid()::text), 1, 8);
+    update public.rides set share_token = v_token where id = p_ride;
+  end if;
+  return v_token;
+end $$;
+grant execute on function public.ensure_ride_share(uuid) to authenticated;
+
+-- لقطة تتبّع الرحلة عبر الرمز (لأي متابع) — بيانات الموقع فقط، بلا أرقام هواتف.
+create or replace function public.track_shared_ride(p_token text)
+returns table (
+  status ride_status, service_id text,
+  pickup_lat double precision, pickup_lng double precision, pickup_address text,
+  dropoff_lat double precision, dropoff_lng double precision, dropoff_address text,
+  driver_lat double precision, driver_lng double precision, driver_loc_at timestamptz,
+  driver_name text
+) language sql security definer set search_path = public as $$
+  select r.status, r.service_id,
+         r.pickup_lat, r.pickup_lng, r.pickup_address,
+         r.dropoff_lat, r.dropoff_lng, r.dropoff_address,
+         r.driver_lat, r.driver_lng, r.driver_loc_at,
+         u.full_name
+    from public.rides r
+    left join public.users u on u.id = r.driver_id
+   where r.share_token = p_token
+$$;
+grant execute on function public.track_shared_ride(text) to anon, authenticated;

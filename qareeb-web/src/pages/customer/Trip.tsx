@@ -4,6 +4,7 @@ import Screen from '@/components/Screen'
 import MapView from '@/components/MapView'
 import VehicleImage from '@/components/VehicleImage'
 import SosButton from '@/components/SosButton'
+import ShareRideButton from '@/components/ShareRideButton'
 import { useRide } from '@/store/RideContext'
 import { useAuth } from '@/store/AuthContext'
 import { getService } from '@/data/services'
@@ -186,6 +187,7 @@ export default function Trip() {
         </div>
 
         <div className="space-y-2 border-t border-hairline p-4">
+          <ShareRideButton rideId={rideId} />
           {isSupabaseConfigured ? (
             <p className="text-center text-sm text-ink-soft">
               {status === 'in_progress'

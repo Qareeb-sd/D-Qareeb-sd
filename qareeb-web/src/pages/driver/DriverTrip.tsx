@@ -3,6 +3,7 @@ import { useNavigate, Navigate } from 'react-router-dom'
 import Screen from '@/components/Screen'
 import MapView from '@/components/MapView'
 import SosButton from '@/components/SosButton'
+import ShareRideButton from '@/components/ShareRideButton'
 import { useDriver } from '@/store/DriverContext'
 import { useAuth } from '@/store/AuthContext'
 import {
@@ -178,9 +179,10 @@ export default function DriverTrip() {
         </div>
 
         <div
-          className="border-t border-hairline p-4"
+          className="space-y-2 border-t border-hairline p-4"
           style={{ paddingBottom: 'calc(1rem + env(safe-area-inset-bottom))' }}
         >
+          <ShareRideButton rideId={activeRide.id} variant="driver" />
           {activeRide.status === 'accepted' && (
             <button className="btn-driver w-full" onClick={() => advance('arrived')} disabled={busy}>
               {busy ? '…' : 'وصلت لموقع الراكب'}

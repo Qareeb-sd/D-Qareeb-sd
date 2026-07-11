@@ -1,19 +1,38 @@
+import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import DriverNav from '@/components/DriverNav'
 import NotificationToggle from '@/components/NotificationToggle'
 import { useAuth } from '@/store/AuthContext'
-import { getDriver } from '@/lib/api'
+import { getDriver, updateEmergencyContacts } from '@/lib/api'
 import { getService } from '@/data/services'
 
 export default function DriverProfile() {
   const navigate = useNavigate()
-  const { profile, signOut } = useAuth()
+  const { profile, signOut, refreshProfile } = useAuth()
   const userId = profile?.id ?? 'demo-user'
   const { data: driver } = useQuery({
     queryKey: ['driver', userId],
     queryFn: () => getDriver(userId),
   })
+
+  const [c1, setC1] = useState(profile?.sos_contact1 ?? '')
+  const [c2, setC2] = useState(profile?.sos_contact2 ?? '')
+  const [busy, setBusy] = useState(false)
+  const [msg, setMsg] = useState('')
+
+  const saveContacts = async () => {
+    setBusy(true)
+    setMsg('')
+    const { error } = await updateEmergencyContacts(
+      profile?.id ?? '',
+      c1.trim() || null,
+      c2.trim() || null,
+    )
+    await refreshProfile()
+    setBusy(false)
+    setMsg(error ? `خطأ: ${error}` : 'تم حفظ جهات الطوارئ ✓')
+  }
 
   const logout = async () => {
     await signOut()
@@ -53,6 +72,37 @@ export default function DriverProfile() {
             />
           </div>
         )}
+
+        {/* جهات الطوارئ (مثل العميل) */}
+        <div className="card mt-4 p-4">
+          <div className="mb-1 flex items-center gap-2">
+            <span className="text-xl">🆘</span>
+            <p className="font-bold">جهات الطوارئ</p>
+          </div>
+          <p className="mb-3 text-xs text-ink-muted">
+            رقمان يصلهما تنبيه فيه موقعك عند ضغطك زر الطوارئ أثناء الرحلة.
+          </p>
+          <input
+            className="field text-left"
+            dir="ltr"
+            inputMode="tel"
+            placeholder="رقم جهة الطوارئ الأولى"
+            value={c1}
+            onChange={(e) => setC1(e.target.value)}
+          />
+          <input
+            className="field mt-2 text-left"
+            dir="ltr"
+            inputMode="tel"
+            placeholder="رقم جهة الطوارئ الثانية (اختياري)"
+            value={c2}
+            onChange={(e) => setC2(e.target.value)}
+          />
+          {msg && <p className="mt-2 text-sm text-green">{msg}</p>}
+          <button onClick={saveContacts} disabled={busy} className="btn-driver mt-3 w-full">
+            {busy ? '…' : 'حفظ جهات الطوارئ'}
+          </button>
+        </div>
 
         <NotificationToggle userId={profile?.id ?? 'demo-user'} />
 

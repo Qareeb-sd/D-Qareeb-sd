@@ -323,6 +323,22 @@ export interface Complaint {
   created_at: string
 }
 
+/** لقطة تتبّع رحلة مُشارَكة (يراها طرف ثالث عبر الرمز). */
+export interface TrackedRide {
+  status: RideStatus
+  service_id: string
+  pickup_lat: number
+  pickup_lng: number
+  pickup_address: string | null
+  dropoff_lat: number | null
+  dropoff_lng: number | null
+  dropoff_address: string | null
+  driver_lat: number | null
+  driver_lng: number | null
+  driver_loc_at: string | null
+  driver_name: string | null
+}
+
 /** اشتراك Web Push مخزّن لمستخدم. */
 export interface PushSubscriptionRow {
   id: string
@@ -428,6 +444,8 @@ export interface Database {
         Returns: Complaint[]
       }
       admin_resolve_complaint: { Args: { p_review: string }; Returns: undefined }
+      ensure_ride_share: { Args: { p_ride: string }; Returns: string }
+      track_shared_ride: { Args: { p_token: string }; Returns: TrackedRide[] }
       admin_set_staff: { Args: { p_phone: string; p_perms: string[] }; Returns: string }
       admin_remove_staff: { Args: { p_user: string }; Returns: undefined }
       admin_delete_driver: { Args: { p_user: string }; Returns: undefined }

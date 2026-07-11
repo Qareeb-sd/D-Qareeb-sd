@@ -14,6 +14,7 @@ import type {
   StaffRow,
   StaffPerm,
   AdminAccess,
+  TrackedRide,
 } from './types'
 
 /**
@@ -261,6 +262,22 @@ export async function getRide(rideId: string): Promise<Ride | null> {
   if (!isSupabaseConfigured || !rideId) return null
   const { data } = await supabase.from('rides').select('*').eq('id', rideId).single()
   return data ?? null
+}
+
+// ---------- مشاركة الرحلة المباشرة (تتبّع) ----------
+/** يولّد/يعيد رمز مشاركة لرحلة (لطرفَيها) — يشاركه المستخدم مع متابِع. */
+export async function ensureRideShare(rideId: string): Promise<string | null> {
+  if (!isSupabaseConfigured || !rideId) return null
+  const { data } = await supabase.rpc('ensure_ride_share', { p_ride: rideId })
+  return (data as string | null) ?? null
+}
+
+/** يجلب لقطة تتبّع رحلة عبر الرمز (لأي متابِع). */
+export async function trackSharedRide(token: string): Promise<TrackedRide | null> {
+  if (!isSupabaseConfigured || !token) return null
+  const { data } = await supabase.rpc('track_shared_ride', { p_token: token })
+  const rows = (data as TrackedRide[] | null) ?? []
+  return rows[0] ?? null
 }
 
 /**

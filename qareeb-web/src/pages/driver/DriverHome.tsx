@@ -144,6 +144,15 @@ export default function DriverHome() {
           <span className="text-ink-muted">‹</span>
         </button>
 
+        <button
+          onClick={() => navigate('/track')}
+          className="mb-4 flex w-full items-center gap-2 rounded-2xl border border-hairline px-4 py-3 text-sm font-medium text-ink-soft"
+        >
+          <span>👁️</span>
+          <span className="flex-1 text-right">تتبّع رحلة (بالرمز)</span>
+          <span className="text-ink-muted">‹</span>
+        </button>
+
         {!online ? (
           <div className="flex flex-col items-center gap-3 py-24 text-center text-ink-soft">
             <div className="text-5xl">🚗💤</div>

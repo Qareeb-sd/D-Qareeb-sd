@@ -101,17 +101,15 @@ export default function SosButton({
                 📩 إرسال رسالة لجهات طوارئك ({contacts.length})
               </a>
             ) : (
-              role === 'customer' && (
-                <button
-                  onClick={() => {
-                    setOpen(false)
-                    navigate('/profile')
-                  }}
-                  className="mb-2 flex w-full items-center justify-center gap-2 rounded-2xl border border-hairline py-3 text-sm font-bold text-ink-soft"
-                >
-                  ➕ أضف جهات طوارئ من حسابك
-                </button>
-              )
+              <button
+                onClick={() => {
+                  setOpen(false)
+                  navigate(role === 'driver' ? '/driver/profile' : '/profile')
+                }}
+                className="mb-2 flex w-full items-center justify-center gap-2 rounded-2xl border border-hairline py-3 text-sm font-bold text-ink-soft"
+              >
+                ➕ أضف جهات طوارئ من حسابك
+              </button>
             )}
 
             <a

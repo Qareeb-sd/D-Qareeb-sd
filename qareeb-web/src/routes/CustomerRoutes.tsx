@@ -15,6 +15,7 @@ import CommuteOrder from '@/pages/customer/CommuteOrder'
 import CommuteJoin from '@/pages/customer/CommuteJoin'
 import Rides from '@/pages/customer/Rides'
 import Profile from '@/pages/customer/Profile'
+import TrackRide from '@/pages/shared/TrackRide'
 
 const guard = (el: React.ReactNode) => <ProtectedRoute>{el}</ProtectedRoute>
 
@@ -24,6 +25,10 @@ export default function CustomerRoutes() {
     <Routes>
       <Route path="/" element={<Onboarding />} />
       <Route path="/auth" element={<Auth />} />
+
+      {/* تتبّع رحلة مُشارَكة (عام — يفتحه متابِع لديه التطبيق) */}
+      <Route path="/track" element={<TrackRide />} />
+      <Route path="/track/:token" element={<TrackRide />} />
 
       <Route path="/home" element={guard(<Home />)} />
       <Route path="/select-location" element={guard(<SelectLocation />)} />

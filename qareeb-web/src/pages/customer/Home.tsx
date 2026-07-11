@@ -36,6 +36,15 @@ export default function Home() {
           <span className="flex-1 text-ink-muted">وين ماشي؟</span>
         </button>
 
+        <button
+          onClick={() => navigate('/track')}
+          className="mt-3 flex w-full items-center gap-2 rounded-2xl border border-hairline px-4 py-3 text-sm font-medium text-ink-soft"
+        >
+          <span>👁️</span>
+          <span className="flex-1 text-right">تتبّع رحلة صديق (بالرمز)</span>
+          <span className="text-ink-muted">‹</span>
+        </button>
+
         <h2 className="mb-3 mt-6 text-lg font-bold">اختر الخدمة</h2>
         <div className="grid grid-cols-2 gap-3">
           {services.map((s) => {
