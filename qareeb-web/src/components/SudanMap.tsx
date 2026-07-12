@@ -22,22 +22,22 @@ export default function SudanMap({ className }: { className?: string }) {
 
   return (
     <svg viewBox="0 0 1033 883" className={className} fill="none" xmlns="http://www.w3.org/2000/svg">
-      <path d={SUDAN_D} fill="#1B6B3F" fillOpacity="0.16" stroke="#1B6B3F" strokeWidth="6" strokeOpacity="0.55" strokeLinejoin="round" />
+      <path d={SUDAN_D} fill="#0e3b2e" fillOpacity="0.16" stroke="#0e3b2e" strokeWidth="6" strokeOpacity="0.55" strokeLinejoin="round" />
 
       {/* خطوط التوصيل تنطلق من طرف الدبوس (الخرطوم) */}
       {CITIES.map((c, i) => (
         <line key={i} x1={x} y1={y} x2={c.x} y2={c.y}
-          stroke="#C9A138" strokeWidth="5" strokeLinecap="round" strokeDasharray="14 10" opacity="0.7">
+          stroke="#c4a265" strokeWidth="5" strokeLinecap="round" strokeDasharray="14 10" opacity="0.7">
           <animate attributeName="stroke-dashoffset" values="48;0" dur="1.6s" repeatCount="indefinite" />
         </line>
       ))}
 
       {CITIES.map((c, i) => (
-        <circle key={`d${i}`} cx={c.x} cy={c.y} r="9" fill="#1B6B3F" opacity="0.6" />
+        <circle key={`d${i}`} cx={c.x} cy={c.y} r="9" fill="#0e3b2e" opacity="0.6" />
       ))}
 
       {/* نبضة عند طرف الدبوس */}
-      <ellipse cx={x} cy={y} rx="26" ry="14" fill="#1B6B3F" opacity="0.15">
+      <ellipse cx={x} cy={y} rx="26" ry="14" fill="#0e3b2e" opacity="0.15">
         <animate attributeName="rx" values="26;38;26" dur="2s" repeatCount="indefinite" />
         <animate attributeName="ry" values="14;22;14" dur="2s" repeatCount="indefinite" />
         <animate attributeName="opacity" values="0.15;0.04;0.15" dur="2s" repeatCount="indefinite" />
@@ -46,10 +46,10 @@ export default function SudanMap({ className }: { className?: string }) {
       {/* الدبوس — طرفه السفلي عند (x, y) = الخرطوم بالضبط */}
       <path
         d={`M${x} ${y} C${x - 12} ${y - 15} ${x - 22} ${y - 22} ${x - 22} ${head} a22 22 0 1 1 44 0 C${x + 22} ${y - 22} ${x + 12} ${y - 15} ${x} ${y} Z`}
-        fill="#1B6B3F"
+        fill="#0e3b2e"
       />
-      <circle cx={x} cy={head} r="11" fill="none" stroke="#C9A138" strokeWidth="4.5" />
-      <circle cx={x} cy={head} r="5" fill="#C9A138" />
+      <circle cx={x} cy={head} r="11" fill="none" stroke="#c4a265" strokeWidth="4.5" />
+      <circle cx={x} cy={head} r="5" fill="#c4a265" />
     </svg>
   )
 }

@@ -43,7 +43,7 @@ export default function Register() {
     >
       <div className="mb-6 flex flex-col items-center text-center">
         <Logo size={64} rounded={18} />
-        <h1 className="mt-3 text-2xl font-extrabold text-green">إنشاء حساب</h1>
+        <h1 className="mt-3 text-2xl font-extrabold text-royal">إنشاء حساب</h1>
         <p className="text-sm text-ink-soft">أدخل بياناتك للتسجيل في قريب</p>
       </div>
 
@@ -120,7 +120,7 @@ export default function Register() {
 
       <button
         onClick={() => navigate('/auth')}
-        className="mt-6 w-full text-center text-sm font-bold text-green"
+        className="mt-6 w-full text-center text-sm font-bold text-royal"
       >
         لديك حساب؟ سجّل الدخول
       </button>

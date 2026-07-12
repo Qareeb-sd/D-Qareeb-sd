@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { Map as MapIcon, Plus, Check } from 'lucide-react'
 import BottomNav from '@/components/BottomNav'
 import Logo from '@/components/Logo'
 import LocationPicker from '@/components/LocationPicker'
@@ -123,7 +124,7 @@ export default function Commute() {
       <header className="flex items-center gap-3 px-4 py-4">
         <Logo size={36} rounded={10} />
         <div>
-          <h1 className="text-lg font-bold">ترحيل يومي</h1>
+          <h1 className="text-lg font-bold text-royal">ترحيل يومي</h1>
           <p className="text-xs text-ink-muted">مشوار مشترك لنفس المكان — كلٌّ من منزله</p>
         </div>
       </header>
@@ -139,7 +140,7 @@ export default function Commute() {
                 onClick={() => setServiceId(s.id)}
                 className={`shrink-0 rounded-2xl border p-2 text-center transition ${
                   serviceId === s.id
-                    ? 'border-green bg-green-soft'
+                    ? 'border-royal bg-royal-soft'
                     : 'border-hairline bg-white'
                 }`}
                 style={{ width: 96 }}
@@ -151,7 +152,7 @@ export default function Commute() {
             ))}
           </div>
           <p className="mt-1 text-xs text-ink-soft">
-            تتّسع لـ <span className="font-bold text-green">{seats}</span> نقاط انطلاق —
+            تتّسع لـ <span className="font-bold text-royal">{seats}</span> نقاط انطلاق —
             كل راكب من منزله إلى مكان العمل، والعودة بالعكس.
           </p>
         </div>
@@ -160,7 +161,7 @@ export default function Commute() {
         <div className="card p-4">
           <div className="mb-1 flex items-center justify-between">
             <p className="font-bold">نقاط الانطلاق</p>
-            <span className="text-xs font-bold text-green">
+            <span className="text-xs font-bold text-royal">
               {points.length} / {seats}
             </span>
           </div>
@@ -174,13 +175,14 @@ export default function Commute() {
               <div
                 key={i}
                 className={`rounded-2xl border p-3 ${
-                  activeIdx === i ? 'border-green bg-green-soft/40' : 'border-hairline'
+                  activeIdx === i ? 'border-royal bg-royal-soft/40' : 'border-hairline'
                 }`}
               >
                 <div className="mb-2 flex items-center justify-between">
-                  <p className="text-sm font-bold">
-                    {i === 0 ? '🟢 انطلاقي (المنظّم)' : `🟢 راكب ${i + 1}`}
-                    {p.placed && <span className="mr-1 text-green"> ✓</span>}
+                  <p className="flex items-center gap-1.5 text-sm font-bold">
+                    <span className="h-2.5 w-2.5 rounded-full bg-royal" />
+                    {i === 0 ? 'انطلاقي (المنظّم)' : `راكب ${i + 1}`}
+                    {p.placed && <Check className="h-4 w-4 text-royal" strokeWidth={2.5} />}
                   </p>
                   {i > 0 && (
                     <button
@@ -212,13 +214,14 @@ export default function Commute() {
                   </div>
                   <button
                     onClick={() => setActiveIdx(i)}
-                    className={`shrink-0 rounded-xl border px-3 py-2.5 text-sm font-bold ${
+                    aria-label="تحديد على الخريطة"
+                    className={`grid shrink-0 place-items-center rounded-xl border px-3 py-2.5 ${
                       activeIdx === i
-                        ? 'border-green bg-green text-white'
-                        : 'border-green/40 text-green'
+                        ? 'border-royal bg-royal text-white'
+                        : 'border-royal/40 text-royal'
                     }`}
                   >
-                    🗺️
+                    <MapIcon className="h-4 w-4" strokeWidth={1.8} />
                   </button>
                 </div>
               </div>
@@ -226,15 +229,18 @@ export default function Commute() {
           </div>
 
           {points.length < seats && (
-            <button onClick={addPoint} className="btn-outline mt-3 w-full">
-              ➕ إضافة نقطة انطلاق ({points.length}/{seats})
+            <button
+              onClick={addPoint}
+              className="btn-outline mt-3 flex w-full items-center justify-center gap-1.5"
+            >
+              <Plus className="h-4 w-4" strokeWidth={2} /> إضافة نقطة انطلاق ({points.length}/{seats})
             </button>
           )}
 
           {/* خريطة النقطة النشطة */}
           <p className="mb-1 mt-3 text-xs text-ink-soft">
             حرّك الخريطة لتحديد{' '}
-            <span className="font-bold text-green">
+            <span className="font-bold text-royal">
               {activeIdx === 0 ? 'انطلاق المنظّم' : `انطلاق الراكب ${activeIdx + 1}`}
             </span>
           </p>
@@ -294,7 +300,7 @@ export default function Commute() {
                   key={d}
                   onClick={() => toggleDay(d)}
                   className={`chip border px-3 py-1.5 ${
-                    on ? 'border-green bg-green text-white' : 'border-hairline bg-white text-ink-soft'
+                    on ? 'border-royal bg-royal text-white' : 'border-hairline bg-white text-ink-soft'
                   }`}
                 >
                   {d}
@@ -318,7 +324,7 @@ export default function Commute() {
             onClick={() => setRoundTrip((v) => !v)}
             role="switch"
             aria-checked={roundTrip}
-            className={`relative h-7 w-12 rounded-full transition ${roundTrip ? 'bg-green' : 'bg-hairline'}`}
+            className={`relative h-7 w-12 rounded-full transition ${roundTrip ? 'bg-royal' : 'bg-hairline'}`}
           >
             <span
               className={`absolute top-1 h-5 w-5 rounded-full bg-white transition-all ${roundTrip ? 'right-1' : 'right-6'}`}

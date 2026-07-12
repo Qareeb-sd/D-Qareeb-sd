@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
+import { Building2, Clock, Calendar, Users } from 'lucide-react'
 import Screen from '@/components/Screen'
 import LocationPicker from '@/components/LocationPicker'
 import { getService } from '@/data/services'
@@ -82,15 +83,23 @@ export default function CommuteJoin() {
     <Screen title="انضمام للترحيل" back>
       {/* تفاصيل الطلب */}
       <div className="card space-y-2 p-4">
-        <p className="font-bold">دعوة ترحيل · {service?.name ?? order.service_id}</p>
-        <p className="text-sm text-ink-soft">🏢 {order.dest_address ?? 'مكان العمل'}</p>
-        <p className="text-sm text-ink-soft">
-          ⏰ الذهاب {order.scheduled_time}
+        <p className="font-bold text-royal">دعوة ترحيل · {service?.name ?? order.service_id}</p>
+        <p className="flex items-center gap-2 text-sm text-ink-soft">
+          <Building2 className="h-4 w-4 shrink-0 text-sand-ink" strokeWidth={1.8} />
+          {order.dest_address ?? 'مكان العمل'}
+        </p>
+        <p className="flex items-center gap-2 text-sm text-ink-soft">
+          <Clock className="h-4 w-4 shrink-0 text-sand-ink" strokeWidth={1.8} />
+          الذهاب {order.scheduled_time}
           {order.round_trip && order.return_time ? ` · الإياب ${order.return_time}` : ''}
         </p>
-        <p className="text-sm text-ink-soft">📅 {order.days.join(' · ')}</p>
-        <p className="text-sm text-ink-soft">
-          👥 الركّاب {count} / {seats}
+        <p className="flex items-center gap-2 text-sm text-ink-soft">
+          <Calendar className="h-4 w-4 shrink-0 text-sand-ink" strokeWidth={1.8} />
+          {order.days.join(' · ')}
+        </p>
+        <p className="flex items-center gap-2 text-sm text-ink-soft">
+          <Users className="h-4 w-4 shrink-0 text-sand-ink" strokeWidth={1.8} />
+          الركّاب {count} / {seats}
         </p>
       </div>
 

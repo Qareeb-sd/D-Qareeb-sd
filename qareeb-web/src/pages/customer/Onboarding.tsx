@@ -25,11 +25,11 @@ export default function Onboarding() {
     <div className="screen justify-between px-6 py-8">
       <div className="flex flex-1 flex-col items-center text-center">
         <Logo size={80} rounded={22} />
-        <h1 className="mt-4 text-3xl font-extrabold text-green">قريب</h1>
+        <h1 className="mt-4 text-3xl font-extrabold text-royal">قريب</h1>
         <p className="mt-1 text-ink-soft">نقل آمن في كل السودان</p>
 
         {/* خريطة السودان مع خطوط التوصيل */}
-        <div className="mx-auto mt-5 w-full max-w-[210px] rounded-3xl bg-green-mint p-3">
+        <div className="mx-auto mt-5 w-full max-w-[210px] rounded-3xl bg-royal-soft p-3">
           <SudanMap className="h-auto w-full" />
         </div>
 
@@ -37,7 +37,7 @@ export default function Onboarding() {
         <ul className="mt-6 w-full space-y-3 text-right">
           {points.map((p) => (
             <li key={p.title} className="card flex items-start gap-3 p-4">
-              <span className="mt-1.5 h-2.5 w-2.5 shrink-0 rounded-full bg-gold" />
+              <span className="mt-1.5 h-2.5 w-2.5 shrink-0 rounded-full bg-sand" />
               <div>
                 <p className="font-bold text-sm">{p.title}</p>
                 <p className="text-xs text-ink-soft mt-0.5">{p.text}</p>

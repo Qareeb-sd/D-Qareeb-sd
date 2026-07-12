@@ -1,5 +1,6 @@
 import { useEffect, useState, useCallback } from 'react'
 import { useParams } from 'react-router-dom'
+import { Building2, Clock, Calendar, Users, House, type LucideIcon } from 'lucide-react'
 import Screen from '@/components/Screen'
 import { getService } from '@/data/services'
 import {
@@ -71,20 +72,20 @@ export default function CommuteOrder() {
         <div className="flex items-center justify-between">
           <p className="font-bold">{service?.name ?? order.service_id}</p>
           <span
-            className={`chip ${order.status === 'dispatched' ? 'bg-green-soft text-green' : 'bg-gold-soft text-gold-deep'}`}
+            className={`chip ${order.status === 'dispatched' ? 'bg-royal-soft text-royal' : 'bg-gold-soft text-gold-deep'}`}
           >
             {order.status === 'dispatched' ? 'أُرسل للسائق' : 'قيد التجميع'}
           </span>
         </div>
-        <Row icon="🏢" text={order.dest_address ?? 'مكان العمل'} />
+        <Row icon={Building2} text={order.dest_address ?? 'مكان العمل'} />
         <Row
-          icon="⏰"
+          icon={Clock}
           text={`الذهاب ${order.scheduled_time}${
             order.round_trip && order.return_time ? ` · الإياب ${order.return_time}` : ''
           }`}
         />
-        <Row icon="📅" text={order.days.join(' · ')} />
-        <Row icon="👥" text={`الركّاب ${members.length} / ${service?.seats ?? 4}`} />
+        <Row icon={Calendar} text={order.days.join(' · ')} />
+        <Row icon={Users} text={`الركّاب ${members.length} / ${service?.seats ?? 4}`} />
       </div>
 
       {/* رابط الدعوة */}
@@ -112,14 +113,14 @@ export default function CommuteOrder() {
         <div className="divide-y divide-hairline">
           {members.map((m) => (
             <div key={m.id} className="flex items-center gap-3 py-2.5">
-              <span className="grid h-9 w-9 place-items-center rounded-full bg-green-soft text-sm">
-                🏠
+              <span className="grid h-9 w-9 place-items-center rounded-full bg-royal-soft text-royal">
+                <House className="h-4 w-4" strokeWidth={1.8} />
               </span>
               <div className="flex-1">
                 <p className="font-medium">
                   {m.name}
                   {m.is_organizer && (
-                    <span className="chip mr-2 bg-green-soft text-green">المنظّم</span>
+                    <span className="chip mr-2 bg-royal-soft text-royal">المنظّم</span>
                   )}
                 </p>
                 <p className="text-xs text-ink-muted">{m.home_address ?? 'منزل'}</p>
@@ -135,7 +136,7 @@ export default function CommuteOrder() {
           {busy ? '…' : `أرسل الطلب المجمّع للسائق (${members.length} ركّاب)`}
         </button>
       ) : (
-        <p className="mt-4 rounded-2xl bg-green-soft p-4 text-center text-sm text-green">
+        <p className="mt-4 rounded-2xl bg-royal-soft p-4 text-center text-sm text-royal">
           تم إرسال الطلب المجمّع للسائق — سيتواصل معكم قبل الموعد.
         </p>
       )}
@@ -143,10 +144,10 @@ export default function CommuteOrder() {
   )
 }
 
-function Row({ icon, text }: { icon: string; text: string }) {
+function Row({ icon: Icon, text }: { icon: LucideIcon; text: string }) {
   return (
     <div className="flex items-center gap-2 text-sm">
-      <span>{icon}</span>
+      <Icon className="h-4 w-4 shrink-0 text-sand-ink" strokeWidth={1.8} />
       <span className="text-ink-soft">{text}</span>
     </div>
   )

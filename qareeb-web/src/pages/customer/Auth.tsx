@@ -81,7 +81,7 @@ export default function Auth() {
     >
       <div className="mb-8 flex flex-col items-center text-center">
         <Logo size={72} rounded={20} />
-        <h1 className="mt-4 text-2xl font-extrabold text-green">قريب</h1>
+        <h1 className="mt-4 text-2xl font-extrabold text-royal">قريب</h1>
         <p className="text-sm text-ink-soft">سجّل دخولك للمتابعة</p>
       </div>
 
@@ -126,7 +126,7 @@ export default function Auth() {
               onChange={(e) => setRemember(e.target.checked)}
               className="h-4 w-4 accent-green"
             />
-            <Fingerprint className="h-4 w-4 text-green" strokeWidth={1.8} />
+            <Fingerprint className="h-4 w-4 text-royal" strokeWidth={1.8} />
             تفعيل الدخول بالبصمة/الوجه لاحقاً
           </label>
         )}
@@ -141,7 +141,7 @@ export default function Auth() {
         <button
           onClick={loginByBiometric}
           disabled={busy}
-          className="btn-outline mt-3 flex w-full items-center justify-center gap-2 text-green"
+          className="btn-outline mt-3 flex w-full items-center justify-center gap-2 text-royal"
         >
           <Fingerprint className="h-5 w-5" strokeWidth={1.8} />
           الدخول بالبصمة
