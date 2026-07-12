@@ -1,5 +1,6 @@
-import { useState } from 'react'
+import { useState, type ReactNode } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { User, Star, LifeBuoy } from 'lucide-react'
 import { useQuery } from '@tanstack/react-query'
 import DriverNav from '@/components/DriverNav'
 import NotificationToggle from '@/components/NotificationToggle'
@@ -40,15 +41,15 @@ export default function DriverProfile() {
   }
 
   return (
-    <div className="screen">
-      <header className="border-b-2 border-lemon px-4 py-4">
+    <div className="screen font-plex bg-ivory">
+      <header className="border-b border-hairline px-4 py-4">
         <h1 className="text-lg font-bold">حسابي</h1>
       </header>
 
       <main className="flex-1 px-4 pb-24">
         <div className="card flex items-center gap-4 p-4">
-          <div className="grid h-14 w-14 place-items-center rounded-full bg-lemon/30 text-2xl">
-            🧑🏽‍✈️
+          <div className="grid h-14 w-14 place-items-center rounded-full bg-sand/25">
+            <User className="h-7 w-7 text-royal" strokeWidth={2} />
           </div>
           <div>
             <p className="font-bold">{profile?.full_name ?? 'سائق قريب'}</p>
@@ -65,9 +66,12 @@ export default function DriverProfile() {
             <Row
               label="التقييم"
               value={
-                driver.rating != null
-                  ? `⭐ ${driver.rating} · ${profile?.ratings_count ?? 0} تقييم`
-                  : '⭐ —'
+                <span className="inline-flex items-center gap-1">
+                  <Star className="h-4 w-4 text-sand" fill="currentColor" strokeWidth={2} />
+                  {driver.rating != null
+                    ? `${driver.rating} · ${profile?.ratings_count ?? 0} تقييم`
+                    : '—'}
+                </span>
               }
             />
           </div>
@@ -76,7 +80,7 @@ export default function DriverProfile() {
         {/* جهات الطوارئ (مثل العميل) */}
         <div className="card mt-4 p-4">
           <div className="mb-1 flex items-center gap-2">
-            <span className="text-xl">🆘</span>
+            <LifeBuoy className="h-5 w-5 text-danger" strokeWidth={2} />
             <p className="font-bold">جهات الطوارئ</p>
           </div>
           <p className="mb-3 text-xs text-ink-muted">
@@ -116,7 +120,7 @@ export default function DriverProfile() {
   )
 }
 
-function Row({ label, value }: { label: string; value: string }) {
+function Row({ label, value }: { label: string; value: ReactNode }) {
   return (
     <div className="flex items-center justify-between px-4 py-3.5">
       <span className="text-sm text-ink-soft">{label}</span>

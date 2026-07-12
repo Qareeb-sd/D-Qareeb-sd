@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { Navigate, useNavigate } from 'react-router-dom'
+import { CheckCircle2, Clock, AlertTriangle, Camera, FileText } from 'lucide-react'
 import Screen from '@/components/Screen'
 import VehicleImage from '@/components/VehicleImage'
 import { useAuth } from '@/store/AuthContext'
@@ -142,7 +143,7 @@ export default function DriverRegister() {
     return (
       <Screen title="الانضمام كسائق">
         <div className="flex justify-center py-24">
-          <div className="h-10 w-10 animate-spin rounded-full border-4 border-green-soft border-t-green" />
+          <div className="h-10 w-10 animate-spin rounded-full border-4 border-royal-soft border-t-royal" />
         </div>
       </Screen>
     )
@@ -153,7 +154,7 @@ export default function DriverRegister() {
     return (
       <Screen title="الانضمام كسائق">
         <div className="flex flex-col items-center gap-4 py-16 text-center">
-          <div className="text-5xl">✅</div>
+          <CheckCircle2 className="h-14 w-14 text-royal" strokeWidth={2} />
           <p className="font-bold">تم اعتماد طلبك — أهلاً بك سائقاً في قريب!</p>
           <button
             className="btn-driver"
@@ -174,7 +175,7 @@ export default function DriverRegister() {
     return (
       <Screen title="الانضمام كسائق" back>
         <div className="flex flex-col items-center gap-4 py-16 text-center">
-          <div className="text-5xl">🕗</div>
+          <Clock className="h-14 w-14 text-sand-ink" strokeWidth={2} />
           <p className="font-bold">طلبك قيد المراجعة</p>
           <p className="max-w-xs text-sm text-ink-soft">
             استلمنا بياناتك ووثائقك، وسيراجعها فريق قريب. سنبلّغك عند الاعتماد.
@@ -189,7 +190,7 @@ export default function DriverRegister() {
     return (
       <Screen title="الانضمام كسائق" back>
         <div className="rounded-2xl bg-danger/10 p-5 text-center text-sm">
-          <div className="text-4xl">⚠️</div>
+          <AlertTriangle className="mx-auto h-10 w-10 text-danger" strokeWidth={2} />
           <p className="mt-2 font-bold text-danger">تم رفض طلبك السابق.</p>
           {app.review_note && <p className="mt-1 text-ink-soft">السبب: {app.review_note}</p>}
           <button className="btn-driver mt-4" onClick={() => setShowForm(true)}>
@@ -239,7 +240,7 @@ export default function DriverRegister() {
                     onClick={() => setVehicleType(s.id)}
                     className={`flex items-center gap-2 rounded-2xl border p-2.5 text-right transition ${
                       vehicleType === s.id
-                        ? 'border-lemon bg-lemon/20 font-bold text-green-dark'
+                        ? 'border-sand bg-sand/25 font-bold text-royal'
                         : 'border-hairline bg-white text-ink-soft'
                     }`}
                   >
@@ -310,10 +311,14 @@ function FileField({
   const inputRef = useRef<HTMLInputElement>(null)
   return (
     <div className="flex items-center gap-3 rounded-2xl border border-hairline bg-white p-3">
-      <span className="text-xl">{photo ? '📷' : '📄'}</span>
+      {photo ? (
+        <Camera className="h-5 w-5 shrink-0 text-ink-soft" strokeWidth={2} />
+      ) : (
+        <FileText className="h-5 w-5 shrink-0 text-ink-soft" strokeWidth={2} />
+      )}
       <div className="min-w-0 flex-1">
         <p className="truncate text-sm font-medium">{label}</p>
-        {file && <p className="truncate text-xs text-green-dark">{file.name}</p>}
+        {file && <p className="truncate text-xs text-royal">{file.name}</p>}
       </div>
       <input
         ref={inputRef}
@@ -327,7 +332,7 @@ function FileField({
         type="button"
         onClick={() => inputRef.current?.click()}
         className={`shrink-0 rounded-xl px-3 py-1.5 text-sm font-bold ${
-          file ? 'bg-lemon/25 text-green-dark' : 'bg-hairline text-ink-soft'
+          file ? 'bg-sand/25 text-royal' : 'bg-hairline text-ink-soft'
         }`}
       >
         {file ? 'تغيير' : 'إرفاق'}

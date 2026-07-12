@@ -53,12 +53,12 @@
   .btn-outline {
     @apply btn border border-hairline bg-white text-ink hover:bg-green-mint;
   }
-  /* هوية السائق (الليموني) — زر وإشارة مميّزان عن العميل (الأخضر) */
+  /* هوية الكابتن — «الواحة الملكية»: زمردي عميق مع لمسة ذهبية */
   .btn-driver {
-    @apply btn bg-lemon text-green-dark shadow-card hover:brightness-95;
+    @apply btn bg-royal text-white shadow-card ring-1 ring-sand/40 hover:brightness-110;
   }
   .chip-driver {
-    @apply chip bg-lemon/25 text-green-dark;
+    @apply chip bg-sand/20 text-sand-ink;
   }
 
   .card {

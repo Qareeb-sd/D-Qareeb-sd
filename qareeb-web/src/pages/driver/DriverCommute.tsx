@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
+import { Bus, Building2, Clock, CalendarDays } from 'lucide-react'
 import Logo from '@/components/Logo'
 import DriverNav from '@/components/DriverNav'
 import { useAuth } from '@/store/AuthContext'
@@ -55,8 +56,8 @@ export default function DriverCommute() {
   const empty = available.length === 0 && mine.length === 0
 
   return (
-    <div className="screen">
-      <header className="flex items-center gap-3 border-b-2 border-lemon px-4 py-4">
+    <div className="screen font-plex bg-ivory">
+      <header className="flex items-center gap-3 border-b border-hairline px-4 py-4">
         <Logo variant="driver" size={36} rounded={10} />
         <h1 className="text-lg font-bold">طلبات الترحيل</h1>
       </header>
@@ -66,7 +67,7 @@ export default function DriverCommute() {
           <div className="card h-28 animate-pulse" />
         ) : empty ? (
           <div className="flex flex-col items-center gap-2 py-24 text-center text-ink-soft">
-            <div className="text-4xl">🚐</div>
+            <Bus className="h-10 w-10 text-ink-soft" strokeWidth={2} />
             <p className="font-bold">لا توجد طلبات ترحيل حالياً</p>
           </div>
         ) : (
@@ -122,23 +123,28 @@ function CommuteCard({
       <div className="flex items-center justify-between">
         <p className="font-bold">{service?.name ?? o.service_id}</p>
         {accepted ? (
-          <span className="chip bg-lemon/30 text-green-dark">مقبولة</span>
+          <span className="chip bg-sand/25 text-royal">مقبولة</span>
         ) : (
           <span className="chip-driver">{members.length} ركّاب</span>
         )}
       </div>
-      <p className="mt-1 text-sm text-ink-soft">
-        🏢 {o.dest_address ?? 'مكان العمل'} · ⏰ {o.scheduled_time}
+      <p className="mt-1 flex flex-wrap items-center gap-1.5 text-sm text-ink-soft">
+        <Building2 className="h-4 w-4 shrink-0 text-ink-soft" strokeWidth={2} />
+        {o.dest_address ?? 'مكان العمل'} ·{' '}
+        <Clock className="h-4 w-4 shrink-0 text-ink-soft" strokeWidth={2} /> {o.scheduled_time}
         {o.round_trip ? ' · ذهاب وإياب' : ''}
       </p>
-      <p className="text-xs text-ink-muted">📅 {o.days.join(' · ')}</p>
+      <p className="flex items-center gap-1.5 text-xs text-ink-muted">
+        <CalendarDays className="h-3.5 w-3.5 shrink-0 text-ink-muted" strokeWidth={2} />
+        {o.days.join(' · ')}
+      </p>
 
-      <div className="mt-3 rounded-2xl bg-green-mint p-3">
+      <div className="mt-3 rounded-2xl bg-royal-soft p-3">
         <p className="mb-1 text-xs font-bold text-ink-soft">نقاط الالتقاط</p>
         <ol className="space-y-1">
           {members.map((m, i) => (
             <li key={m.id} className="flex items-center gap-2 text-sm">
-              <span className="grid h-5 w-5 place-items-center rounded-full bg-green text-[10px] text-white">
+              <span className="grid h-5 w-5 place-items-center rounded-full bg-royal text-[10px] text-white">
                 {i + 1}
               </span>
               <span className="flex-1">{m.name}</span>

@@ -89,7 +89,7 @@ export default function DriverTrip() {
     return (
       <Screen title="الرحلة الجارية">
         <div className="flex justify-center py-24">
-          <div className="h-10 w-10 animate-spin rounded-full border-4 border-green-soft border-t-green" />
+          <div className="h-10 w-10 animate-spin rounded-full border-4 border-royal-soft border-t-royal" />
         </div>
       </Screen>
     )
@@ -234,7 +234,7 @@ function Row({
       <span className="text-sm text-ink-soft">{label}</span>
       <span
         className={
-          strong ? 'font-extrabold text-green' : danger ? 'font-medium text-danger' : 'font-medium'
+          strong ? 'font-extrabold text-sand-ink' : danger ? 'font-medium text-danger' : 'font-medium'
         }
       >
         {value}

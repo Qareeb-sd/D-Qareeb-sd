@@ -17,6 +17,7 @@ const driverGuard = (el: React.ReactNode) => <DriverRoute>{el}</DriverRoute>
 /** مسارات تطبيق «قريب كابتن» (السائق) — مستقلّ عن تطبيق العميل. */
 export default function DriverRoutes() {
   return (
+    <div className="font-plex">
     <Routes>
       {/* جذر التطبيق = صفحة ترحيب السائق (خريطة السودان) */}
       <Route path="/" element={<DriverOnboarding />} />
@@ -36,5 +37,6 @@ export default function DriverRoutes() {
 
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
+    </div>
   )
 }

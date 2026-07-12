@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useNavigate, useLocation, Navigate } from 'react-router-dom'
 import Screen from '@/components/Screen'
+import { CheckCircle2, Flag } from 'lucide-react'
 import { StarIcon } from '@/components/Icons'
 import { submitReview } from '@/lib/api'
 
@@ -28,7 +29,7 @@ export default function DriverRate() {
   return (
     <Screen title="تقييم العميل">
       <div className="flex flex-col items-center gap-2 py-6 text-center">
-        <div className="text-5xl">✅</div>
+        <CheckCircle2 className="h-14 w-14 text-royal" strokeWidth={2} />
         <p className="text-lg font-bold">تمّت الرحلة</p>
         <p className="text-sm text-ink-soft">كيف كان تعاملك مع العميل؟</p>
       </div>
@@ -39,8 +40,8 @@ export default function DriverRate() {
             <StarIcon
               width={38}
               height={38}
-              className={n <= stars ? 'text-gold' : 'text-hairline'}
-              fill={n <= stars ? '#C9A138' : 'none'}
+              className={n <= stars ? 'text-sand' : 'text-hairline'}
+              fill={n <= stars ? '#C4A265' : 'none'}
             />
           </button>
         ))}
@@ -61,9 +62,10 @@ export default function DriverRate() {
         ) : (
           <button
             onClick={() => setShowComplaint(true)}
-            className="w-full text-center text-sm font-medium text-danger"
+            className="inline-flex w-full items-center justify-center gap-1.5 text-center text-sm font-medium text-danger"
           >
-            🚩 هل لديك شكوى عن العميل؟
+            <Flag className="h-4 w-4 shrink-0" strokeWidth={2} />
+            هل لديك شكوى عن العميل؟
           </button>
         )}
       </div>

@@ -33,12 +33,12 @@ export default function DriverLogin() {
 
   return (
     <div
-      className="screen bg-[#125531] px-6 py-10 text-white"
+      className="screen bg-royal px-6 py-10 font-plex text-white"
       style={{ paddingBottom: 'calc(2.5rem + env(safe-area-inset-bottom))' }}
     >
       <div className="mb-8 flex flex-col items-center text-center">
         <Logo variant="driver" size={76} rounded={22} />
-        <h1 className="mt-4 text-2xl font-extrabold text-lemon">قريب · السائق</h1>
+        <h1 className="mt-4 text-2xl font-extrabold text-sand">قريب · الكابتن</h1>
         <p className="text-sm text-white/70">سجّل دخولك لاستقبال الطلبات وإدارة رحلاتك</p>
       </div>
 
@@ -52,7 +52,7 @@ export default function DriverLogin() {
         <div>
           <label className="mb-1 block text-sm text-white/80">الاسم (لأول دخول)</label>
           <input
-            className="w-full rounded-2xl border border-white/20 bg-white/10 px-4 py-3 text-white placeholder-white/40 outline-none focus:border-lemon"
+            className="w-full rounded-2xl border border-white/20 bg-white/10 px-4 py-3 text-white placeholder-white/40 outline-none focus:border-sand"
             value={name}
             onChange={(e) => setName(e.target.value)}
             placeholder="اسمك"
@@ -61,7 +61,7 @@ export default function DriverLogin() {
         <div>
           <label className="mb-1 block text-sm text-white/80">رقم الهاتف</label>
           <input
-            className="w-full rounded-2xl border border-white/20 bg-white/10 px-4 py-3 text-left text-white placeholder-white/40 outline-none focus:border-lemon"
+            className="w-full rounded-2xl border border-white/20 bg-white/10 px-4 py-3 text-left text-white placeholder-white/40 outline-none focus:border-sand"
             dir="ltr"
             inputMode="tel"
             value={phone}
@@ -73,7 +73,7 @@ export default function DriverLogin() {
         <div>
           <label className="mb-1 block text-sm text-white/80">كلمة السر</label>
           <input
-            className="w-full rounded-2xl border border-white/20 bg-white/10 px-4 py-3 text-left text-white placeholder-white/40 outline-none focus:border-lemon"
+            className="w-full rounded-2xl border border-white/20 bg-white/10 px-4 py-3 text-left text-white placeholder-white/40 outline-none focus:border-sand"
             dir="ltr"
             type="password"
             value={password}
@@ -83,7 +83,7 @@ export default function DriverLogin() {
           />
         </div>
         <button
-          className="w-full rounded-2xl bg-lemon py-3 font-extrabold text-[#125531] transition active:scale-[0.99] disabled:opacity-60"
+          className="w-full rounded-2xl bg-sand py-3 font-extrabold text-royal transition active:scale-[0.99] disabled:opacity-60"
           type="submit"
           disabled={busy}
         >

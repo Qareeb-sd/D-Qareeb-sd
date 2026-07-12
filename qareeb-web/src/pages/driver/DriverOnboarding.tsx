@@ -24,14 +24,14 @@ export default function DriverOnboarding() {
   const [activeDot, setActiveDot] = useState(0)
 
   return (
-    <div className="screen justify-between px-6 py-8">
+    <div className="screen justify-between bg-ivory px-6 py-8 font-plex">
       <div className="flex flex-1 flex-col items-center text-center">
         <Logo variant="driver" size={80} rounded={22} />
-        <h1 className="mt-4 text-3xl font-extrabold text-green-dark">قريب كابتن</h1>
-        <p className="mt-1 text-ink-soft">كن كابتن في كل السودان</p>
+        <h1 className="mt-4 text-3xl font-extrabold text-royal">قريب كابتن</h1>
+        <p className="mt-1 text-sand-ink">كن كابتن في كل السودان</p>
 
         {/* خريطة السودان مع خطوط التوصيل — نفس خريطة العميل */}
-        <div className="mx-auto mt-5 w-full max-w-[210px] rounded-3xl bg-lemon/15 p-3">
+        <div className="mx-auto mt-5 w-full max-w-[210px] rounded-3xl bg-royal-soft p-3">
           <SudanMap className="h-auto w-full" />
         </div>
 
@@ -40,14 +40,14 @@ export default function DriverOnboarding() {
           {points.map((p, i) => (
             <li
               key={p.title}
-              className="card flex items-start gap-3 p-4 transition-opacity"
+              className="flex items-start gap-3 rounded-2xl bg-white p-4 shadow-card transition-opacity"
               style={{ opacity: activeDot === i ? 1 : 0.7 }}
               onMouseEnter={() => setActiveDot(i)}
             >
-              <span className="mt-1.5 h-2.5 w-2.5 shrink-0 rounded-full bg-lemon" />
+              <span className="mt-1.5 h-2.5 w-2.5 shrink-0 rounded-full bg-sand" />
               <div>
-                <p className="font-bold text-sm">{p.title}</p>
-                <p className="text-xs text-ink-soft mt-0.5">{p.text}</p>
+                <p className="text-sm font-bold text-royal">{p.title}</p>
+                <p className="mt-0.5 text-xs text-ink-soft">{p.text}</p>
               </div>
             </li>
           ))}
@@ -61,7 +61,7 @@ export default function DriverOnboarding() {
               onClick={() => setActiveDot(i)}
               className={`rounded-full transition-all duration-300 ${
                 activeDot === i
-                  ? 'h-2.5 w-6 bg-lemon'
+                  ? 'h-2.5 w-6 bg-sand'
                   : 'h-2.5 w-2.5 bg-hairline hover:bg-ink-muted'
               }`}
               aria-label={`نقطة ${i + 1}`}

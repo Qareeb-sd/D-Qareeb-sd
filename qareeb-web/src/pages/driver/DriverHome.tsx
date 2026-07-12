@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { Bell, BellOff, LifeBuoy, Eye, Star, ChevronLeft } from 'lucide-react'
 import Logo from '@/components/Logo'
 import DriverNav from '@/components/DriverNav'
 import VehicleImage from '@/components/VehicleImage'
@@ -96,12 +97,15 @@ export default function DriverHome() {
   }
 
   return (
-    <div className="screen">
-      <header className="flex items-center gap-3 border-b-2 border-lemon px-4 py-4">
+    <div className="screen bg-ivory font-plex">
+      <header className="flex items-center gap-3 border-b border-hairline bg-white px-4 py-4">
         <Logo variant="driver" size={38} rounded={12} />
         <div className="flex-1">
-          <p className="font-extrabold text-green-dark">قريب · السائق</p>
-          <p className="text-xs text-ink-muted">⭐ {driver?.rating ?? '—'}</p>
+          <p className="font-extrabold text-royal">قريب · الكابتن</p>
+          <p className="flex items-center gap-1 text-xs text-ink-muted">
+            <Star className="h-3.5 w-3.5 text-sand" strokeWidth={2} fill="currentColor" />
+            {driver?.rating ?? '—'}
+          </p>
         </div>
         {/* زر تفعيل تنبيهات الطلبات (صوت + إشعار) */}
         {notificationsSupported && (
@@ -109,11 +113,15 @@ export default function DriverHome() {
             onClick={toggleNotif}
             aria-label={notifOn ? 'التنبيهات مفعّلة' : 'تفعيل التنبيهات'}
             title={notifOn ? 'تنبيهات الطلبات مفعّلة' : 'فعّل تنبيهات الطلبات'}
-            className={`grid h-9 w-9 place-items-center rounded-full text-lg transition ${
-              notifOn ? 'bg-green-soft text-green' : 'bg-hairline text-ink-soft'
+            className={`grid h-9 w-9 place-items-center rounded-full transition ${
+              notifOn ? 'bg-royal-soft text-royal' : 'bg-hairline text-ink-soft'
             }`}
           >
-            {notifOn ? '🔔' : '🔕'}
+            {notifOn ? (
+              <Bell className="h-[18px] w-[18px]" strokeWidth={2} />
+            ) : (
+              <BellOff className="h-[18px] w-[18px]" strokeWidth={2} />
+            )}
           </button>
         )}
         {/* مفتاح التوفّر */}
@@ -122,10 +130,10 @@ export default function DriverHome() {
           role="switch"
           aria-checked={online}
           className={`flex items-center gap-2 rounded-full px-3 py-1.5 text-sm font-bold transition ${
-            online ? 'bg-lemon text-green-dark' : 'bg-hairline text-ink-soft'
+            online ? 'bg-royal text-white' : 'bg-hairline text-ink-soft'
           }`}
         >
-          <span className={`h-2 w-2 rounded-full ${online ? 'bg-green-dark' : 'bg-ink-muted'}`} />
+          <span className={`h-2 w-2 rounded-full ${online ? 'bg-sand' : 'bg-ink-muted'}`} />
           {online ? 'متصل' : 'غير متصل'}
         </button>
       </header>
@@ -134,52 +142,56 @@ export default function DriverHome() {
         {/* السائق يطلب مشواراً لنفسه أو مساعدة عند التعطّل */}
         <button
           onClick={() => navigate('/home')}
-          className="card mb-4 flex w-full items-center gap-3 border border-green/25 bg-green-soft p-3.5 text-right"
+          className="mb-4 flex w-full items-center gap-3 rounded-2xl border border-royal/15 bg-royal-soft p-3.5 text-right shadow-card"
         >
-          <span className="text-2xl">🆘</span>
+          <span className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-royal text-white">
+            <LifeBuoy className="h-5 w-5" strokeWidth={2} />
+          </span>
           <div className="flex-1">
-            <p className="font-bold text-green">اطلب مشوار أو مساعدة</p>
+            <p className="font-bold text-royal">اطلب مشوار أو مساعدة</p>
             <p className="text-xs text-ink-soft">تعطّلت سيارتك؟ اطلب سائقاً أو سحّابة كأي راكب.</p>
           </div>
-          <span className="text-ink-muted">‹</span>
+          <ChevronLeft className="h-5 w-5 text-ink-muted" />
         </button>
 
         <button
           onClick={() => navigate('/track')}
-          className="mb-4 flex w-full items-center gap-2 rounded-2xl border border-hairline px-4 py-3 text-sm font-medium text-ink-soft"
+          className="mb-4 flex w-full items-center gap-2 rounded-2xl border border-hairline bg-white px-4 py-3 text-sm font-medium text-ink-soft"
         >
-          <span>👁️</span>
+          <Eye className="h-[18px] w-[18px] text-sand-ink" strokeWidth={2} />
           <span className="flex-1 text-right">تتبّع رحلة (بالرمز)</span>
-          <span className="text-ink-muted">‹</span>
+          <ChevronLeft className="h-5 w-5 text-ink-muted" />
         </button>
 
         {!online ? (
           <div className="flex flex-col items-center gap-3 py-24 text-center text-ink-soft">
-            <div className="text-5xl">🚗💤</div>
-            <p className="font-bold">أنت غير متصل</p>
+            <span className="grid h-16 w-16 place-items-center rounded-full bg-royal-soft text-royal">
+              <BellOff className="h-8 w-8" strokeWidth={1.6} />
+            </span>
+            <p className="font-bold text-royal">أنت غير متصل</p>
             <p className="text-sm">فعّل الاتصال لاستقبال الطلبات القريبة.</p>
           </div>
         ) : rides.length === 0 ? (
           <div className="flex flex-col items-center gap-3 py-24 text-center text-ink-soft">
-            <div className="h-10 w-10 animate-spin rounded-full border-4 border-green-soft border-t-green" />
-            <p className="font-bold">بانتظار الطلبات…</p>
+            <div className="h-10 w-10 animate-spin rounded-full border-4 border-royal-soft border-t-royal" />
+            <p className="font-bold text-royal">بانتظار الطلبات…</p>
           </div>
         ) : (
           <div className="space-y-3">
-            <h2 className="font-bold">طلبات واردة</h2>
+            <h2 className="font-bold text-royal">طلبات واردة</h2>
             {rides.map((r) => {
               const service = getService(r.service_id)
               return (
-                <div key={r.id} className="card p-4">
+                <div key={r.id} className="rounded-2xl bg-white p-4 shadow-card">
                   <div className="flex items-center gap-3">
                     {service && <VehicleImage service={service} className="h-12 w-16" />}
                     <div className="flex-1">
-                      <p className="font-bold">{service?.name ?? r.service_id}</p>
+                      <p className="font-bold text-royal">{service?.name ?? r.service_id}</p>
                       <p className="text-sm text-ink-soft">
                         {r.pickup_address} ← {r.dropoff_address}
                       </p>
                     </div>
-                    <p className="font-extrabold text-green-dark">{money(r.fare ?? 0)}</p>
+                    <p className="font-extrabold text-sand-ink">{money(r.fare ?? 0)}</p>
                   </div>
                   <button
                     onClick={() => accept(r)}

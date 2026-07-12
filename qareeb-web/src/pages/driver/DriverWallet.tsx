@@ -29,15 +29,15 @@ export default function DriverWallet() {
     .reduce((s, t) => s + Math.abs(t.amount), 0)
 
   return (
-    <div className="screen">
-      <header className="flex items-center gap-3 border-b-2 border-lemon px-4 py-4">
+    <div className="screen font-plex bg-ivory">
+      <header className="flex items-center gap-3 border-b border-hairline px-4 py-4">
         <Logo variant="driver" size={36} rounded={10} />
         <h1 className="text-lg font-bold">محفظتي</h1>
       </header>
 
       <main className="flex-1 px-4 pb-24">
-        <div className="rounded-3xl bg-gradient-to-br from-lemon to-gold p-6 text-green-dark shadow-lift">
-          <p className="text-sm text-green-dark/70">رصيدك الحالي</p>
+        <div className="rounded-3xl bg-gradient-to-br from-sand to-sand-ink p-6 text-royal shadow-lift">
+          <p className="text-sm text-royal/70">رصيدك الحالي</p>
           <p className="mt-1 text-3xl font-extrabold">
             {loading ? '…' : money(wallet?.balance ?? 0)}
           </p>
@@ -45,7 +45,7 @@ export default function DriverWallet() {
 
         <div className="mt-4 grid grid-cols-2 gap-3">
           <div className="card p-4 text-center">
-            <p className="text-lg font-extrabold text-green-dark">{money(earnings)}</p>
+            <p className="text-lg font-extrabold text-sand-ink">{money(earnings)}</p>
             <p className="text-xs text-ink-muted">إجمالي الأرباح</p>
           </div>
           <div className="card p-4 text-center">
