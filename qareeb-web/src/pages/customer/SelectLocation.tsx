@@ -1,8 +1,21 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import Screen from '@/components/Screen'
+import {
+  ChevronRight,
+  ArrowUpDown,
+  ArrowLeft,
+  Crosshair,
+  MapPin as MapPinIcon,
+  Navigation,
+  Keyboard,
+  Map as MapIcon,
+  House,
+  Briefcase,
+  Star,
+  Route as RouteIcon,
+  Clock4,
+} from 'lucide-react'
 import MapView from '@/components/MapView'
-import MapPin from '@/components/MapPin'
 import PlaceSearch from '@/components/PlaceSearch'
 import { useRide } from '@/store/RideContext'
 import { useAuth } from '@/store/AuthContext'
@@ -16,7 +29,8 @@ import { KHARTOUM } from '@/theme'
 import type { Settings, ServicePricing } from '@/lib/types'
 
 type Field = 'pickup' | 'dropoff'
-type PickupMode = 'current' | 'other'
+/** طرق تحديد نقطة الانطلاق: تلقائي (GPS) · كتابة عنوان · تحديد من الخريطة. */
+type PickupMode = 'current' | 'type' | 'map'
 interface Quote {
   distanceKm: number
   durationMin: number
@@ -29,13 +43,17 @@ interface SavedPlace {
   address: string
 }
 
-const CHIPS: { key: string; label: string; icon: string }[] = [
-  { key: 'favorite', label: 'المفضلة', icon: '⭐' },
-  { key: 'work', label: 'العمل', icon: '💼' },
-  { key: 'home', label: 'المنزل', icon: '🏠' },
+const SAVED = [
+  { key: 'home', label: 'المنزل', icon: House },
+  { key: 'work', label: 'العمل', icon: Briefcase },
+  { key: 'favorite', label: 'المفضلة', icon: Star },
 ]
 
-/** تحديد الرحلة: نقطة الانطلاق + الوجهة على الخريطة + الأماكن المحفوظة + الأجرة. */
+/**
+ * تحديد الرحلة — أسلوب «الواحة الملكية»: خريطة + دبوس مركزي + بطاقة سفلية بمسار
+ * عمودي منقّط (انطلاق ← وجهة). نقطة الانطلاق قابلة للتعديل بثلاث طرق، والوجهة
+ * بالبحث أو الخريطة. صفّ المسافة/المدة/السعر يظهر فقط بعد اكتمال الطرفين.
+ */
 export default function SelectLocation() {
   const navigate = useNavigate()
   const { profile } = useAuth()
@@ -65,7 +83,6 @@ export default function SelectLocation() {
 
   const { isLoaded } = useMaps()
 
-  // الأماكن المحفوظة (منزل/عمل/مفضلة) — محلياً على الجهاز.
   const placesKey = `qareeb_places_${profile?.id ?? 'guest'}`
   const [places, setPlaces] = useState<Record<string, SavedPlace>>(() => {
     try {
@@ -107,11 +124,18 @@ export default function SelectLocation() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  const changePickup = () => {
-    setPickupMode('other')
-    setPickupAddr('')
-    setPickupSet(false)
+  // اختيار طريقة تحديد الانطلاق.
+  const setPickupBy = (mode: PickupMode) => {
+    setPickupMode(mode)
+    if (mode === 'current') {
+      useMyLocation()
+      return
+    }
     setActive('pickup')
+    if (mode === 'type') {
+      setPickupAddr('')
+      setPickupSet(false)
+    }
   }
 
   const swap = () => {
@@ -121,10 +145,10 @@ export default function SelectLocation() {
     setDropoffAddr(pickupAddr)
     setPickupSet(dropoffSet)
     setDropoffSet(pickupSet)
-    setPickupMode('other')
+    setPickupMode('type')
   }
 
-  const useChip = (key: string, label: string) => {
+  const useSaved = (key: string, label: string) => {
     const p = places[key]
     if (p) {
       setDropoffPos({ lat: p.lat, lng: p.lng })
@@ -142,7 +166,7 @@ export default function SelectLocation() {
       try {
         localStorage.setItem(placesKey, JSON.stringify(next))
       } catch {
-        /* تجاهل — الحفظ المحلي غير متاح */
+        /* الحفظ المحلي غير متاح */
       }
     } else {
       alert(`اختر وجهة أولاً ثم اضغط «${label}» لحفظها هنا.`)
@@ -182,15 +206,8 @@ export default function SelectLocation() {
   const activePos = active === 'pickup' ? pickupPos : dropoffPos
   const setActivePos = active === 'pickup' ? setPickupPos : setDropoffPos
 
-  // علامة النقطة غير النشطة (لتظهر النقطتان معاً)، وخط الرحلة عند تحديدهما.
   const otherMarker =
-    active === 'pickup'
-      ? dropoffSet
-        ? dropoffPos
-        : null
-      : pickupSet
-        ? pickupPos
-        : null
+    active === 'pickup' ? (dropoffSet ? dropoffPos : null) : pickupSet ? pickupPos : null
 
   const confirm = async () => {
     setBusy(true)
@@ -199,7 +216,6 @@ export default function SelectLocation() {
     setPickup(pickup)
     setDropoff(dropoff)
     setFare(quote?.fare ?? 0)
-
     const { id } = await createRide({
       customer_id: profile?.id,
       service_id: sid,
@@ -217,221 +233,296 @@ export default function SelectLocation() {
     navigate('/find-driver')
   }
 
-  const pickupLabel =
-    pickupMode === 'current'
-      ? gpsBusy
-        ? 'جارٍ تحديد موقعك…'
-        : 'موقعي الحالي'
-      : pickupAddr.trim() || 'اختر نقطة الانطلاق على الخريطة'
+  const canConfirm = !busy && quote && (destOptional || destChosen)
+  const pinLabel =
+    active === 'pickup' ? 'حرّك الخريطة لتحديد الانطلاق' : 'حرّك الخريطة لتحديد الوجهة'
 
   return (
-    <Screen title="حدد رحلتك" back bare>
-      <div className="flex h-full flex-col">
-        {/* الخريطة تملأ الأعلى */}
-        <div className="relative min-h-[220px] flex-1">
-          <MapView
-            center={activePos}
-            onCenterChanged={setActivePos}
-            onUserDrag={() => {
-              // سحب الخريطة = اختيار بالدبوس؛ نملأ العنوان إن كان فارغاً ليظهر الاختيار.
-              if (active === 'pickup') {
-                setPickupSet(true)
-                if (!pickupAddr.trim()) setPickupAddr('موقع محدّد من الخريطة')
-              } else {
-                setDropoffSet(true)
-                if (!dropoffAddr.trim()) setDropoffAddr('موقع محدّد من الخريطة')
-              }
-            }}
-            markers={otherMarker ? [otherMarker] : undefined}
-            className="absolute inset-0"
-          />
-          <MapPin variant={active === 'pickup' ? 'pickup' : 'dropoff'} />
-          {/* مفتاح تحديد الدبوس: الانطلاق أم الوجهة */}
-          <div className="absolute inset-x-0 top-2 flex justify-center">
-            <div className="flex items-center gap-1 rounded-full bg-white/95 p-1 shadow-lift">
-              <button
-                onClick={() => {
-                  setActive('pickup')
-                  setPickupMode('other')
-                }}
-                className={`rounded-full px-3 py-1.5 text-xs font-bold transition ${
-                  active === 'pickup' ? 'bg-green text-white' : 'text-ink-soft'
-                }`}
-              >
-                🟢 الانطلاق
-              </button>
-              <button
-                onClick={() => setActive('dropoff')}
-                className={`rounded-full px-3 py-1.5 text-xs font-bold transition ${
-                  active === 'dropoff' ? 'bg-danger text-white' : 'text-ink-soft'
-                }`}
-              >
-                📍 الوجهة
-              </button>
-            </div>
-          </div>
-          <div className="pointer-events-none absolute inset-x-0 bottom-8 flex justify-center">
-            <span className="rounded-full bg-black/55 px-3 py-1 text-[11px] font-medium text-white">
-              حرّك الخريطة ليستقرّ الدبوس على {active === 'pickup' ? 'نقطة الانطلاق' : 'الوجهة'}
-            </span>
+    <div className="flex h-full min-h-screen flex-col overflow-hidden bg-ivory font-plex">
+      {/* الخريطة (المنطقة العلوية) */}
+      <div className="relative min-h-[240px] flex-1">
+        <MapView
+          center={activePos}
+          onCenterChanged={setActivePos}
+          onUserDrag={() => {
+            if (active === 'pickup') {
+              setPickupSet(true)
+              setPickupMode('map')
+              if (!pickupAddr.trim()) setPickupAddr('موقع محدّد من الخريطة')
+            } else {
+              setDropoffSet(true)
+              if (!dropoffAddr.trim()) setDropoffAddr('موقع محدّد من الخريطة')
+            }
+          }}
+          markers={otherMarker ? [otherMarker] : undefined}
+          zoom={16}
+          className="absolute inset-0"
+        />
+
+        {/* الدبوس المركزي — زمردي بقلب ذهبي */}
+        <div className="pointer-events-none absolute left-1/2 top-1/2 z-[500] flex -translate-x-1/2 -translate-y-full flex-col items-center">
+          <span className="mb-1.5 whitespace-nowrap rounded-full bg-royal px-3 py-1.5 text-[11px] font-semibold text-white shadow-float">
+            {active === 'pickup' ? pickupAddr || 'نقطة الانطلاق' : dropoffAddr || 'الوجهة'}
+          </span>
+          <svg width="34" height="44" viewBox="0 0 34 44" fill="none">
+            <path
+              d="M17 2C9 2 2.5 8.5 2.5 16.5C2.5 27 17 42 17 42C17 42 31.5 27 31.5 16.5C31.5 8.5 25 2 17 2Z"
+              fill="#0e3b2e"
+              stroke="#c4a265"
+              strokeWidth="1.5"
+            />
+            <circle cx="17" cy="16.5" r="5" fill={active === 'pickup' ? '#fff' : '#c4a265'} />
+          </svg>
+        </div>
+
+        {/* الهيدر الشفاف */}
+        <header
+          className="absolute inset-x-0 top-0 z-[600] flex items-center justify-between px-5"
+          style={{ paddingTop: 'max(env(safe-area-inset-top), 14px)' }}
+        >
+          <button
+            onClick={() => navigate('/home')}
+            className="press-scale grid h-11 w-11 place-items-center rounded-full bg-white text-royal shadow-card"
+            aria-label="رجوع"
+          >
+            <ChevronRight className="h-5 w-5" strokeWidth={2} />
+          </button>
+          <h1 className="rounded-full bg-white/85 px-4 py-2 text-[16px] font-bold text-royal shadow-card backdrop-blur-md">
+            حدّد رحلتك
+          </h1>
+          <button
+            onClick={useMyLocation}
+            className="press-scale grid h-11 w-11 place-items-center rounded-full bg-white text-royal shadow-card"
+            aria-label="موقعي"
+          >
+            <Crosshair className="h-5 w-5" strokeWidth={1.8} />
+          </button>
+        </header>
+
+        {/* مفتاح تحديد الدبوس: انطلاق أم وجهة */}
+        <div className="absolute inset-x-0 top-16 z-[600] flex justify-center">
+          <div className="flex items-center gap-1 rounded-full bg-white/95 p-1 shadow-float">
+            <button
+              onClick={() => {
+                setActive('pickup')
+                setPickupMode('map')
+              }}
+              className={`rounded-full px-3.5 py-1.5 text-[12px] font-bold transition ${
+                active === 'pickup' ? 'bg-royal text-white' : 'text-ink-soft'
+              }`}
+            >
+              الانطلاق
+            </button>
+            <button
+              onClick={() => setActive('dropoff')}
+              className={`rounded-full px-3.5 py-1.5 text-[12px] font-bold transition ${
+                active === 'dropoff' ? 'bg-sand text-white' : 'text-ink-soft'
+              }`}
+            >
+              الوجهة
+            </button>
           </div>
         </div>
 
-        {/* اللوحة السفلية */}
-        <div
-          className="relative z-10 -mt-5 rounded-t-3xl border-t border-hairline bg-white px-4 pt-3 shadow-lift"
-          style={{ paddingBottom: 'calc(1rem + env(safe-area-inset-bottom))' }}
-        >
-          <div className="mx-auto mb-3 h-1.5 w-12 rounded-full bg-hairline" />
+        <div className="pointer-events-none absolute inset-x-0 bottom-4 z-[500] flex justify-center">
+          <span className="rounded-full bg-royal/70 px-3 py-1 text-[11px] font-medium text-white">
+            {pinLabel}
+          </span>
+        </div>
+      </div>
 
-          {/* نقطة الانطلاق */}
-          <div className="mb-1 flex items-center justify-end gap-2">
-            <p className="text-sm font-bold text-ink-soft">نقطة الانطلاق</p>
-            <span className="h-3 w-3 rounded-full bg-green" />
-          </div>
-          <div className="flex items-center gap-2 rounded-2xl border border-hairline px-3 py-2">
-            <button
-              onClick={active === 'pickup' && pickupMode === 'other' ? useMyLocation : changePickup}
-              className="shrink-0 rounded-xl border border-green/50 px-3 py-1.5 text-xs font-bold text-green"
-            >
-              {active === 'pickup' && pickupMode === 'other' ? '📍 موقعي' : 'تغيير'}
-            </button>
-            {active === 'pickup' && pickupMode === 'other' ? (
+      {/* البطاقة السفلية */}
+      <section className="relative z-[600] -mt-6 animate-sheet-up">
+        <div
+          className="rounded-t-[28px] bg-white px-5 pt-3 shadow-soft"
+          style={{ paddingBottom: 'max(env(safe-area-inset-bottom), 18px)' }}
+        >
+          <div className="mx-auto mb-3 h-1 w-10 rounded-full bg-sand/60" />
+
+          {/* بطاقة المسار: انطلاق ← وجهة مع الخط المنقّط */}
+          <div className="relative rounded-2xl border border-hairline/70 bg-ivory/50 p-4">
+            <div className="absolute bottom-[46px] right-[27px] top-[24px] w-px border-r-2 border-dotted border-sand/70" />
+
+            {/* نقطة الانطلاق */}
+            <div className="flex items-center gap-3">
+              <span className="h-[22px] w-[22px] shrink-0 rounded-full border-[6px] border-royal bg-white" />
               <div className="min-w-0 flex-1">
+                <p className="text-[10px] font-medium text-ink-muted">نقطة الانطلاق</p>
+                {pickupMode === 'type' ? (
+                  <PlaceSearch
+                    value={pickupAddr}
+                    onFocus={() => setActive('pickup')}
+                    onChange={(v) => {
+                      setPickupAddr(v)
+                      setPickupSet(v.trim() !== '')
+                    }}
+                    onPick={({ pos, address }) => {
+                      setPickupPos(pos)
+                      setPickupAddr(address)
+                      setPickupSet(true)
+                    }}
+                    placeholder="اكتب نقطة الانطلاق"
+                    className="w-full bg-transparent text-[14px] font-semibold text-royal outline-none placeholder:font-medium placeholder:text-ink-muted/60"
+                  />
+                ) : (
+                  <p className="truncate text-[14px] font-semibold text-royal">
+                    {gpsBusy && pickupMode === 'current' ? 'جارٍ تحديد موقعك…' : pickupAddr || 'موقعك الحالي'}
+                  </p>
+                )}
+              </div>
+            </div>
+
+            {/* طرق تحديد الانطلاق */}
+            <div className="mr-[34px] mt-2 flex gap-1.5">
+              <PickChip on={pickupMode === 'current'} icon={Navigation} label="موقعي" onClick={() => setPickupBy('current')} />
+              <PickChip on={pickupMode === 'type'} icon={Keyboard} label="اكتب" onClick={() => setPickupBy('type')} />
+              <PickChip on={pickupMode === 'map'} icon={MapIcon} label="الخريطة" onClick={() => setPickupBy('map')} />
+            </div>
+
+            {/* فاصل + تبديل */}
+            <div className="my-3 flex items-center gap-3">
+              <span className="w-[22px] shrink-0" />
+              <div className="h-px flex-1 bg-hairline/70" />
+              <button
+                onClick={swap}
+                aria-label="تبديل الانطلاق والوجهة"
+                className="press-scale -my-1 grid h-8 w-8 place-items-center rounded-full border border-hairline bg-white text-royal shadow-card"
+              >
+                <ArrowUpDown className="h-3.5 w-3.5" strokeWidth={2} />
+              </button>
+            </div>
+
+            {/* الوجهة */}
+            <div className="flex items-center gap-3">
+              <MapPinIcon className="h-[22px] w-[22px] shrink-0 text-sand-ink" strokeWidth={2} />
+              <div className="min-w-0 flex-1">
+                <p className="text-[10px] font-medium text-ink-muted">
+                  الوجهة {destOptional && <span className="text-ink-muted/70">(اختياري)</span>}
+                </p>
                 <PlaceSearch
-                  value={pickupAddr}
+                  value={dropoffAddr}
+                  onFocus={() => setActive('dropoff')}
                   onChange={(v) => {
-                    setPickupAddr(v)
-                    setPickupSet(v.trim() !== '')
+                    setDropoffAddr(v)
+                    setDropoffSet(v.trim() !== '')
                   }}
                   onPick={({ pos, address }) => {
-                    setPickupPos(pos)
-                    setPickupAddr(address)
-                    setPickupSet(true)
+                    setDropoffPos(pos)
+                    setDropoffAddr(address)
+                    setDropoffSet(true)
+                    setActive('dropoff')
                   }}
-                  placeholder="اكتب نقطة الانطلاق"
-                  className="w-full bg-transparent py-1.5 text-right font-bold outline-none placeholder:font-normal placeholder:text-ink-muted"
+                  placeholder="إلى أين؟"
+                  className="w-full bg-transparent text-[15px] font-semibold text-royal outline-none placeholder:font-medium placeholder:text-ink-muted/60"
                 />
               </div>
-            ) : (
-              <p className="min-w-0 flex-1 truncate text-right font-bold">{pickupLabel}</p>
-            )}
-            <span className="shrink-0 text-ink-soft">📍</span>
+            </div>
           </div>
 
           {gpsErr && (
-            <button onClick={useMyLocation} className="mt-1 text-xs text-danger">
+            <button onClick={useMyLocation} className="mt-2 text-[12px] text-danger">
               {gpsErr} · إعادة المحاولة
             </button>
           )}
 
-          {/* زر التبديل */}
-          <div className="relative my-2 flex items-center">
-            <span className="h-px flex-1 bg-hairline" />
-            <button
-              onClick={swap}
-              aria-label="تبديل الانطلاق والوجهة"
-              className="mx-2 grid h-9 w-9 place-items-center rounded-full border border-green/30 bg-white text-green shadow-sm"
-            >
-              ⇅
-            </button>
-            <span className="h-px flex-1 bg-hairline" />
-          </div>
-
-          {/* الوجهة */}
-          <div className="mb-1 flex items-center justify-end gap-2">
-            <p className="text-sm font-bold text-ink-soft">
-              الوجهة {destOptional && <span className="text-ink-muted/70">(اختياري)</span>}
-            </p>
-            <span className="text-danger">📍</span>
-          </div>
-          <div className="flex items-center gap-2 rounded-2xl border border-hairline px-3 py-1">
-            <div className="min-w-0 flex-1">
-              <PlaceSearch
-                value={dropoffAddr}
-                onFocus={() => setActive('dropoff')}
-                onChange={(v) => {
-                  setDropoffAddr(v)
-                  setDropoffSet(v.trim() !== '')
-                }}
-                onPick={({ pos, address }) => {
-                  setDropoffPos(pos)
-                  setDropoffAddr(address)
-                  setDropoffSet(true)
-                  setActive('dropoff')
-                }}
-                placeholder="إلى أين؟"
-                className="w-full bg-transparent py-2.5 text-base font-bold outline-none placeholder:font-normal placeholder:text-ink-muted"
-              />
+          {/* الأماكن المحفوظة — قبل اختيار الوجهة */}
+          {!destChosen && (
+            <div className="mt-2 animate-fade-up">
+              {SAVED.map((p, i) => {
+                const Icon = p.icon
+                const saved = places[p.key]
+                return (
+                  <button
+                    key={p.key}
+                    onClick={() => useSaved(p.key, p.label)}
+                    style={{ animationDelay: `${i * 50}ms` }}
+                    className="press-scale animate-fade-up flex w-full items-center gap-3 border-b border-hairline/50 py-3 text-right last:border-0"
+                  >
+                    <span className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-ivory">
+                      <Icon className="h-[18px] w-[18px] text-royal" strokeWidth={1.8} />
+                    </span>
+                    <span className="min-w-0 flex-1">
+                      <span className="block text-[13px] font-semibold text-royal">{p.label}</span>
+                      <span className="block truncate text-[11px] text-ink-muted">
+                        {saved ? saved.address : 'اضغط لحفظ وجهتك الحالية هنا'}
+                      </span>
+                    </span>
+                    <ChevronRight className="h-4 w-4 rotate-180 text-ink-muted/50" />
+                  </button>
+                )
+              })}
             </div>
-            <span className="shrink-0 text-ink-soft">🔎</span>
-          </div>
+          )}
 
-          {/* الأماكن المحفوظة */}
-          <div className="mt-3 grid grid-cols-3 gap-2">
-            {CHIPS.map((c) => {
-              const saved = Boolean(places[c.key])
-              return (
-                <button
-                  key={c.key}
-                  onClick={() => useChip(c.key, c.label)}
-                  className={`rounded-2xl px-2 py-2.5 text-sm font-bold transition ${
-                    saved
-                      ? 'bg-green-soft text-green'
-                      : 'bg-hairline/40 text-ink-soft'
-                  }`}
-                >
-                  {c.icon} {c.label}
-                </button>
-              )
-            })}
-          </div>
-
-          {/* المسافة · المدة · السعر التقديري */}
-          <div className="mt-3 grid grid-cols-3 divide-x divide-x-reverse divide-hairline rounded-2xl border border-hairline py-1 text-center">
-            <Stat label="المسافة" value={quote ? km(quote.distanceKm) : '—'} />
-            <Stat label="المدة" value={quote ? mins(quote.durationMin) : '—'} />
-            <Stat
-              label="السعر التقديري"
-              value={quote ? money(quote.fare) : '—'}
-              strong
-              note={quote && !quote.real ? 'تقديري' : undefined}
-            />
-          </div>
+          {/* ملخّص الرحلة — بعد اكتمال الطرفين فقط */}
+          {quote && destChosen && (
+            <div className="mt-4 flex animate-fade-up items-center justify-around rounded-2xl border border-royal/10 bg-royal/[0.04] px-4 py-3">
+              <div className="flex items-center gap-2">
+                <RouteIcon className="h-4 w-4 text-sand-ink" strokeWidth={1.8} />
+                <div>
+                  <p className="text-[10px] text-ink-muted">المسافة</p>
+                  <p className="text-[13px] font-bold text-royal">{km(quote.distanceKm)}</p>
+                </div>
+              </div>
+              <div className="h-8 w-px bg-hairline" />
+              <div className="flex items-center gap-2">
+                <Clock4 className="h-4 w-4 text-sand-ink" strokeWidth={1.8} />
+                <div>
+                  <p className="text-[10px] text-ink-muted">المدة</p>
+                  <p className="text-[13px] font-bold text-royal">{mins(quote.durationMin)}</p>
+                </div>
+              </div>
+              <div className="h-8 w-px bg-hairline" />
+              <div className="text-center">
+                <p className="text-[10px] text-ink-muted">
+                  السعر {!quote.real && <span className="text-ink-muted/70">تقديري</span>}
+                </p>
+                <p className="text-[13px] font-bold text-sand-ink">{money(quote.fare)}</p>
+              </div>
+            </div>
+          )}
 
           {!destOptional && !destChosen && (
-            <p className="mt-2 text-center text-xs text-warning">حدّد وجهتك للمتابعة</p>
+            <p className="mt-3 text-center text-[12px] text-warning">حدّد وجهتك للمتابعة</p>
           )}
+
+          {/* زر التأكيد */}
           <button
-            className="btn-primary mt-3 flex w-full items-center justify-center gap-2"
             onClick={confirm}
-            disabled={busy || !quote || (!destOptional && !destChosen)}
+            disabled={!canConfirm}
+            className={`press-scale mt-4 flex w-full items-center justify-center gap-2 rounded-2xl py-4 text-[15px] font-bold transition ${
+              canConfirm ? 'bg-royal text-white shadow-float' : 'bg-ivory text-ink-muted/60'
+            }`}
           >
-            <span>{busy ? '…' : 'تأكيد الرحلة'}</span>
-            {!busy && <span>←</span>}
+            {busy ? 'جارٍ التأكيد…' : 'تأكيد الرحلة'}
+            {!busy && <ArrowLeft className="h-4 w-4" strokeWidth={2.2} />}
           </button>
         </div>
-      </div>
-    </Screen>
+      </section>
+    </div>
   )
 }
 
-function Stat({
+function PickChip({
+  on,
+  icon: Icon,
   label,
-  value,
-  strong,
-  note,
+  onClick,
 }: {
+  on: boolean
+  icon: typeof House
   label: string
-  value: string
-  strong?: boolean
-  note?: string
+  onClick: () => void
 }) {
   return (
-    <div className="px-1 py-1">
-      <p className="text-[11px] text-ink-muted">{label}</p>
-      <p className={strong ? 'font-extrabold text-green' : 'font-bold'}>{value}</p>
-      {note && <p className="text-[10px] text-ink-muted">{note}</p>}
-    </div>
+    <button
+      onClick={onClick}
+      className={`press-scale flex items-center gap-1 rounded-xl border px-2.5 py-1.5 text-[11.5px] font-semibold transition ${
+        on ? 'border-sand bg-sand-soft text-sand-ink' : 'border-hairline bg-white text-ink-soft'
+      }`}
+    >
+      <Icon className="h-3.5 w-3.5" strokeWidth={1.8} />
+      {label}
+    </button>
   )
 }

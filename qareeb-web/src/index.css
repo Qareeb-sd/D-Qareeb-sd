@@ -82,6 +82,21 @@
   .shadow-lift {
     box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
   }
+
+  /* ===== هوية «الواحة الملكية» (الرئيسية/تحديد الرحلة) ===== */
+  .shadow-soft {
+    box-shadow: 0 -10px 40px rgba(14, 59, 46, 0.1);
+  }
+  .shadow-float {
+    box-shadow: 0 10px 30px rgba(14, 59, 46, 0.22);
+  }
+  .press-scale {
+    @apply transition-transform duration-200 active:scale-[0.98];
+  }
+  /* حدّ ذهبي رفيع حول العنصر النشط */
+  .ring-gold {
+    box-shadow: 0 0 0 1.5px #c4a265, 0 6px 18px rgba(14, 59, 46, 0.18);
+  }
 }
 
 @layer utilities {
@@ -103,6 +118,25 @@
   }
   .animate-shake {
     animation: shake 0.3s ease-in-out;
+  }
+
+  /* دخول ناعم للعناصر والبطاقة السفلية — هوية الواحة الملكية */
+  @keyframes fade-up {
+    from { opacity: 0; transform: translateY(8px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+  .animate-fade-up {
+    animation: fade-up 0.45s ease-out both;
+  }
+  @keyframes sheet-up {
+    from { opacity: 0; transform: translateY(28px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+  .animate-sheet-up {
+    animation: sheet-up 0.35s ease-out both;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .animate-fade-up, .animate-sheet-up { animation: none; }
   }
 }
 
