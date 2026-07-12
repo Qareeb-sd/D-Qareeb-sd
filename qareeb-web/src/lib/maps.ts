@@ -46,24 +46,26 @@ export async function fetchRoute(
   origin: google.maps.LatLngLiteral,
   destination: google.maps.LatLngLiteral,
 ): Promise<RouteResult | null> {
-  if (typeof google === 'undefined' || !google.maps?.DirectionsService) return null
-
   const key = routeKey(origin, destination)
   const cached = routeCache.get(key)
   if (cached) return cached
 
+  // مسار القيادة الفعلي عبر OSRM (OpenStreetMap) — مجاني وبلا مفتاح، يعمل داخل
+  // السودان (بديل Google Directions الذي يتطلّب مفتاحاً مُصرّحاً للـJS).
   try {
-    const svc = new google.maps.DirectionsService()
-    const res = await svc.route({
-      origin,
-      destination,
-      travelMode: google.maps.TravelMode.DRIVING,
-    })
-    const leg = res.routes[0]?.legs[0]
-    if (!leg?.distance || !leg?.duration) return null
+    const url =
+      `https://router.project-osrm.org/route/v1/driving/` +
+      `${origin.lng},${origin.lat};${destination.lng},${destination.lat}?overview=false`
+    const res = await fetch(url)
+    if (!res.ok) return null
+    const data = (await res.json()) as {
+      routes?: { distance: number; duration: number }[]
+    }
+    const route = data.routes?.[0]
+    if (!route) return null
     const result: RouteResult = {
-      distanceKm: leg.distance.value / 1000,
-      durationMin: leg.duration.value / 60,
+      distanceKm: route.distance / 1000,
+      durationMin: route.duration / 60,
     }
     routeCache.set(key, result)
     return result

@@ -19,11 +19,10 @@ import MapView from '@/components/MapView'
 import PlaceSearch from '@/components/PlaceSearch'
 import { useRide } from '@/store/RideContext'
 import { useAuth } from '@/store/AuthContext'
-import { useMaps } from '@/store/MapsContext'
 import { DEFAULT_SERVICE_ID, getService } from '@/data/services'
 import { createRide, getServicePricing, getSettings } from '@/lib/api'
 import { estimateFare, estimateRoute } from '@/lib/pricing'
-import { fetchRoute, isMapsConfigured } from '@/lib/maps'
+import { fetchRoute } from '@/lib/maps'
 import { km, mins, money } from '@/lib/format'
 import { KHARTOUM } from '@/theme'
 import type { Settings, ServicePricing } from '@/lib/types'
@@ -80,8 +79,6 @@ export default function SelectLocation() {
   const [settings, setSettings] = useState<Settings | null>(null)
   const [quote, setQuote] = useState<Quote | null>(null)
   const [busy, setBusy] = useState(false)
-
-  const { isLoaded } = useMaps()
 
   const placesKey = `qareeb_places_${profile?.id ?? 'guest'}`
   const [places, setPlaces] = useState<Record<string, SavedPlace>>(() => {
@@ -185,8 +182,7 @@ export default function SelectLocation() {
     let alive = true
     const bothPlaced = pickupSet && dropoffSet
     const t = setTimeout(async () => {
-      const real =
-        bothPlaced && isLoaded && isMapsConfigured ? await fetchRoute(pickupPos, dropoffPos) : null
+      const real = bothPlaced ? await fetchRoute(pickupPos, dropoffPos) : null
       const route = real ?? estimateRoute(pickupPos, dropoffPos)
       if (!alive) return
       const fare = estimateFare({
@@ -201,7 +197,7 @@ export default function SelectLocation() {
       alive = false
       clearTimeout(t)
     }
-  }, [pickupPos, dropoffPos, pickupSet, dropoffSet, pricing, settings, isLoaded])
+  }, [pickupPos, dropoffPos, pickupSet, dropoffSet, pricing, settings])
 
   const activePos = active === 'pickup' ? pickupPos : dropoffPos
   const setActivePos = active === 'pickup' ? setPickupPos : setDropoffPos
