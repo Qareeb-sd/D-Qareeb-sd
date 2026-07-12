@@ -71,9 +71,13 @@ export default function LeafletMap({
       zoomControl: false,
       attributionControl: true,
     })
-    L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      maxZoom: 19,
-      attribution: '© OpenStreetMap',
+    // بلاطات CARTO Voyager: مظهر ملوّن نظيف قريب من خرائط قوقل (شوارع ملوّنة،
+    // معالم، خطوط واضحة) — مجانية بلا مفتاح وتصل من داخل السودان، وأجمل بكثير
+    // من بلاطات OSM الخام. subdomains a–d لتوزيع الحمل وسرعة أعلى.
+    L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
+      subdomains: 'abcd',
+      maxZoom: 20,
+      attribution: '© OpenStreetMap © CARTO',
     }).addTo(map)
     layerRef.current = L.layerGroup().addTo(map)
 
