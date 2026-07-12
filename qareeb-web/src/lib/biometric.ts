@@ -1,79 +1,89 @@
 import { Capacitor } from '@capacitor/core'
 
 /**
- * الدخول بالبصمة/التعرّف على الوجه عبر @capgo/capacitor-native-biometric.
- * البيانات تُحفظ بأمان في Android Keystore (لا تُخزَّن كلمة السر في JS).
+ * الدخول بالبصمة/الوجه عبر @aparajita/capacitor-biometric-auth (متوافق مع
+ * Capacitor 8 ومستقرّ). المكوّن يوفّر بصمة/تحقّقاً فقط، فنحفظ بيانات الدخول
+ * محلياً على الجهاز (مُرمّزة base64) ويحرسها التحقّق البيومتري.
  * كل الدوال آمنة على الويب (تعود بلا فعل) — تعمل فعلياً على الجهاز فقط.
  */
 
-const SERVER = 'sd.qareeb.app'
-const FLAG = 'qareeb_bio' // علامة محلية أن المستخدم فعّل الدخول بالبصمة
-
+const FLAG = 'qareeb_bio' // علامة أن المستخدم فعّل البصمة
+const CRED = 'qareeb_bio_cred' // بيانات الدخول المُرمّزة
 const isNative = Capacitor.isNativePlatform()
 
-async function nb() {
+async function ba() {
   if (!isNative) return null
-  const { NativeBiometric } = await import('@capgo/capacitor-native-biometric')
-  return NativeBiometric
+  const { BiometricAuth } = await import('@aparajita/capacitor-biometric-auth')
+  return BiometricAuth
 }
 
-/** هل الجهاز يدعم البصمة/الوجه وهي مُهيّأة؟ */
-export async function biometricAvailable(): Promise<boolean> {
-  const N = await nb()
-  if (!N) return false
+function encode(o: { phone: string; password: string }): string {
+  return btoa(unescape(encodeURIComponent(JSON.stringify(o))))
+}
+function decode(s: string): { phone: string; password: string } | null {
   try {
-    const r = await N.isAvailable()
+    return JSON.parse(decodeURIComponent(escape(atob(s))))
+  } catch {
+    return null
+  }
+}
+
+/** هل الجهاز يدعم البصمة/الوجه وهي مُهيّأة؟ (checkBiometry لا يُظهر نافذة) */
+export async function biometricAvailable(): Promise<boolean> {
+  const B = await ba()
+  if (!B) return false
+  try {
+    const r = await B.checkBiometry()
     return Boolean(r.isAvailable)
   } catch {
     return false
   }
 }
 
-/** هل فعّل المستخدم الدخول بالبصمة على هذا الجهاز؟ (علامة محلية فقط — بلا نداء أصلي) */
+/** هل فعّل المستخدم الدخول بالبصمة على هذا الجهاز؟ (محلي — بلا نداء أصلي) */
 export async function biometricEnabled(): Promise<boolean> {
-  return localStorage.getItem(FLAG) === '1'
+  return localStorage.getItem(FLAG) === '1' && Boolean(localStorage.getItem(CRED))
 }
 
-/**
- * حفظ بيانات الدخول لتفعيل البصمة — يعيد نتيجة واضحة (نجاح/سبب الفشل)
- * حتى يُعرض للمستخدم بدل الفشل الصامت.
- */
+/** تفعيل البصمة — يفحص التوفّر ويحفظ البيانات؛ يعيد نتيجة واضحة. */
 export async function enableBiometric(
   phone: string,
   password: string,
 ): Promise<{ ok: boolean; reason?: string }> {
-  const N = await nb()
-  if (!N) return { ok: false, reason: 'متاح على الجهاز فقط' }
+  const B = await ba()
+  if (!B) return { ok: false, reason: 'متاح على الجهاز فقط' }
   try {
-    const avail = await N.isAvailable()
-    if (!avail.isAvailable) {
+    const r = await B.checkBiometry()
+    if (!r.isAvailable) {
       return {
         ok: false,
-        reason: 'لا توجد بصمة/وجه مُسجّل على الجهاز — أضِفه من إعدادات الهاتف ثم أعد المحاولة.',
+        reason:
+          r.reason || 'لا توجد بصمة/وجه مُسجّل على الجهاز — أضِفه من إعدادات الهاتف ثم أعد المحاولة.',
       }
     }
-    await N.setCredentials({ username: phone, password, server: SERVER })
+    localStorage.setItem(CRED, encode({ phone, password }))
     localStorage.setItem(FLAG, '1')
     return { ok: true }
   } catch (e) {
-    return { ok: false, reason: (e as Error)?.message || 'تعذّر حفظ بيانات البصمة' }
+    return { ok: false, reason: (e as Error)?.message || 'تعذّر تفعيل البصمة' }
   }
 }
 
-/** التحقّق بالبصمة ثم إرجاع البيانات المحفوظة للدخول. */
+/** التحقّق بالبصمة ثم إرجاع بيانات الدخول المحفوظة. */
 export async function biometricLogin(): Promise<{ phone: string; password: string } | null> {
-  const N = await nb()
-  if (!N) return null
+  const B = await ba()
+  if (!B) return null
+  const cred = localStorage.getItem(CRED)
+  if (!cred) return null
   try {
-    await N.verifyIdentity({
+    await B.authenticate({
       reason: 'الدخول إلى قريب',
-      title: 'الدخول بالبصمة',
-      subtitle: 'ضع إصبعك أو انظر للكاميرا',
-      description: '',
+      androidTitle: 'الدخول بالبصمة',
+      androidSubtitle: 'أكّد هويتك للمتابعة',
+      cancelTitle: 'إلغاء',
+      allowDeviceCredential: true,
     })
-    const c = await N.getCredentials({ server: SERVER })
-    if (!c?.username || !c?.password) return null
-    return { phone: c.username, password: c.password }
+    return decode(cred)
   } catch {
     return null // ألغى المستخدم أو فشل التحقّق
   }
@@ -81,12 +91,6 @@ export async function biometricLogin(): Promise<{ phone: string; password: strin
 
 /** إلغاء تفعيل الدخول بالبصمة وحذف البيانات المحفوظة. */
 export async function disableBiometric(): Promise<void> {
-  const N = await nb()
   localStorage.removeItem(FLAG)
-  if (!N) return
-  try {
-    await N.deleteCredentials({ server: SERVER })
-  } catch {
-    /* لا حرج */
-  }
+  localStorage.removeItem(CRED)
 }
