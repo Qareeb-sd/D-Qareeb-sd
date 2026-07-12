@@ -1,4 +1,26 @@
 import { useEffect, useMemo, useState } from 'react'
+import {
+  LayoutDashboard,
+  Inbox,
+  Car,
+  Users,
+  Route,
+  Flag,
+  Wallet,
+  Coins,
+  Settings as SettingsIcon,
+  ShieldCheck,
+  ScrollText,
+  Bell,
+  LogOut,
+  Menu,
+  X,
+  Zap,
+  UserCheck,
+  Hourglass,
+  CheckCircle2,
+  type LucideIcon,
+} from 'lucide-react'
 import Logo from '@/components/Logo'
 import MapView from '@/components/MapView'
 import { StatCard, ChartCard, StatusBadge, BarChart, DonutChart } from '@/components/admin/AdminUI'
@@ -92,18 +114,18 @@ type Tab =
   | 'audit'
 
 /** التبويبات مع الصلاحية المطلوبة لكلٍّ (null = تكفي أي صلاحية). */
-const tabs: { id: Tab; label: string; perm: StaffPerm | null; ownerOnly?: boolean }[] = [
-  { id: 'overview', label: 'نظرة عامة', perm: null },
-  { id: 'requests', label: 'الطلبات', perm: 'requests' },
-  { id: 'drivers', label: 'السائقون', perm: 'drivers' },
-  { id: 'customers', label: 'العملاء', perm: 'drivers' },
-  { id: 'rides', label: 'الرحلات', perm: 'rides' },
-  { id: 'complaints', label: 'الشكاوى', perm: 'requests' },
-  { id: 'finance', label: 'المالية', perm: null, ownerOnly: true },
-  { id: 'hr', label: 'المنصرفات والرواتب', perm: null, ownerOnly: true },
-  { id: 'settings', label: 'الإعدادات', perm: 'settings' },
-  { id: 'staff', label: 'الموظفون', perm: null, ownerOnly: true },
-  { id: 'audit', label: 'سجلّ النشاط', perm: null, ownerOnly: true },
+const tabs: { id: Tab; label: string; perm: StaffPerm | null; ownerOnly?: boolean; Icon: LucideIcon }[] = [
+  { id: 'overview', label: 'نظرة عامة', perm: null, Icon: LayoutDashboard },
+  { id: 'requests', label: 'الطلبات', perm: 'requests', Icon: Inbox },
+  { id: 'drivers', label: 'السائقون', perm: 'drivers', Icon: Car },
+  { id: 'customers', label: 'العملاء', perm: 'drivers', Icon: Users },
+  { id: 'rides', label: 'الرحلات', perm: 'rides', Icon: Route },
+  { id: 'complaints', label: 'الشكاوى', perm: 'requests', Icon: Flag },
+  { id: 'finance', label: 'المالية', perm: null, ownerOnly: true, Icon: Wallet },
+  { id: 'hr', label: 'المنصرفات والرواتب', perm: null, ownerOnly: true, Icon: Coins },
+  { id: 'settings', label: 'الإعدادات', perm: 'settings', Icon: SettingsIcon },
+  { id: 'staff', label: 'الموظفون', perm: null, ownerOnly: true, Icon: ShieldCheck },
+  { id: 'audit', label: 'سجلّ النشاط', perm: null, ownerOnly: true, Icon: ScrollText },
 ]
 
 /** أسماء الصلاحيات المعروضة للمالك عند إضافة موظف. */
@@ -121,6 +143,7 @@ const permLabels: { id: StaffPerm; label: string; desc: string }[] = [
 export default function AdminDashboard() {
   const { signOut } = useAuth()
   const [tab, setTab] = useState<Tab>('overview')
+  const [navOpen, setNavOpen] = useState(false) // درج التنقّل على الجوال
 
   const [stats, setStats] = useState<AdminStats | null>(null)
   const [finance, setFinance] = useState<FinancialSummary | null>(null)
@@ -665,8 +688,10 @@ export default function AdminDashboard() {
     document.title = pendingCount > 0 ? `(${pendingCount}) لوحة تحكم قريب` : 'لوحة تحكم قريب'
   }, [pendingCount])
 
+  const activeTab = visibleTabs.find((t) => t.id === tab)
+
   return (
-    <div className="screen mx-auto w-full max-w-7xl px-2 sm:px-4">
+    <div dir="rtl" className="flex min-h-screen bg-bg text-ink">
       {/* تنبيه منبثق عند وصول طلب جديد */}
       {toast && (
         <button
@@ -674,57 +699,105 @@ export default function AdminDashboard() {
             setTab('requests')
             setToast('')
           }}
-          className="fixed left-1/2 top-4 z-50 -translate-x-1/2 rounded-2xl bg-green px-5 py-3 text-sm font-bold text-white shadow-lift"
+          className="fixed left-1/2 top-4 z-[60] -translate-x-1/2 rounded-2xl bg-green px-5 py-3 text-sm font-bold text-white shadow-lift"
           style={{ animation: 'pulse 1.2s ease-in-out 2' }}
         >
           {toast} — اضغط للعرض
         </button>
       )}
 
-      <header className="flex items-center gap-3 bg-green px-4 py-4 text-white shadow-card">
-        <Logo size={36} rounded={10} />
-        <h1 className="flex-1 text-lg font-extrabold">لوحة تحكم قريب</h1>
-        {/* جرس الطلبات المعلّقة */}
+      {/* غطاء الدرج على الجوال */}
+      {navOpen && (
         <button
-          onClick={() => setTab('requests')}
-          title="الطلبات المعلّقة"
-          className="relative grid h-9 w-9 place-items-center rounded-full bg-white/15 text-lg hover:bg-white/25"
-        >
-          🔔
-          {pendingCount > 0 && (
-            <span className="absolute -left-1 -top-1 grid h-5 min-w-5 place-items-center rounded-full bg-lemon px-1 text-[10px] font-extrabold text-green-dark">
-              {pendingCount}
-            </span>
-          )}
-        </button>
-        <span className="rounded-full bg-white/15 px-3 py-1 text-xs font-bold">الإدارة</span>
-        <button
-          onClick={() => void signOut()}
-          className="rounded-full bg-white/15 px-3 py-1.5 text-sm font-bold hover:bg-white/25"
-        >
-          خروج
-        </button>
-      </header>
+          aria-label="إغلاق القائمة"
+          onClick={() => setNavOpen(false)}
+          className="fixed inset-0 z-30 bg-black/40 md:hidden"
+        />
+      )}
 
-      {/* تبويبات */}
-      <nav className="flex gap-1 overflow-x-auto border-b border-hairline px-2 py-2">
-        {visibleTabs.map((tb) => (
+      {/* الشريط الجانبي */}
+      <aside
+        className={`fixed inset-y-0 right-0 z-40 flex w-64 flex-col border-l border-hairline bg-white transition-transform duration-200 md:static md:z-auto md:translate-x-0 ${
+          navOpen ? 'translate-x-0' : 'translate-x-full md:translate-x-0'
+        }`}
+      >
+        <div className="flex items-center gap-3 border-b border-hairline px-4 py-4">
+          <Logo size={38} rounded={11} />
+          <div className="flex-1">
+            <p className="text-sm font-extrabold text-green">قريب</p>
+            <p className="text-[11px] text-ink-muted">لوحة التحكم</p>
+          </div>
           <button
-            key={tb.id}
-            onClick={() => setTab(tb.id)}
-            className={`whitespace-nowrap rounded-full px-3.5 py-1.5 text-sm font-bold transition ${
-              tab === tb.id ? 'bg-green text-white' : 'text-ink-soft hover:bg-green-soft'
-            }`}
+            onClick={() => setNavOpen(false)}
+            className="text-ink-muted md:hidden"
+            aria-label="إغلاق"
           >
-            {tb.label}
-            {tb.id === 'requests' && pendingCount > 0 && (
-              <span className="mr-1 inline-flex h-5 min-w-5 animate-pulse items-center justify-center rounded-full bg-danger px-1.5 text-xs font-bold text-white">
+            <X className="h-5 w-5" />
+          </button>
+        </div>
+        <nav className="flex-1 space-y-1 overflow-y-auto p-3">
+          {visibleTabs.map((tb) => {
+            const Icon = tb.Icon
+            const active = tab === tb.id
+            return (
+              <button
+                key={tb.id}
+                onClick={() => {
+                  setTab(tb.id)
+                  setNavOpen(false)
+                }}
+                className={`flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-bold transition ${
+                  active ? 'bg-green text-white shadow-card' : 'text-ink-soft hover:bg-green-soft'
+                }`}
+              >
+                <Icon className="h-[18px] w-[18px] shrink-0" strokeWidth={1.8} />
+                <span className="flex-1 text-right">{tb.label}</span>
+                {tb.id === 'requests' && pendingCount > 0 && (
+                  <span className="grid h-5 min-w-5 place-items-center rounded-full bg-danger px-1 text-[11px] font-extrabold text-white">
+                    {pendingCount}
+                  </span>
+                )}
+              </button>
+            )
+          })}
+        </nav>
+        <div className="border-t border-hairline p-3">
+          <button
+            onClick={() => void signOut()}
+            className="flex w-full items-center gap-2 rounded-xl px-3 py-2.5 text-sm font-bold text-danger hover:bg-danger/5"
+          >
+            <LogOut className="h-[18px] w-[18px]" strokeWidth={1.8} /> تسجيل الخروج
+          </button>
+        </div>
+      </aside>
+
+      {/* العمود الرئيسي */}
+      <div className="flex min-w-0 flex-1 flex-col">
+        {/* الشريط العلوي */}
+        <header className="sticky top-0 z-20 flex items-center gap-3 border-b border-hairline bg-white/90 px-4 py-3 backdrop-blur">
+          <button
+            onClick={() => setNavOpen(true)}
+            className="text-ink md:hidden"
+            aria-label="القائمة"
+          >
+            <Menu className="h-6 w-6" />
+          </button>
+          <h1 className="flex-1 text-lg font-extrabold text-green">
+            {activeTab?.label ?? 'لوحة التحكم'}
+          </h1>
+          <button
+            onClick={() => setTab('requests')}
+            title="الطلبات المعلّقة"
+            className="relative grid h-9 w-9 place-items-center rounded-full bg-green-soft text-green"
+          >
+            <Bell className="h-5 w-5" strokeWidth={1.8} />
+            {pendingCount > 0 && (
+              <span className="absolute -left-1 -top-1 grid h-5 min-w-5 place-items-center rounded-full bg-danger px-1 text-[10px] font-extrabold text-white">
                 {pendingCount}
               </span>
             )}
           </button>
-        ))}
-      </nav>
+        </header>
 
       <main className="flex-1 space-y-4 p-4">
         {/* تنبيهات الطوارئ — دائمة الظهور فوق كل التبويبات */}
@@ -768,12 +841,12 @@ export default function AdminDashboard() {
           <>
             {/* بطاقات المؤشّرات (KPI) — بيانات حقيقية */}
             <div className="grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-6">
-              <StatCard label="طلبات نشطة" value={num(activeRides.length)} icon="⚡" iconBg="#E8F1EC" accent="#1B6B3F" />
-              <StatCard label="رحلات اليوم" value={num(stats?.ridesToday ?? 0)} icon="🚗" iconBg="#E3EEF7" accent="#3A6FB0" />
-              <StatCard label="سائقون متصلون" value={num(stats?.onlineDrivers ?? 0)} icon="🧑🏾‍✈️" iconBg="#FBF4DD" accent="#A88528" />
-              <StatCard label="طلبات معلّقة" value={num(pendingCount)} hint={`${topups.length} تعبئة · ${driverApps.length} سائق`} icon="⏳" iconBg="#FBF4DD" accent="#A88528" />
-              <StatCard label="رحلات مكتملة" value={num(analytics.completedCount)} icon="✅" iconBg="#E8F1EC" accent="#1B6B3F" />
-              <StatCard label="إيرادات الرحلات" value={money(analytics.revenue)} icon="💰" iconBg="#E8F1EC" accent="#1B6B3F" />
+              <StatCard label="طلبات نشطة" value={num(activeRides.length)} Icon={Zap} iconBg="#E8F1EC" accent="#1B6B3F" />
+              <StatCard label="رحلات اليوم" value={num(stats?.ridesToday ?? 0)} Icon={Car} iconBg="#E3EEF7" accent="#3A6FB0" />
+              <StatCard label="سائقون متصلون" value={num(stats?.onlineDrivers ?? 0)} Icon={UserCheck} iconBg="#FBF4DD" accent="#A88528" />
+              <StatCard label="طلبات معلّقة" value={num(pendingCount)} hint={`${topups.length} تعبئة · ${driverApps.length} سائق`} Icon={Hourglass} iconBg="#FBF4DD" accent="#A88528" />
+              <StatCard label="رحلات مكتملة" value={num(analytics.completedCount)} Icon={CheckCircle2} iconBg="#E8F1EC" accent="#1B6B3F" />
+              <StatCard label="إيرادات الرحلات" value={money(analytics.revenue)} Icon={Wallet} iconBg="#E8F1EC" accent="#1B6B3F" />
             </div>
 
             {/* رسوم بيانية — رحلات الأسبوع + توزيع المركبات */}
@@ -1837,6 +1910,7 @@ export default function AdminDashboard() {
           </div>
         )}
       </main>
+      </div>
     </div>
   )
 }

@@ -1,19 +1,22 @@
 import type { ReactNode } from 'react'
+import { Inbox, type LucideIcon } from 'lucide-react'
 import { num } from '@/lib/format'
 
-/** بطاقة مؤشّر (KPI). */
+/** بطاقة مؤشّر (KPI) — تدعم أيقونة lucide (Icon) أو رمزاً نصّياً (icon). */
 export function StatCard({
   label,
   value,
   hint,
   icon,
+  Icon,
   iconBg,
   accent,
 }: {
   label: string
   value: string | number
   hint?: string
-  icon: string
+  icon?: string
+  Icon?: LucideIcon
   iconBg: string
   accent?: string
 }) {
@@ -23,7 +26,7 @@ export function StatCard({
         className="grid h-12 w-12 shrink-0 place-items-center rounded-2xl text-xl"
         style={{ backgroundColor: iconBg }}
       >
-        {icon}
+        {Icon ? <Icon className="h-6 w-6" strokeWidth={1.8} style={{ color: accent ?? '#1A1F1B' }} /> : icon}
       </div>
       <div className="min-w-0 flex-1">
         <p className="truncate text-xs text-ink-muted">{label}</p>
@@ -195,7 +198,7 @@ export function DonutChart({
 function Empty() {
   return (
     <div className="flex h-40 flex-col items-center justify-center gap-2 text-ink-muted">
-      <span className="text-3xl">📭</span>
+      <Inbox className="h-8 w-8" strokeWidth={1.5} />
       <p className="text-sm">لا توجد بيانات بعد</p>
     </div>
   )
