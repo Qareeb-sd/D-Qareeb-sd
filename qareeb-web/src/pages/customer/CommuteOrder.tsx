@@ -8,6 +8,7 @@ import {
   listCommuteMembers,
   dispatchCommuteOrder,
   inviteLink,
+  inviteShareText,
 } from '@/lib/commute'
 import { subscribeToCommuteMembers } from '@/lib/realtime'
 import type { CommuteOrder as Order, CommuteMember } from '@/lib/types'
@@ -42,18 +43,28 @@ export default function CommuteOrder() {
   }
 
   const service = getService(order.service_id)
-  const link = inviteLink(order.invite_code)
+  const code = order.invite_code
+  const link = inviteLink(code)
+  const shareText = inviteShareText(code)
 
   const share = async () => {
     try {
       if (navigator.share) {
-        await navigator.share({ title: 'ترحيل قريب', text: 'انضم لمشوار الترحيل', url: link })
+        await navigator.share({
+          title: 'ترحيل قريب',
+          text: shareText,
+          ...(link ? { url: link } : {}),
+        })
         return
       }
     } catch {
       /* المستخدم ألغى المشاركة */
     }
-    await navigator.clipboard.writeText(link)
+    try {
+      await navigator.clipboard.writeText(shareText)
+    } catch {
+      /* لا حرج — الرمز ظاهر */
+    }
     setCopied(true)
     setTimeout(() => setCopied(false), 1800)
   }
@@ -88,17 +99,25 @@ export default function CommuteOrder() {
         <Row icon={Users} text={`الركّاب ${members.length} / ${service?.seats ?? 4}`} />
       </div>
 
-      {/* رابط الدعوة */}
+      {/* دعوة الزملاء بالرمز */}
       {order.status !== 'dispatched' && (
-        <div className="card mt-4 space-y-2 p-4">
-          <p className="font-bold">ادعُ الزملاء</p>
-          <p className="text-xs text-ink-muted">شارك الرابط — كلٌّ يضيف منزله وينضم.</p>
-          <div className="flex gap-2">
-            <input className="field flex-1 text-left text-xs" dir="ltr" readOnly value={link} />
-            <button className="btn-primary px-4" onClick={share}>
-              {copied ? 'تم النسخ ✓' : 'مشاركة'}
-            </button>
+        <div className="card mt-4 space-y-3 p-4">
+          <p className="font-bold text-royal">ادعُ الزملاء</p>
+          <p className="text-xs text-ink-muted">
+            شارك رمز الدعوة — كلٌّ يفتح «قريب ← ترحيل ← انضمام برمز» ويضيف منزله.
+          </p>
+          {/* الرمز بارز */}
+          <div className="flex items-center justify-center rounded-2xl bg-royal-soft py-3">
+            <span dir="ltr" className="text-2xl font-extrabold tracking-[0.35em] text-royal">
+              {code}
+            </span>
           </div>
+          <button
+            className="btn-primary w-full"
+            onClick={share}
+          >
+            {copied ? 'تم النسخ ✓' : 'مشاركة رمز الدعوة'}
+          </button>
         </div>
       )}
 

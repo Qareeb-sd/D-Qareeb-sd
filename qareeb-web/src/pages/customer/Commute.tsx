@@ -46,6 +46,7 @@ export default function Commute() {
   ])
   const [roundTrip, setRoundTrip] = useState(true)
   const [busy, setBusy] = useState(false)
+  const [joinCode, setJoinCode] = useState('')
 
   // سعة المركبة = عدد نقاط الانطلاق (المنازل) الممكنة للذهاب/الإياب.
   const seats = services.find((s) => s.id === serviceId)?.seats ?? 4
@@ -130,6 +131,36 @@ export default function Commute() {
       </header>
 
       <main className="flex-1 space-y-4 px-4 pb-24">
+        {/* انضمام بدعوة زميل عبر الرمز */}
+        <div className="card p-4">
+          <p className="font-bold text-royal">لديك رمز دعوة؟</p>
+          <p className="mb-2 text-xs text-ink-muted">
+            أدخل الرمز الذي وصلك من منظّم الترحيل للانضمام لمشوارهم.
+          </p>
+          <div className="flex gap-2">
+            <input
+              className="field flex-1 text-center tracking-[0.3em]"
+              dir="ltr"
+              value={joinCode}
+              onChange={(e) => setJoinCode(e.target.value.trim())}
+              placeholder="رمز الدعوة"
+            />
+            <button
+              onClick={() => joinCode && navigate(`/commute/join/${joinCode}`)}
+              disabled={!joinCode}
+              className="press-scale rounded-2xl bg-royal px-5 font-bold text-white disabled:opacity-40"
+            >
+              انضمام
+            </button>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-3">
+          <span className="h-px flex-1 bg-hairline" />
+          <span className="text-xs font-bold text-ink-muted">أو أنشئ ترحيلاً جديداً</span>
+          <span className="h-px flex-1 bg-hairline" />
+        </div>
+
         {/* المركبة */}
         <div>
           <p className="label">نوع المركبة</p>

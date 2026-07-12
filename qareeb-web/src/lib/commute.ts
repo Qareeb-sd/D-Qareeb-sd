@@ -235,6 +235,30 @@ export async function listDriverCommutes(driverId: string): Promise<CommuteOrder
   return (data as CommuteOrder[]) ?? []
 }
 
-/** رابط الدعوة الكامل. */
-export const inviteLink = (code: string) =>
-  `${window.location.origin}/commute/join/${code}`
+/**
+ * رابط ويب عام للدعوة — يعمل فقط عند ضبط VITE_PUBLIC_URL بعنوان تطبيق الويب
+ * المنشور. داخل تطبيق Capacitor يكون origin = https://localhost (رابط لا يعمل
+ * على أجهزة أخرى)، لذا نُرجع '' في هذه الحالة ونعتمد رمز الدعوة بدلاً منه.
+ */
+const PUBLIC_URL = (import.meta.env.VITE_PUBLIC_URL as string | undefined)?.replace(/\/$/, '')
+
+export function inviteLink(code: string): string {
+  const base =
+    PUBLIC_URL && /^https?:\/\//.test(PUBLIC_URL) && !/localhost/.test(PUBLIC_URL)
+      ? PUBLIC_URL
+      : typeof window !== 'undefined' && !/localhost/.test(window.location.origin)
+        ? window.location.origin
+        : ''
+  return base ? `${base}/commute/join/${code}` : ''
+}
+
+/** نصّ مشاركة الدعوة — يعتمد الرمز دائماً، ويضيف الرابط إن توفّر عنوان عام. */
+export function inviteShareText(code: string): string {
+  const link = inviteLink(code)
+  return (
+    `انضم لمشوار الترحيل اليومي في «قريب» 🚗\n` +
+    `رمز الدعوة: ${code}\n` +
+    `افتح تطبيق قريب ← ترحيل ← «انضمام برمز» ← أدخل الرمز.` +
+    (link ? `\nأو افتح الرابط: ${link}` : '')
+  )
+}
