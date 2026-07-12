@@ -73,3 +73,41 @@ export async function fetchRoute(
     return null
   }
 }
+
+type RoutePath = { points: google.maps.LatLngLiteral[]; distanceKm: number; durationMin: number }
+const pathCache = new Map<string, RoutePath>()
+
+/**
+ * مسار القيادة الكامل (إحداثيات الخطّ) عبر OSRM — لرسم خطّ الملاحة الحيّ على
+ * الخريطة أثناء الرحلة. مجاني بلا مفتاح ويعمل داخل السودان.
+ */
+export async function fetchRoutePath(
+  origin: google.maps.LatLngLiteral,
+  destination: google.maps.LatLngLiteral,
+): Promise<RoutePath | null> {
+  const key = routeKey(origin, destination)
+  const cached = pathCache.get(key)
+  if (cached) return cached
+  try {
+    const url =
+      `https://router.project-osrm.org/route/v1/driving/` +
+      `${origin.lng},${origin.lat};${destination.lng},${destination.lat}` +
+      `?overview=full&geometries=geojson`
+    const res = await fetch(url)
+    if (!res.ok) return null
+    const data = (await res.json()) as {
+      routes?: { distance: number; duration: number; geometry: { coordinates: [number, number][] } }[]
+    }
+    const route = data.routes?.[0]
+    if (!route) return null
+    const result: RoutePath = {
+      points: route.geometry.coordinates.map(([lng, lat]) => ({ lat, lng })),
+      distanceKm: route.distance / 1000,
+      durationMin: route.duration / 60,
+    }
+    pathCache.set(key, result)
+    return result
+  } catch {
+    return null
+  }
+}

@@ -9,13 +9,17 @@ import { KHARTOUM } from '@/theme'
  * الواجهة نفسها: center/marker/driver/markers/driverMarkers/zoom/أحداث.
  */
 
-// أيقونة السائق: سيارة داخل دائرة خضراء (SVG مضمّن).
+// أيقونة السائق: سيارة داخل دائرة زمردية (SVG مضمّن — بلا إيموجي، هوية «الواحة»).
 const carIcon = L.divIcon({
   className: '',
   html:
-    `<svg xmlns="http://www.w3.org/2000/svg" width="46" height="46">` +
-    `<circle cx="23" cy="23" r="18" fill="#0F7B3F" stroke="#fff" stroke-width="3"/>` +
-    `<text x="23" y="30" font-size="20" text-anchor="middle">🚗</text></svg>`,
+    `<svg xmlns="http://www.w3.org/2000/svg" width="46" height="46" viewBox="0 0 46 46">` +
+    `<circle cx="23" cy="23" r="18" fill="#0E3B2E" stroke="#fff" stroke-width="3"/>` +
+    `<g transform="translate(11,13)" fill="#C4A265">` +
+    `<path d="M2 11.5a1 1 0 0 1-1-1V8.2c0-.5.2-1 .6-1.4l1.2-1L4.4 2.5A2 2 0 0 1 6.3 1.2h11.4a2 2 0 0 1 1.9 1.3l1.6 3.3 1.2 1c.4.4.6.9.6 1.4v2.3a1 1 0 0 1-1 1h-1.2a2.6 2.6 0 0 1-5.2 0H8.4a2.6 2.6 0 0 1-5.2 0H2Z"/>` +
+    `</g>` +
+    `<circle cx="18.6" cy="30.5" r="2.1" fill="#0E3B2E" stroke="#fff" stroke-width="1"/>` +
+    `<circle cx="27.4" cy="30.5" r="2.1" fill="#0E3B2E" stroke="#fff" stroke-width="1"/></svg>`,
   iconSize: [46, 46],
   iconAnchor: [23, 23],
 })
@@ -37,6 +41,8 @@ interface MapViewProps {
   driver?: google.maps.LatLngLiteral
   markers?: google.maps.LatLngLiteral[]
   driverMarkers?: google.maps.LatLngLiteral[]
+  /** خطّ مسار القيادة (للملاحة الحيّة أثناء الرحلة). */
+  route?: google.maps.LatLngLiteral[]
   zoom?: number
   onCenterChanged?: (pos: google.maps.LatLngLiteral) => void
   onUserDrag?: () => void
@@ -49,6 +55,7 @@ export default function LeafletMap({
   driver,
   markers,
   driverMarkers,
+  route,
   zoom = 14,
   onCenterChanged,
   onUserDrag,
@@ -115,6 +122,12 @@ export default function LeafletMap({
     const layer = layerRef.current
     if (!layer) return
     layer.clearLayers()
+    // خطّ المسار أولاً (أسفل العلامات): هالة بيضاء ثم خطّ زمردي.
+    if (route && route.length > 1) {
+      const pts = route.map((p) => [p.lat, p.lng] as [number, number])
+      L.polyline(pts, { color: '#ffffff', weight: 8, opacity: 0.9 }).addTo(layer)
+      L.polyline(pts, { color: '#0E3B2E', weight: 4.5, opacity: 0.95 }).addTo(layer)
+    }
     if (marker) L.marker([marker.lat, marker.lng], { icon: pinIcon }).addTo(layer)
     markers?.forEach((m) => L.marker([m.lat, m.lng], { icon: pinIcon }).addTo(layer))
     driverMarkers?.forEach((d) =>
@@ -129,6 +142,7 @@ export default function LeafletMap({
     driver?.lng,
     JSON.stringify(markers ?? []),
     JSON.stringify(driverMarkers ?? []),
+    JSON.stringify(route ?? []),
   ])
 
   return <div ref={divRef} dir="ltr" className={`overflow-hidden ${className}`} />

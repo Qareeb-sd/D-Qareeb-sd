@@ -25,6 +25,8 @@ interface MapViewProps {
   markers?: google.maps.LatLngLiteral[]
   /** مواقع سائقين متعددة. */
   driverMarkers?: google.maps.LatLngLiteral[]
+  /** خطّ مسار القيادة (للملاحة الحيّة أثناء الرحلة). */
+  route?: google.maps.LatLngLiteral[]
   zoom?: number
   onCenterChanged?: (pos: google.maps.LatLngLiteral) => void
   /** يُستدعى عند سحب المستخدم للخريطة فعلياً (تفاعل حقيقي). */
@@ -71,6 +73,7 @@ function NativeGoogleMap({
   driver,
   markers,
   driverMarkers,
+  route,
   zoom = 14,
   onCenterChanged,
   onUserDrag,
@@ -79,6 +82,7 @@ function NativeGoogleMap({
   const divRef = useRef<HTMLDivElement | null>(null)
   const mapRef = useRef<GMap | null>(null)
   const markerIds = useRef<string[]>([])
+  const polylineIds = useRef<string[]>([])
   // آخر مركز عرفته الكاميرا — لتفادي حلقة setCamera↔onCameraIdle.
   const lastCam = useRef<google.maps.LatLngLiteral>(center)
   const cbRef = useRef({ onCenterChanged, onUserDrag })
@@ -133,6 +137,7 @@ function NativeGoogleMap({
           if (e.isGesture) cbRef.current.onUserDrag?.()
         })
         await syncMarkers(map)
+        await syncRoute(map)
         setStatus('ready')
       } catch (e) {
         setStatus('error')
@@ -143,6 +148,7 @@ function NativeGoogleMap({
     return () => {
       cancelled = true
       markerIds.current = []
+      polylineIds.current = []
       if (created) {
         void created.destroy()
         releaseMapTransparency()
@@ -177,6 +183,33 @@ function NativeGoogleMap({
     JSON.stringify(markers ?? []),
     JSON.stringify(driverMarkers ?? []),
   ])
+
+  // تحديث خطّ المسار (الملاحة الحيّة) عند تغيّره.
+  useEffect(() => {
+    const map = mapRef.current
+    if (map) void syncRoute(map)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [JSON.stringify(route ?? [])])
+
+  async function syncRoute(map: GMap) {
+    if (polylineIds.current.length) {
+      try {
+        await map.removePolylines(polylineIds.current)
+      } catch {
+        /* قد تكون أُزيلت مع إعادة الإنشاء */
+      }
+      polylineIds.current = []
+    }
+    if (route && route.length > 1) {
+      try {
+        polylineIds.current = await map.addPolylines([
+          { path: route, strokeColor: '#0E3B2E', strokeWeight: 5, geodesic: true },
+        ])
+      } catch {
+        /* تجاهل فشل الخطّ — الخريطة تبقى صالحة */
+      }
+    }
+  }
 
   async function syncMarkers(map: GMap) {
     if (markerIds.current.length) {
