@@ -1,9 +1,13 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { Capacitor } from '@capacitor/core'
 import { Fingerprint } from 'lucide-react'
 import Logo from '@/components/Logo'
 import { useAuth } from '@/store/AuthContext'
 import { biometricAvailable, biometricEnabled, biometricLogin, enableBiometric } from '@/lib/biometric'
+
+// عرض خيار البصمة على الجهاز فقط — دون استدعاء المكوّن الأصلي في مسار الدخول.
+const canBio = Capacitor.isNativePlatform()
 
 /** دخول العميل برقم الهاتف + كلمة السر، مع خيار الدخول بالبصمة/الوجه. */
 export default function Auth() {
@@ -14,43 +18,47 @@ export default function Auth() {
   const [password, setPassword] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
-  const [bioReady, setBioReady] = useState(false) // بصمة مفعّلة وبيانات محفوظة
+  const [remember, setRemember] = useState(false) // تفعيل البصمة عند الدخول
+  const [bioReady, setBioReady] = useState(false) // بصمة مفعّلة سابقاً على هذا الجهاز
 
-  // هل نعرض زر الدخول بالبصمة؟ (مفعّل سابقاً على هذا الجهاز)
   useEffect(() => {
-    void biometricEnabled().then(setBioReady)
+    // آمن: لا يستدعي المكوّن الأصلي إلا إن سبق تفعيل البصمة (علامة محلية).
+    void biometricEnabled()
+      .then(setBioReady)
+      .catch(() => setBioReady(false))
   }, [])
 
-  const finishLogin = async (ph: string, pw: string, offerBiometric: boolean) => {
-    const { error } = await signInWithPhone(ph, pw, undefined, { createIfMissing: false })
-    if (error) {
-      setBusy(false)
-      setError(error)
-      return
+  // تفعيل البصمة بعد الدخول — أفضل جهد، لا يعطّل الدخول أبداً.
+  const safeEnable = async (ph: string, pw: string) => {
+    try {
+      if (await biometricAvailable()) await enableBiometric(ph, pw)
+    } catch {
+      /* تجاهل — الدخول تمّ */
     }
-    // بعد أول دخول ناجح: اعرض تفعيل البصمة إن كانت متاحة ولم تُفعّل.
-    if (offerBiometric && !(await biometricEnabled()) && (await biometricAvailable())) {
-      if (window.confirm('تفعيل الدخول بالبصمة/الوجه في المرات القادمة؟')) {
-        await enableBiometric(ph, pw)
-      }
-    }
-    setBusy(false)
-    navigate('/home')
   }
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault()
     setError('')
     setBusy(true)
-    await finishLogin(phone, password, true)
+    const { error } = await signInWithPhone(phone, password, undefined, { createIfMissing: false })
+    setBusy(false)
+    if (error) return setError(error)
+    navigate('/home') // الدخول ينجح دائماً بلا اعتماد على البصمة
+    if (remember) void safeEnable(phone, password)
   }
 
   const loginByBiometric = async () => {
     setError('')
     const creds = await biometricLogin()
-    if (!creds) return // ألغى المستخدم
+    if (!creds) return // ألغى المستخدم أو تعذّر
     setBusy(true)
-    await finishLogin(creds.phone, creds.password, false)
+    const { error } = await signInWithPhone(creds.phone, creds.password, undefined, {
+      createIfMissing: false,
+    })
+    setBusy(false)
+    if (error) return setError(error)
+    navigate('/home')
   }
 
   return (
@@ -95,12 +103,27 @@ export default function Auth() {
             required
           />
         </div>
+
+        {/* تفعيل البصمة (يظهر فقط إن كان الجهاز يدعمها ولم تُفعّل بعد) */}
+        {canBio && !bioReady && (
+          <label className="flex items-center gap-2 text-sm text-ink-soft">
+            <input
+              type="checkbox"
+              checked={remember}
+              onChange={(e) => setRemember(e.target.checked)}
+              className="h-4 w-4 accent-green"
+            />
+            <Fingerprint className="h-4 w-4 text-green" strokeWidth={1.8} />
+            تفعيل الدخول بالبصمة/الوجه لاحقاً
+          </label>
+        )}
+
         <button className="btn-primary w-full" type="submit" disabled={busy}>
           {busy ? '…' : 'دخول'}
         </button>
       </form>
 
-      {/* الدخول بالبصمة/الوجه — يظهر بعد تفعيله على هذا الجهاز */}
+      {/* الدخول بالبصمة — يظهر بعد تفعيله على هذا الجهاز */}
       {bioReady && (
         <button
           onClick={loginByBiometric}
