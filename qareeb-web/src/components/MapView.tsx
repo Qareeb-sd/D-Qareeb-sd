@@ -33,7 +33,11 @@ interface MapViewProps {
 }
 
 const isNative = Capacitor.isNativePlatform()
-const useNative = isNative && Boolean(GOOGLE_MAPS_API_KEY)
+// الخريطة الأصلية (Native Google) تُفعَّل فقط عند ضبط VITE_USE_NATIVE_MAPS=1.
+// افتراضياً نستخدم خريطة CARTO (Leaflet) التي تعمل دائماً وبمظهر جيّد داخل
+// السودان — حتى لا تظهر شاشة رمادية إن لم يكن مفتاح قوقل جاهزاً (انتشار/فوترة).
+const nativeEnabled = import.meta.env.VITE_USE_NATIVE_MAPS === '1'
+const useNative = isNative && nativeEnabled && Boolean(GOOGLE_MAPS_API_KEY)
 
 /** شارة تشخيص مؤقتة — تُظهر سبب عدم ظهور الخريطة الأصلية من لقطة واحدة. */
 function DiagBadge({ text, tone }: { text: string; tone: 'ok' | 'warn' | 'err' }) {
@@ -50,20 +54,9 @@ function DiagBadge({ text, tone }: { text: string; tone: 'ok' | 'warn' | 'err' }
 }
 
 export default function MapView(props: MapViewProps) {
-  // على الويب العادي: Leaflet مباشرة (بلا غلاف حتى لا ينهار الارتفاع).
-  if (!useNative) {
-    if (!isNative) return <LeafletMap {...props} />
-    // على الجهاز لكن بلا مفتاح — نُبقي Leaflet ونبيّن السبب.
-    return (
-      <div className={`overflow-hidden ${props.className ?? ''}`}>
-        <LeafletMap {...props} className="absolute inset-0" />
-        <DiagBadge
-          text="native but API key EMPTY — أضف VITE_GOOGLE_MAPS_API_KEY في .env"
-          tone="err"
-        />
-      </div>
-    )
-  }
+  // خريطة CARTO (Leaflet) هي الافتراضية على الويب والجهاز — تعمل دائماً.
+  // الأصلية تُستخدم فقط عند تفعيلها ونجاح مفتاح قوقل.
+  if (!useNative) return <LeafletMap {...props} />
   return <NativeGoogleMap {...props} />
 }
 
