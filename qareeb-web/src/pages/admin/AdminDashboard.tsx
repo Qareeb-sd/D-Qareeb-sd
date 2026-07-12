@@ -24,6 +24,7 @@ import {
   UserRound,
   Star,
   Check,
+  Download,
   type LucideIcon,
 } from 'lucide-react'
 import Logo from '@/components/Logo'
@@ -461,6 +462,44 @@ export default function AdminDashboard() {
         { metric: 'أرصدة المحافظ', value: Math.round(finance?.wallet_liability ?? 0) },
         { metric: 'رحلات مكتملة', value: finance?.completed_rides ?? 0 },
       ],
+    )
+  const exportDrivers = () =>
+    exportCsv(
+      `السائقون-${day()}`,
+      [
+        { key: 'name', label: 'الاسم' },
+        { key: 'phone', label: 'الهاتف' },
+        { key: 'vehicle', label: 'المركبة' },
+        { key: 'plate', label: 'اللوحة' },
+        { key: 'rating', label: 'التقييم' },
+        { key: 'online', label: 'الحالة' },
+      ],
+      filteredDrivers.map((d) => ({
+        name: d.users?.full_name ?? '',
+        phone: d.users?.phone ?? '',
+        vehicle: getService(d.vehicle_type)?.name ?? d.vehicle_type,
+        plate: d.plate_number ?? '',
+        rating: d.rating ?? '',
+        online: d.is_online ? 'متصل' : 'غير متصل',
+      })),
+    )
+  const exportCustomers = () =>
+    exportCsv(
+      `العملاء-${day()}`,
+      [
+        { key: 'name', label: 'الاسم' },
+        { key: 'phone', label: 'الهاتف' },
+        { key: 'rating', label: 'التقييم' },
+        { key: 'ratings', label: 'عدد التقييمات' },
+        { key: 'rides', label: 'عدد الرحلات' },
+      ],
+      filteredCustomers.map((c) => ({
+        name: c.full_name ?? '',
+        phone: c.phone,
+        rating: c.rating ?? '',
+        ratings: c.ratings_count,
+        rides: c.rides_count,
+      })),
     )
   const exportAudit = () =>
     exportCsv(
@@ -1125,6 +1164,14 @@ export default function AdminDashboard() {
                 <span className="mr-2 text-xs font-normal text-ink-muted">
                   {onlineDriversCount} متصل الآن
                 </span>
+                {filteredDrivers.length > 0 && (
+                  <button
+                    onClick={exportDrivers}
+                    className="mr-2 inline-flex items-center gap-1 rounded-lg border border-hairline px-2 py-0.5 text-xs font-bold text-green hover:bg-green-soft"
+                  >
+                    <Download className="h-3.5 w-3.5" /> CSV
+                  </button>
+                )}
               </p>
               <div className="relative w-full max-w-xs">
                 <Search className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-muted" />
@@ -1202,7 +1249,17 @@ export default function AdminDashboard() {
         {tab === 'customers' && (
           <div className="card p-4">
             <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-              <p className="font-bold">العملاء المسجّلون ({filteredCustomers.length})</p>
+              <p className="font-bold">
+                العملاء المسجّلون ({filteredCustomers.length})
+                {filteredCustomers.length > 0 && (
+                  <button
+                    onClick={exportCustomers}
+                    className="mr-2 inline-flex items-center gap-1 rounded-lg border border-hairline px-2 py-0.5 text-xs font-bold text-green hover:bg-green-soft"
+                  >
+                    <Download className="h-3.5 w-3.5" /> CSV
+                  </button>
+                )}
+              </p>
               <div className="relative w-full max-w-xs">
                 <Search className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-muted" />
                 <input
@@ -1314,7 +1371,7 @@ export default function AdminDashboard() {
                   disabled={filteredRides.length === 0}
                   className="rounded-lg border border-green/40 px-2.5 py-1 text-xs font-bold text-green hover:bg-green/5 disabled:opacity-40"
                 >
-                  ⬇️ تصدير CSV
+                  <Download className="inline h-4 w-4" /> تصدير CSV
                 </button>
               </div>
               <div className="flex flex-wrap gap-2">
@@ -1375,7 +1432,7 @@ export default function AdminDashboard() {
                 onClick={exportFinance}
                 className="rounded-lg border border-green/40 px-2.5 py-1 text-xs font-bold text-green hover:bg-green/5"
               >
-                ⬇️ تصدير CSV
+                <Download className="inline h-4 w-4" /> تصدير CSV
               </button>
             </div>
             {/* ملخّص مالي تفصيلي */}
@@ -1965,7 +2022,7 @@ export default function AdminDashboard() {
                   disabled={(audit ?? []).length === 0}
                   className="rounded-lg border border-green/40 px-2.5 py-1 text-xs font-bold text-green hover:bg-green/5 disabled:opacity-40"
                 >
-                  ⬇️ تصدير CSV
+                  <Download className="inline h-4 w-4" /> تصدير CSV
                 </button>
                 <button
                   onClick={() => void listAuditLog().then((a) => setAudit(a as AuditEntry[]))}
