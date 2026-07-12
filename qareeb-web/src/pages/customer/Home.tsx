@@ -22,14 +22,6 @@ const SHORTCUTS = [
   { key: 'work', label: 'العمل', icon: Briefcase },
 ]
 
-// سيّارات وهمية قرب المركز لإظهار الحركة على الخريطة.
-const nearbyCars = [
-  { lat: KHARTOUM.lat + 0.006, lng: KHARTOUM.lng - 0.004 },
-  { lat: KHARTOUM.lat - 0.005, lng: KHARTOUM.lng + 0.006 },
-  { lat: KHARTOUM.lat + 0.004, lng: KHARTOUM.lng + 0.007 },
-  { lat: KHARTOUM.lat - 0.006, lng: KHARTOUM.lng - 0.005 },
-]
-
 export default function Home() {
   const navigate = useNavigate()
   const { setServiceId } = useRide()
@@ -74,7 +66,7 @@ export default function Home() {
 
       {/* منطقة الخريطة — تملأ المساحة المرئية والدبوس في وسطها */}
       <div className="relative z-0 flex-1">
-        <MapView center={KHARTOUM} driverMarkers={nearbyCars} zoom={15} className="absolute inset-0" />
+        <MapView center={KHARTOUM} zoom={15} className="absolute inset-0" />
         {/* تدرّج علوي لوضوح الهيدر */}
         <div className="pointer-events-none absolute inset-x-0 top-0 h-36 bg-gradient-to-b from-ivory via-ivory/70 to-transparent" />
         {/* نبضة موقعي — في وسط منطقة الخريطة المرئية */}
