@@ -1,14 +1,31 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+import {
+  Wallet,
+  Star,
+  Car,
+  Receipt,
+  MapPin,
+  Bell,
+  Siren,
+  LifeBuoy,
+  Info,
+  ChevronLeft,
+  Share2,
+  type LucideIcon,
+} from 'lucide-react'
 import BottomNav from '@/components/BottomNav'
 import NotificationToggle from '@/components/NotificationToggle'
+import ShareRideButton from '@/components/ShareRideButton'
 import { useAuth } from '@/store/AuthContext'
+import { useRide } from '@/store/RideContext'
 import { updateEmergencyContacts, getWallet, listRides } from '@/lib/api'
 import { money } from '@/lib/format'
 
 export default function Profile() {
   const navigate = useNavigate()
   const { profile, signOut, refreshProfile } = useAuth()
+  const { rideId } = useRide()
 
   const [c1, setC1] = useState(profile?.sos_contact1 ?? '')
   const [c2, setC2] = useState(profile?.sos_contact2 ?? '')
@@ -43,13 +60,13 @@ export default function Profile() {
     setMsg(error ? `خطأ: ${error}` : 'تم حفظ جهات الطوارئ ✓')
   }
 
-  const menu: { icon: string; label: string; badge?: string; onClick: () => void }[] = [
-    { icon: '🧾', label: 'رحلاتي السابقة', onClick: () => navigate('/rides') },
-    { icon: '📍', label: 'العناوين المحفوظة', onClick: () => navigate('/select-location') },
-    { icon: '🔔', label: 'الإشعارات', onClick: () => setShowSos(false) },
-    { icon: '🆘', label: 'جهات الطوارئ', badge: 'مهم', onClick: () => setShowSos((v) => !v) },
-    { icon: '💬', label: 'المساعدة والدعم', onClick: () => {} },
-    { icon: 'ℹ️', label: 'عن قريب', onClick: () => {} },
+  const menu: { icon: LucideIcon; label: string; badge?: string; onClick: () => void }[] = [
+    { icon: Receipt, label: 'رحلاتي السابقة', onClick: () => navigate('/rides') },
+    { icon: MapPin, label: 'العناوين المحفوظة', onClick: () => navigate('/select-location') },
+    { icon: Bell, label: 'الإشعارات', onClick: () => setShowSos(false) },
+    { icon: Siren, label: 'جهات الطوارئ ومشاركة الرحلة', badge: 'مهم', onClick: () => setShowSos((v) => !v) },
+    { icon: LifeBuoy, label: 'المساعدة والدعم', onClick: () => {} },
+    { icon: Info, label: 'عن قريب', onClick: () => {} },
   ]
 
   return (
@@ -65,10 +82,14 @@ export default function Profile() {
 
         {/* بطاقات الإحصاء */}
         <div className="mt-5 grid grid-cols-3 gap-3">
-          <StatCard icon="🚗" value={ridesCount == null ? '…' : String(ridesCount)} label="رحلاتي" />
-          <StatCard icon="⭐" value={profile?.rating != null ? String(profile.rating) : '—'} label="تقييمك" />
+          <StatCard Icon={Car} value={ridesCount == null ? '…' : String(ridesCount)} label="رحلاتي" />
           <StatCard
-            icon="👛"
+            Icon={Star}
+            value={profile?.rating != null ? String(profile.rating) : '—'}
+            label="تقييمك"
+          />
+          <StatCard
+            Icon={Wallet}
             value={balance == null ? '…' : money(balance)}
             label="رصيد المحفظة"
           />
@@ -76,28 +97,34 @@ export default function Profile() {
 
         {/* القائمة */}
         <div className="card mt-5 divide-y divide-hairline p-0">
-          {menu.map((m) => (
-            <button
-              key={m.label}
-              onClick={m.onClick}
-              className="flex w-full items-center gap-3 px-4 py-3.5 text-right"
-            >
-              <span className="text-xl">{m.icon}</span>
-              <span className="flex-1 font-medium">{m.label}</span>
-              {m.badge && (
-                <span className="rounded-md bg-warning px-1.5 py-0.5 text-[10px] font-bold text-white">
-                  {m.badge}
-                </span>
-              )}
-              <span className="text-ink-muted">‹</span>
-            </button>
-          ))}
+          {menu.map((m) => {
+            const Icon = m.icon
+            return (
+              <button
+                key={m.label}
+                onClick={m.onClick}
+                className="flex w-full items-center gap-3 px-4 py-3.5 text-right"
+              >
+                <Icon className="h-5 w-5 text-green" strokeWidth={1.8} />
+                <span className="flex-1 font-medium">{m.label}</span>
+                {m.badge && (
+                  <span className="rounded-md bg-warning px-1.5 py-0.5 text-[10px] font-bold text-white">
+                    {m.badge}
+                  </span>
+                )}
+                <ChevronLeft className="h-4 w-4 text-ink-muted" />
+              </button>
+            )
+          })}
         </div>
 
-        {/* محرّر جهات الطوارئ (يظهر عند الضغط) */}
+        {/* جهات الطوارئ + مشاركة الرحلة (يظهر عند الضغط) */}
         {showSos && (
           <div className="card mt-4 p-4">
-            <p className="mb-1 font-bold">جهات الطوارئ</p>
+            <p className="mb-1 flex items-center gap-2 font-bold">
+              <Siren className="h-4 w-4 text-danger" strokeWidth={2} />
+              جهات الطوارئ
+            </p>
             <p className="mb-3 text-xs text-ink-muted">
               رقمان يصلهما تنبيه فيه موقعك عند ضغطك زر الطوارئ أثناء الرحلة.
             </p>
@@ -121,6 +148,24 @@ export default function Profile() {
             <button onClick={saveContacts} disabled={busy} className="btn-primary mt-3 w-full">
               {busy ? '…' : 'حفظ جهات الطوارئ'}
             </button>
+
+            {/* مشاركة الرحلة المباشرة */}
+            <div className="mt-4 border-t border-hairline pt-4">
+              <p className="mb-1 flex items-center gap-2 font-bold">
+                <Share2 className="h-4 w-4 text-green" strokeWidth={2} />
+                مشاركة الرحلة المباشرة
+              </p>
+              <p className="mb-3 text-xs text-ink-muted">
+                شارك موقعك أثناء الرحلة مع شخص تثق به — يصله رمز يتابع به رحلتك لحظياً عبر تطبيق قريب.
+              </p>
+              {rideId ? (
+                <ShareRideButton rideId={rideId} />
+              ) : (
+                <p className="rounded-2xl bg-green-mint px-4 py-3 text-center text-xs text-ink-soft">
+                  متاح أثناء وجود رحلة نشطة — يظهر زر المشاركة والرمز هنا وفي شاشة الرحلة.
+                </p>
+              )}
+            </div>
           </div>
         )}
 
@@ -136,10 +181,10 @@ export default function Profile() {
   )
 }
 
-function StatCard({ icon, value, label }: { icon: string; value: string; label: string }) {
+function StatCard({ Icon, value, label }: { Icon: LucideIcon; value: string; label: string }) {
   return (
     <div className="card flex flex-col items-center gap-1 p-3 text-center">
-      <span className="text-2xl">{icon}</span>
+      <Icon className="h-6 w-6 text-green" strokeWidth={1.8} />
       <span className="font-extrabold text-green">{value}</span>
       <span className="text-[11px] text-ink-muted">{label}</span>
     </div>

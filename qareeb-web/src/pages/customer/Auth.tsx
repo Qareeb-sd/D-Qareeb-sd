@@ -1,9 +1,11 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { Fingerprint } from 'lucide-react'
 import Logo from '@/components/Logo'
 import { useAuth } from '@/store/AuthContext'
+import { biometricAvailable, biometricEnabled, biometricLogin, enableBiometric } from '@/lib/biometric'
 
-/** دخول العميل برقم الهاتف + كلمة السر (بلا اسم). الإنشاء عبر صفحة التسجيل. */
+/** دخول العميل برقم الهاتف + كلمة السر، مع خيار الدخول بالبصمة/الوجه. */
 export default function Auth() {
   const navigate = useNavigate()
   const { signInWithPhone } = useAuth()
@@ -12,17 +14,43 @@ export default function Auth() {
   const [password, setPassword] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
+  const [bioReady, setBioReady] = useState(false) // بصمة مفعّلة وبيانات محفوظة
+
+  // هل نعرض زر الدخول بالبصمة؟ (مفعّل سابقاً على هذا الجهاز)
+  useEffect(() => {
+    void biometricEnabled().then(setBioReady)
+  }, [])
+
+  const finishLogin = async (ph: string, pw: string, offerBiometric: boolean) => {
+    const { error } = await signInWithPhone(ph, pw, undefined, { createIfMissing: false })
+    if (error) {
+      setBusy(false)
+      setError(error)
+      return
+    }
+    // بعد أول دخول ناجح: اعرض تفعيل البصمة إن كانت متاحة ولم تُفعّل.
+    if (offerBiometric && !(await biometricEnabled()) && (await biometricAvailable())) {
+      if (window.confirm('تفعيل الدخول بالبصمة/الوجه في المرات القادمة؟')) {
+        await enableBiometric(ph, pw)
+      }
+    }
+    setBusy(false)
+    navigate('/home')
+  }
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault()
     setError('')
     setBusy(true)
-    const { error } = await signInWithPhone(phone, password, undefined, {
-      createIfMissing: false,
-    })
-    setBusy(false)
-    if (error) return setError(error)
-    navigate('/home')
+    await finishLogin(phone, password, true)
+  }
+
+  const loginByBiometric = async () => {
+    setError('')
+    const creds = await biometricLogin()
+    if (!creds) return // ألغى المستخدم
+    setBusy(true)
+    await finishLogin(creds.phone, creds.password, false)
   }
 
   return (
@@ -72,20 +100,29 @@ export default function Auth() {
         </button>
       </form>
 
+      {/* الدخول بالبصمة/الوجه — يظهر بعد تفعيله على هذا الجهاز */}
+      {bioReady && (
+        <button
+          onClick={loginByBiometric}
+          disabled={busy}
+          className="btn-outline mt-3 flex w-full items-center justify-center gap-2 text-green"
+        >
+          <Fingerprint className="h-5 w-5" strokeWidth={1.8} />
+          الدخول بالبصمة
+        </button>
+      )}
+
       {/* إنشاء حساب جديد */}
       <div className="mt-6 text-center">
         <p className="text-sm text-ink-soft">ليس لديك حساب؟</p>
-        <button
-          onClick={() => navigate('/register')}
-          className="btn-outline mt-2 w-full"
-        >
+        <button onClick={() => navigate('/register')} className="btn-outline mt-2 w-full">
           إنشاء حساب جديد
         </button>
       </div>
 
       {/* السائقون لهم تطبيق منفصل «قريب كابتن» */}
       <p className="mt-6 text-center text-xs text-ink-soft">
-        🚗 سائق؟ حمّل تطبيق <span className="font-bold text-green-dark">«قريب كابتن»</span> من المتجر.
+        سائق؟ حمّل تطبيق <span className="font-bold text-green-dark">«قريب كابتن»</span> من المتجر.
       </p>
     </div>
   )
