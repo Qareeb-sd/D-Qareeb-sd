@@ -20,6 +20,10 @@ import {
   UserCheck,
   Hourglass,
   CheckCircle2,
+  Search,
+  UserRound,
+  Star,
+  Check,
   type LucideIcon,
 } from 'lucide-react'
 import Logo from '@/components/Logo'
@@ -188,6 +192,7 @@ export default function AdminDashboard() {
   const [rideQuery, setRideQuery] = useState('')
   const [rideStatus, setRideStatus] = useState('')
   const [driverQuery, setDriverQuery] = useState('')
+  const [driverFilter, setDriverFilter] = useState<'all' | 'online' | 'offline'>('all')
   const [customerQuery, setCustomerQuery] = useState('')
 
   const [busyId, setBusyId] = useState<string | null>(null)
@@ -359,13 +364,17 @@ export default function AdminDashboard() {
   })
   const filteredDrivers = (drivers ?? []).filter((d) => {
     const q = driverQuery.trim()
-    return (
+    const matchesQuery =
       !q ||
       (d.users?.full_name ?? '').includes(q) ||
       (d.users?.phone ?? '').includes(q) ||
       (d.plate_number ?? '').includes(q)
-    )
+    const matchesFilter =
+      driverFilter === 'all' ||
+      (driverFilter === 'online' ? d.is_online : !d.is_online)
+    return matchesQuery && matchesFilter
   })
+  const onlineDriversCount = (drivers ?? []).filter((d) => d.is_online).length
   const filteredCustomers = (customers ?? []).filter((c) => {
     const q = customerQuery.trim()
     return !q || (c.full_name ?? '').includes(q) || (c.phone ?? '').includes(q)
@@ -1111,13 +1120,41 @@ export default function AdminDashboard() {
         {tab === 'drivers' && (
           <div className="card p-4">
             <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-              <p className="font-bold">كل السائقين ({filteredDrivers.length})</p>
-              <input
-                className="field w-full max-w-xs"
-                value={driverQuery}
-                onChange={(e) => setDriverQuery(e.target.value)}
-                placeholder="🔍 بحث بالاسم أو الهاتف أو اللوحة"
-              />
+              <p className="font-bold">
+                السائقون ({filteredDrivers.length})
+                <span className="mr-2 text-xs font-normal text-ink-muted">
+                  {onlineDriversCount} متصل الآن
+                </span>
+              </p>
+              <div className="relative w-full max-w-xs">
+                <Search className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-muted" />
+                <input
+                  className="field w-full pr-9"
+                  value={driverQuery}
+                  onChange={(e) => setDriverQuery(e.target.value)}
+                  placeholder="بحث بالاسم أو الهاتف أو اللوحة"
+                />
+              </div>
+            </div>
+            {/* فلترة الاتصال */}
+            <div className="mb-3 flex gap-2">
+              {(
+                [
+                  { id: 'all', label: 'الكل' },
+                  { id: 'online', label: 'متصل' },
+                  { id: 'offline', label: 'غير متصل' },
+                ] as const
+              ).map((f) => (
+                <button
+                  key={f.id}
+                  onClick={() => setDriverFilter(f.id)}
+                  className={`rounded-full px-3.5 py-1.5 text-xs font-bold transition ${
+                    driverFilter === f.id ? 'bg-green text-white' : 'bg-green-soft text-green'
+                  }`}
+                >
+                  {f.label}
+                </button>
+              ))}
             </div>
             {drivers === null ? (
               <p className="py-6 text-center text-sm text-ink-muted">…</p>
@@ -1143,8 +1180,9 @@ export default function AdminDashboard() {
                     </div>
                     <div className="text-left text-xs text-ink-soft">
                       <p>{getService(d.vehicle_type)?.name ?? d.vehicle_type}</p>
-                      <p className="text-ink-muted">
-                        {d.plate_number ?? '—'} · ⭐ {d.rating ?? '—'}
+                      <p className="flex items-center justify-start gap-1 text-ink-muted">
+                        {d.plate_number ?? '—'} ·
+                        <Star className="h-3 w-3 fill-gold text-gold" /> {d.rating ?? '—'}
                       </p>
                     </div>
                     <button
@@ -1165,12 +1203,15 @@ export default function AdminDashboard() {
           <div className="card p-4">
             <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
               <p className="font-bold">العملاء المسجّلون ({filteredCustomers.length})</p>
-              <input
-                className="field w-full max-w-xs"
-                value={customerQuery}
-                onChange={(e) => setCustomerQuery(e.target.value)}
-                placeholder="🔍 بحث بالاسم أو الهاتف"
-              />
+              <div className="relative w-full max-w-xs">
+                <Search className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-muted" />
+                <input
+                  className="field w-full pr-9"
+                  value={customerQuery}
+                  onChange={(e) => setCustomerQuery(e.target.value)}
+                  placeholder="بحث بالاسم أو الهاتف"
+                />
+              </div>
             </div>
             {customers === null ? (
               <p className="py-6 text-center text-sm text-ink-muted">…</p>
@@ -1182,8 +1223,8 @@ export default function AdminDashboard() {
               <div className="divide-y divide-hairline">
                 {filteredCustomers.map((c) => (
                   <div key={c.id} className="flex items-center gap-3 py-3">
-                    <div className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-green-soft text-base">
-                      🧑🏽
+                    <div className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-green-soft text-green">
+                      <UserRound className="h-5 w-5" strokeWidth={1.8} />
                     </div>
                     <div className="min-w-0 flex-1">
                       <p className="truncate font-bold">{c.full_name ?? 'عميل'}</p>
@@ -1192,9 +1233,10 @@ export default function AdminDashboard() {
                       </p>
                     </div>
                     <div className="text-left text-xs text-ink-soft">
-                      <p className="font-medium text-gold">
-                        {c.rating != null ? `⭐ ${c.rating}` : '⭐ —'}
-                        <span className="text-ink-muted"> ({c.ratings_count})</span>
+                      <p className="flex items-center justify-start gap-1 font-medium text-gold">
+                        <Star className="h-3 w-3 fill-gold text-gold" />
+                        {c.rating != null ? c.rating : '—'}
+                        <span className="text-ink-muted">({c.ratings_count})</span>
                       </p>
                       <p className="text-ink-muted">{c.rides_count} رحلة</p>
                     </div>
@@ -1232,8 +1274,9 @@ export default function AdminDashboard() {
                     }`}
                   >
                     <div className="mb-1 flex items-center justify-between gap-2">
-                      <span className="text-xs font-bold text-ink-soft">
-                        {c.rater_role === 'customer' ? 'عميل ← سائق' : 'سائق ← عميل'} · ⭐ {c.stars}
+                      <span className="flex items-center gap-1 text-xs font-bold text-ink-soft">
+                        {c.rater_role === 'customer' ? 'عميل ← سائق' : 'سائق ← عميل'} ·
+                        <Star className="h-3 w-3 fill-gold text-gold" /> {c.stars}
                       </span>
                       {c.complaint_status === 'open' ? (
                         <button
@@ -1244,7 +1287,9 @@ export default function AdminDashboard() {
                           {busyId === c.id ? '…' : 'تعليم محلولة'}
                         </button>
                       ) : (
-                        <span className="text-xs font-bold text-green">✓ محلولة</span>
+                        <span className="flex items-center gap-1 text-xs font-bold text-green">
+                          <Check className="h-3.5 w-3.5" strokeWidth={2.5} /> محلولة
+                        </span>
                       )}
                     </div>
                     <p className="text-sm">{c.complaint}</p>
