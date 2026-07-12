@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { Star, CheckCircle2, Flag } from 'lucide-react'
 import Screen from '@/components/Screen'
-import { StarIcon } from '@/components/Icons'
 import { useRide } from '@/store/RideContext'
 import { getService } from '@/data/services'
 import { submitReview, getRideDriver } from '@/lib/api'
@@ -43,8 +43,8 @@ export default function Rate() {
   return (
     <Screen title="تقييم الرحلة">
       <div className="flex flex-col items-center gap-2 py-6 text-center">
-        <div className="text-5xl">✅</div>
-        <p className="text-lg font-bold">وصلت بالسلامة!</p>
+        <CheckCircle2 className="h-14 w-14 text-royal" strokeWidth={1.6} />
+        <p className="text-lg font-bold text-royal">وصلت بالسلامة!</p>
         <p className="text-sm text-ink-soft">
           كيف كانت رحلتك{driverName ? ` مع ${driverName}` : ''}؟
         </p>
@@ -53,11 +53,9 @@ export default function Rate() {
       <div className="flex justify-center gap-2 py-2">
         {[1, 2, 3, 4, 5].map((n) => (
           <button key={n} onClick={() => setStars(n)} aria-label={`${n} نجوم`}>
-            <StarIcon
-              width={38}
-              height={38}
-              className={n <= stars ? 'text-gold' : 'text-hairline'}
-              fill={n <= stars ? '#C9A138' : 'none'}
+            <Star
+              className={`h-9 w-9 ${n <= stars ? 'fill-sand text-sand' : 'text-hairline'}`}
+              strokeWidth={1.5}
             />
           </button>
         ))}
@@ -78,9 +76,9 @@ export default function Rate() {
         ) : (
           <button
             onClick={() => setShowComplaint(true)}
-            className="w-full text-center text-sm font-medium text-danger"
+            className="flex w-full items-center justify-center gap-1.5 text-center text-sm font-medium text-danger"
           >
-            🚩 هل لديك شكوى عن السائق؟
+            <Flag className="h-4 w-4" strokeWidth={2} /> هل لديك شكوى عن السائق؟
           </button>
         )}
       </div>
@@ -104,7 +102,7 @@ function Row({ label, value, strong }: { label: string; value: string; strong?: 
   return (
     <div className="flex items-center justify-between px-4 py-3">
       <span className="text-sm text-ink-soft">{label}</span>
-      <span className={strong ? 'font-extrabold text-green' : 'font-medium'}>{value}</span>
+      <span className={strong ? 'font-extrabold text-royal' : 'font-medium'}>{value}</span>
     </div>
   )
 }

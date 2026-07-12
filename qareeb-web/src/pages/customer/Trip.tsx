@@ -1,5 +1,17 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+import {
+  Banknote,
+  Landmark,
+  Wallet,
+  Car,
+  MapPin,
+  Navigation,
+  UserRound,
+  Star,
+  Phone,
+  type LucideIcon,
+} from 'lucide-react'
 import Screen from '@/components/Screen'
 import MapView from '@/components/MapView'
 import VehicleImage from '@/components/VehicleImage'
@@ -20,17 +32,17 @@ import { isSupabaseConfigured } from '@/lib/supabase'
 import { money } from '@/lib/format'
 import type { PaymentMethod, RideStatus } from '@/lib/types'
 
-const payments: { id: PaymentMethod; label: string; icon: string }[] = [
-  { id: 'cash', label: 'كاش', icon: '💵' },
-  { id: 'bank_transfer', label: 'تحويل بنكي', icon: '🏦' },
-  { id: 'wallet', label: 'محفظة قريب', icon: '👛' },
+const payments: { id: PaymentMethod; label: string; icon: LucideIcon }[] = [
+  { id: 'cash', label: 'كاش', icon: Banknote },
+  { id: 'bank_transfer', label: 'تحويل بنكي', icon: Landmark },
+  { id: 'wallet', label: 'محفظة قريب', icon: Wallet },
 ]
 
 /** رسالة حالة الرحلة كما يراها الراكب. */
-const statusInfo: Partial<Record<RideStatus, { emoji: string; text: string }>> = {
-  accepted: { emoji: '🚗', text: 'السائق في الطريق إليك' },
-  arrived: { emoji: '📍', text: 'وصل السائق — بانتظارك' },
-  in_progress: { emoji: '🛣️', text: 'الرحلة جارية — في الطريق لوجهتك' },
+const statusInfo: Partial<Record<RideStatus, { Icon: LucideIcon; text: string }>> = {
+  accepted: { Icon: Car, text: 'السائق في الطريق إليك' },
+  arrived: { Icon: MapPin, text: 'وصل السائق — بانتظارك' },
+  in_progress: { Icon: Navigation, text: 'الرحلة جارية — في الطريق لوجهتك' },
 }
 
 /** شاشة الرحلة الجارية — بيانات السائق، الوجهة، طريقة الدفع. */
@@ -127,29 +139,35 @@ export default function Trip() {
         <div className="flex-1 space-y-4 p-4">
           {/* حالة الرحلة */}
           {banner && (
-            <div className="flex items-center gap-3 rounded-2xl border border-green/25 bg-green-soft p-3.5">
-              <span className="text-2xl">{banner.emoji}</span>
-              <p className="font-bold text-green">{banner.text}</p>
+            <div className="flex items-center gap-3 rounded-2xl border border-royal/15 bg-royal/[0.05] p-3.5">
+              <banner.Icon className="h-6 w-6 text-royal" strokeWidth={1.8} />
+              <p className="font-bold text-royal">{banner.text}</p>
             </div>
           )}
 
           {/* السائق */}
           <div className="card flex items-center gap-3 p-4">
-            <div className="grid h-12 w-12 place-items-center rounded-full bg-green-soft text-xl">
-              🧑🏽‍✈️
+            <div className="grid h-12 w-12 place-items-center rounded-full bg-royal-soft text-royal">
+              <UserRound className="h-6 w-6" strokeWidth={1.8} />
             </div>
             <div className="flex-1">
-              <p className="font-bold">{driver?.full_name ?? 'سائق قريب'}</p>
-              <p className="text-sm text-ink-soft">
+              <p className="font-bold text-royal">{driver?.full_name ?? 'سائق قريب'}</p>
+              <p className="flex items-center gap-1 text-sm text-ink-soft">
                 {service?.name}
-                {driver?.rating != null ? ` · ⭐ ${driver.rating}` : ''}
+                {driver?.rating != null && (
+                  <>
+                    {' · '}
+                    <Star className="h-3.5 w-3.5 fill-sand text-sand" /> {driver.rating}
+                  </>
+                )}
                 {driver?.plate_number ? ` · ${driver.plate_number}` : ''}
               </p>
             </div>
             <a
               href={`tel:${driver?.phone ?? ''}`}
-              className={`btn-ghost px-4 py-2 text-sm ${driver?.phone ? '' : 'pointer-events-none opacity-40'}`}
+              className={`press-scale flex items-center gap-1.5 rounded-2xl bg-royal-soft px-4 py-2 text-sm font-bold text-royal ${driver?.phone ? '' : 'pointer-events-none opacity-40'}`}
             >
+              <Phone className="h-4 w-4" strokeWidth={2} />
               اتصال
             </a>
           </div>
@@ -161,27 +179,31 @@ export default function Trip() {
               <p className="text-ink-muted">الوجهة</p>
               <p className="font-medium">{dropoff?.address ?? '—'}</p>
             </div>
-            <p className="font-extrabold text-green">{money(total)}</p>
+            <p className="font-extrabold text-royal">{money(total)}</p>
           </div>
 
           {/* طريقة الدفع */}
           <div>
             <p className="label">طريقة الدفع</p>
             <div className="grid grid-cols-3 gap-2">
-              {payments.map((p) => (
-                <button
-                  key={p.id}
-                  onClick={() => setPayment(p.id)}
-                  className={`rounded-2xl border p-3 text-center text-sm transition ${
-                    payment === p.id
-                      ? 'border-green bg-green-soft font-bold text-green'
-                      : 'border-hairline bg-white text-ink-soft'
-                  }`}
-                >
-                  <div className="text-xl">{p.icon}</div>
-                  {p.label}
-                </button>
-              ))}
+              {payments.map((p) => {
+                const Icon = p.icon
+                const on = payment === p.id
+                return (
+                  <button
+                    key={p.id}
+                    onClick={() => setPayment(p.id)}
+                    className={`press-scale flex flex-col items-center gap-1 rounded-2xl border p-3 text-center text-sm transition ${
+                      on
+                        ? 'border-transparent bg-royal font-bold text-white ring-gold'
+                        : 'border-hairline bg-white text-ink-soft'
+                    }`}
+                  >
+                    <Icon className="h-5 w-5" strokeWidth={1.8} />
+                    {p.label}
+                  </button>
+                )
+              })}
             </div>
           </div>
         </div>

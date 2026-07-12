@@ -24,7 +24,9 @@ const guard = (el: React.ReactNode) => <ProtectedRoute>{el}</ProtectedRoute>
 /** مسارات تطبيق العميل «قريب» (+ لوحة الإدارة على الويب). */
 export default function CustomerRoutes() {
   return (
-    <Routes>
+    // خط «الواحة الملكية» (IBM Plex Sans Arabic) لكل شاشات العميل — توحيد الهوية.
+    <div className="font-plex">
+      <Routes>
       <Route path="/" element={<Onboarding />} />
       <Route path="/auth" element={<Auth />} />
       <Route path="/register" element={<Register />} />
@@ -47,6 +49,7 @@ export default function CustomerRoutes() {
       <Route path="/profile" element={guard(<Profile />)} />
 
       <Route path="*" element={<Navigate to="/" replace />} />
-    </Routes>
+      </Routes>
+    </div>
   )
 }

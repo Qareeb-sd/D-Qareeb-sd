@@ -46,15 +46,19 @@ export default function FindDriver() {
     <Screen title="البحث عن سائق" back>
       <div className="flex flex-col items-center justify-center gap-6 py-20 text-center">
         <div className="relative grid place-items-center">
-          <span className="absolute h-28 w-28 animate-ping rounded-full bg-green/20" />
-          <span className="absolute h-20 w-20 animate-pulse rounded-full bg-green/10" />
+          <span className="absolute h-28 w-28 animate-ping rounded-full bg-royal/20" />
+          <span className="absolute h-20 w-20 animate-pulse rounded-full bg-sand/20" />
           <Logo size={64} rounded={18} />
         </div>
         <div>
-          <p className="text-lg font-bold">نبحث عن أقرب سائق…</p>
+          <p className="text-lg font-bold text-royal">نبحث عن أقرب سائق…</p>
           <p className="text-sm text-ink-soft">لحظات ونلقى ليك سائق قريب</p>
         </div>
-        <button className="btn-outline" onClick={cancel} disabled={busy}>
+        <button
+          className="press-scale rounded-2xl border border-hairline bg-white px-8 py-3 font-bold text-danger"
+          onClick={cancel}
+          disabled={busy}
+        >
           {busy ? '…' : 'إلغاء'}
         </button>
       </div>

@@ -51,20 +51,6 @@ export default function Home() {
 
   return (
     <div className="relative flex h-full min-h-screen w-full flex-col overflow-hidden bg-ivory font-plex">
-      {/* الخريطة كخلفية ممتدة */}
-      <div className="absolute inset-0">
-        <MapView center={KHARTOUM} driverMarkers={nearbyCars} zoom={15} className="absolute inset-0" />
-        {/* تدرّج علوي لوضوح الهيدر */}
-        <div className="pointer-events-none absolute inset-x-0 top-0 h-36 bg-gradient-to-b from-ivory via-ivory/70 to-transparent" />
-        {/* نبضة موقعي */}
-        <div className="pointer-events-none absolute inset-0 grid place-items-center">
-          <span className="relative grid h-6 w-6 place-items-center">
-            <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-royal/25" />
-            <span className="relative h-3.5 w-3.5 rounded-full bg-royal ring-2 ring-white" />
-          </span>
-        </div>
-      </div>
-
       {/* الهيدر الشفاف */}
       <header
         className="absolute inset-x-0 top-0 z-20 flex animate-fade-up items-center justify-between px-5 pb-2"
@@ -86,11 +72,22 @@ export default function Home() {
         </button>
       </header>
 
-      {/* مساحة تُظهر الخريطة، وتدفع البطاقة والشريط للأسفل */}
-      <div className="relative z-0 flex-1" />
+      {/* منطقة الخريطة — تملأ المساحة المرئية والدبوس في وسطها */}
+      <div className="relative z-0 flex-1">
+        <MapView center={KHARTOUM} driverMarkers={nearbyCars} zoom={15} className="absolute inset-0" />
+        {/* تدرّج علوي لوضوح الهيدر */}
+        <div className="pointer-events-none absolute inset-x-0 top-0 h-36 bg-gradient-to-b from-ivory via-ivory/70 to-transparent" />
+        {/* نبضة موقعي — في وسط منطقة الخريطة المرئية */}
+        <div className="pointer-events-none absolute inset-0 grid place-items-center">
+          <span className="relative grid h-6 w-6 place-items-center">
+            <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-royal/25" />
+            <span className="relative h-3.5 w-3.5 rounded-full bg-royal ring-2 ring-white" />
+          </span>
+        </div>
+      </div>
 
       {/* البطاقة السفلية */}
-      <section className="relative z-20 animate-sheet-up">
+      <section className="relative z-20 -mt-6 animate-sheet-up">
         <div className="rounded-t-[28px] bg-white px-5 pb-4 pt-3 shadow-soft">
           {/* مقبض ذهبي */}
           <div className="mx-auto mb-4 h-1 w-10 rounded-full bg-sand/60" />
