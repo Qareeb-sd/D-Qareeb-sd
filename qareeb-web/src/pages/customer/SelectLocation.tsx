@@ -16,7 +16,7 @@ import {
   Clock4,
 } from 'lucide-react'
 import MapView from '@/components/MapView'
-import PlaceSearch from '@/components/PlaceSearch'
+import LocationSearchPanel, { type SavedEntry } from '@/components/LocationSearchPanel'
 import { useRide } from '@/store/RideContext'
 import { useAuth } from '@/store/AuthContext'
 import { DEFAULT_SERVICE_ID, getService } from '@/data/services'
@@ -63,6 +63,7 @@ export default function SelectLocation() {
 
   const [pickupMode, setPickupMode] = useState<PickupMode>('current')
   const [active, setActive] = useState<Field>('dropoff')
+  const [searching, setSearching] = useState<Field | null>(null)
   const [pickupPos, setPickupPos] = useState<google.maps.LatLngLiteral>(KHARTOUM)
   const [pickupAddr, setPickupAddr] = useState('')
   const [pickupSet, setPickupSet] = useState(false)
@@ -123,16 +124,45 @@ export default function SelectLocation() {
 
   // اختيار طريقة تحديد الانطلاق.
   const setPickupBy = (mode: PickupMode) => {
-    setPickupMode(mode)
     if (mode === 'current') {
+      setPickupMode('current')
       useMyLocation()
       return
     }
-    setActive('pickup')
     if (mode === 'type') {
-      setPickupAddr('')
-      setPickupSet(false)
+      setSearching('pickup') // شاشة بحث كاملة
+      return
     }
+    // الخريطة
+    setPickupMode('map')
+    setActive('pickup')
+  }
+
+  // الأماكن المحفوظة بصيغة شاشة البحث.
+  const savedEntries: SavedEntry[] = SAVED.map((s) => {
+    const p = places[s.key]
+    return {
+      key: s.key,
+      label: s.label,
+      address: p?.address,
+      pos: p ? { lat: p.lat, lng: p.lng } : undefined,
+    }
+  })
+
+  // اختيار موقع من شاشة البحث.
+  const applySearchPick = (pos: google.maps.LatLngLiteral, address: string) => {
+    if (searching === 'pickup') {
+      setPickupPos(pos)
+      setPickupAddr(address)
+      setPickupSet(true)
+      setPickupMode('type')
+    } else {
+      setDropoffPos(pos)
+      setDropoffAddr(address)
+      setDropoffSet(true)
+      setActive('dropoff')
+    }
+    setSearching(null)
   }
 
   const swap = () => {
@@ -342,30 +372,15 @@ export default function SelectLocation() {
             {/* نقطة الانطلاق */}
             <div className="flex items-center gap-3">
               <span className="h-[22px] w-[22px] shrink-0 rounded-full border-[6px] border-royal bg-white" />
-              <div className="min-w-0 flex-1">
+              <button
+                onClick={() => setSearching('pickup')}
+                className="min-w-0 flex-1 text-right"
+              >
                 <p className="text-[10px] font-medium text-ink-muted">نقطة الانطلاق</p>
-                {pickupMode === 'type' ? (
-                  <PlaceSearch
-                    value={pickupAddr}
-                    onFocus={() => setActive('pickup')}
-                    onChange={(v) => {
-                      setPickupAddr(v)
-                      setPickupSet(v.trim() !== '')
-                    }}
-                    onPick={({ pos, address }) => {
-                      setPickupPos(pos)
-                      setPickupAddr(address)
-                      setPickupSet(true)
-                    }}
-                    placeholder="اكتب نقطة الانطلاق"
-                    className="w-full bg-transparent text-[14px] font-semibold text-royal outline-none placeholder:font-medium placeholder:text-ink-muted/60"
-                  />
-                ) : (
-                  <p className="truncate text-[14px] font-semibold text-royal">
-                    {gpsBusy && pickupMode === 'current' ? 'جارٍ تحديد موقعك…' : pickupAddr || 'موقعك الحالي'}
-                  </p>
-                )}
-              </div>
+                <p className="truncate text-[14px] font-semibold text-royal">
+                  {gpsBusy && pickupMode === 'current' ? 'جارٍ تحديد موقعك…' : pickupAddr || 'موقعك الحالي'}
+                </p>
+              </button>
             </div>
 
             {/* طرق تحديد الانطلاق */}
@@ -389,30 +404,21 @@ export default function SelectLocation() {
             </div>
 
             {/* الوجهة */}
-            <div className="flex items-center gap-3">
+            <button onClick={() => setSearching('dropoff')} className="flex w-full items-center gap-3 text-right">
               <MapPinIcon className="h-[22px] w-[22px] shrink-0 text-sand-ink" strokeWidth={2} />
               <div className="min-w-0 flex-1">
                 <p className="text-[10px] font-medium text-ink-muted">
                   الوجهة {destOptional && <span className="text-ink-muted/70">(اختياري)</span>}
                 </p>
-                <PlaceSearch
-                  value={dropoffAddr}
-                  onFocus={() => setActive('dropoff')}
-                  onChange={(v) => {
-                    setDropoffAddr(v)
-                    setDropoffSet(v.trim() !== '')
-                  }}
-                  onPick={({ pos, address }) => {
-                    setDropoffPos(pos)
-                    setDropoffAddr(address)
-                    setDropoffSet(true)
-                    setActive('dropoff')
-                  }}
-                  placeholder="إلى أين؟"
-                  className="w-full bg-transparent text-[15px] font-semibold text-royal outline-none placeholder:font-medium placeholder:text-ink-muted/60"
-                />
+                <p
+                  className={`truncate text-[15px] font-semibold ${
+                    dropoffAddr ? 'text-royal' : 'text-ink-muted/60'
+                  }`}
+                >
+                  {dropoffAddr || 'إلى أين؟'}
+                </p>
               </div>
-            </div>
+            </button>
           </div>
 
           {gpsErr && (
@@ -495,6 +501,36 @@ export default function SelectLocation() {
           </button>
         </div>
       </section>
+
+      {/* شاشة البحث الكاملة — تُخفي الخريطة وتستغلّ المساحة (مثل أوبر) */}
+      {searching && (
+        <LocationSearchPanel
+          field={searching}
+          initial={
+            searching === 'dropoff' ? dropoffAddr : pickupMode === 'type' ? pickupAddr : ''
+          }
+          saved={savedEntries}
+          onPick={({ pos, address }) => applySearchPick(pos, address)}
+          onUseCurrent={
+            searching === 'pickup'
+              ? () => {
+                  setPickupMode('current')
+                  useMyLocation()
+                }
+              : undefined
+          }
+          onChooseOnMap={() => {
+            if (searching === 'pickup') {
+              setPickupMode('map')
+              setActive('pickup')
+            } else {
+              setActive('dropoff')
+            }
+            setSearching(null)
+          }}
+          onClose={() => setSearching(null)}
+        />
+      )}
     </div>
   )
 }
