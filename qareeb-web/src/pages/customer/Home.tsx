@@ -4,12 +4,13 @@ import { Search, Clock, House, Briefcase, ChevronLeft } from 'lucide-react'
 import BottomNav from '@/components/BottomNav'
 import MapView from '@/components/MapView'
 import VehicleImage from '@/components/VehicleImage'
+import ServiceStateOverlay from '@/components/ServiceStateOverlay'
 import Logo from '@/components/Logo'
-import { services } from '@/data/services'
 import { listServicePricing } from '@/lib/api'
 import { money } from '@/lib/format'
 import { KHARTOUM } from '@/theme'
 import { useRide } from '@/store/RideContext'
+import { useServices } from '@/store/ServicesContext'
 
 /**
  * الرئيسية — أسلوب «الواحة الملكية»: خريطة خلفية ممتدة + هيدر شفاف يطفو فوقها +
@@ -25,8 +26,11 @@ const SHORTCUTS = [
 export default function Home() {
   const navigate = useNavigate()
   const { setServiceId } = useRide()
+  const { services: allServices } = useServices()
+  // تُستبعد الخدمات المخفية من العرض؛ الصيانة/قريباً تظهر معطّلة.
+  const services = allServices.filter((s) => (s.state ?? 'available') !== 'hidden')
   const [prices, setPrices] = useState<Record<string, number>>({})
-  const [selected, setSelected] = useState(services[0]?.id ?? 'standard')
+  const [selected, setSelected] = useState('standard')
 
   useEffect(() => {
     void listServicePricing().then((rows) => {
@@ -132,19 +136,24 @@ export default function Home() {
 
           <div className="-mx-1 flex gap-3 overflow-x-auto px-1 pb-1">
             {services.map((s, i) => {
-              const isActive = selected === s.id
+              const state = s.state ?? 'available'
+              const disabled = state !== 'available'
+              const isActive = selected === s.id && !disabled
               return (
                 <button
                   key={s.id}
+                  disabled={disabled}
                   onClick={() => {
+                    if (disabled) return
                     if (isActive) chooseService(s.id)
                     else setSelected(s.id)
                   }}
                   style={{ animationDelay: `${i * 55}ms` }}
-                  className={`press-scale animate-fade-up w-32 shrink-0 rounded-2xl border p-3 text-center transition-colors ${
+                  className={`press-scale animate-fade-up relative w-32 shrink-0 rounded-2xl border p-3 text-center transition-colors ${
                     isActive ? 'border-transparent bg-royal ring-gold' : 'border-hairline/60 bg-ivory/60'
-                  }`}
+                  } ${disabled ? 'cursor-not-allowed' : ''}`}
                 >
+                  <ServiceStateOverlay state={s.state} />
                   <VehicleImage service={s} className="mb-1 h-12 w-full" />
                   <p
                     className={`text-[13px] font-bold leading-tight ${

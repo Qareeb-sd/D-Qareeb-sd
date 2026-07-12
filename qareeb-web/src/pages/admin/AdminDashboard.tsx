@@ -43,6 +43,10 @@ import {
   getProofUrl,
   listServicePricing,
   updateServicePricing,
+  setServiceState,
+  createServicePricing,
+  deleteServicePricing,
+  uploadVehicleImage,
   listDriverApplications,
   approveDriverApplication,
   rejectDriverApplication,
@@ -104,6 +108,7 @@ import type {
   Loan,
   AdminCustomer,
   Complaint,
+  ServiceState,
 } from '@/lib/types'
 
 type Tab =
@@ -134,6 +139,14 @@ const tabs: { id: Tab; label: string; perm: StaffPerm | null; ownerOnly?: boolea
   { id: 'settings', label: 'الإعدادات', perm: 'settings', Icon: SettingsIcon },
   { id: 'staff', label: 'الموظفون', perm: null, ownerOnly: true, Icon: ShieldCheck },
   { id: 'audit', label: 'سجلّ النشاط', perm: null, ownerOnly: true, Icon: ScrollText },
+]
+
+/** حالات الخدمة كما يتحكّم بها الأدمن وتنعكس على تطبيق العميل. */
+const STATE_OPTS: { value: ServiceState; label: string; color: string }[] = [
+  { value: 'available', label: 'متاح', color: '#1B6B3F' },
+  { value: 'maintenance', label: 'صيانة', color: '#B0870F' },
+  { value: 'coming_soon', label: 'قريباً', color: '#3A6FB0' },
+  { value: 'hidden', label: 'مخفي', color: '#8B9189' },
 ]
 
 /** أسماء الصلاحيات المعروضة للمالك عند إضافة موظف. */
@@ -199,6 +212,22 @@ export default function AdminDashboard() {
   const [busyId, setBusyId] = useState<string | null>(null)
   const [savedMsg, setSavedMsg] = useState('')
   const [priceMsg, setPriceMsg] = useState('')
+  const [showAddVeh, setShowAddVeh] = useState(false)
+  const [newVeh, setNewVeh] = useState({
+    service_id: '',
+    name: '',
+    tagline: '',
+    art: 'sedan',
+    tint: '#EDEFEC',
+    seats: 4,
+    noun: '',
+    base_fare: 600,
+    per_km_urban: 130,
+    per_km_far: 160,
+    per_minute: 18,
+    female_driver: false,
+    sharable: true,
+  })
 
   useEffect(() => {
     void (async () => {
@@ -721,14 +750,102 @@ export default function AdminDashboard() {
     setBusyId(p.service_id)
     setPriceMsg('')
     const { error } = await updateServicePricing(p.service_id, {
+      name: p.name,
       base_fare: p.base_fare,
       per_km_urban: p.per_km_urban,
       per_km_far: p.per_km_far,
       per_minute: p.per_minute,
       commission_rate: p.commission_rate,
+      tagline: p.tagline,
+      seats: p.seats,
+      noun: p.noun,
     })
     setBusyId(null)
     setPriceMsg(error ? `خطأ: ${error}` : `تم حفظ تسعيرة «${p.name}» ✓`)
+  }
+
+  const reloadPricing = async () => {
+    const pr = await listServicePricing()
+    setPricing(pr)
+  }
+
+  // تغيير حالة الخدمة (متاح/صيانة/قريباً/مخفي) — ينعكس على تطبيق العميل فوراً.
+  const changeState = async (p: ServicePricing, state: ServiceState) => {
+    setBusyId(p.service_id)
+    setPriceMsg('')
+    const { error } = await setServiceState(p.service_id, state)
+    if (!error) setPricing((cur) => cur.map((x) => (x.service_id === p.service_id ? { ...x, state } : x)))
+    setBusyId(null)
+    setPriceMsg(error ? `خطأ: ${error}` : `تم تحديث حالة «${p.name}» ✓`)
+  }
+
+  // رفع صورة المركبة إلى مخزن vehicles وربطها بالخدمة.
+  const uploadImage = async (p: ServicePricing, file: File) => {
+    setBusyId(p.service_id)
+    setPriceMsg('')
+    const { url, error } = await uploadVehicleImage(p.service_id, file)
+    if (url && !error) {
+      await updateServicePricing(p.service_id, { image_url: url })
+      setPricing((cur) => cur.map((x) => (x.service_id === p.service_id ? { ...x, image_url: url } : x)))
+    }
+    setBusyId(null)
+    setPriceMsg(error ? `خطأ: ${error}` : `تم رفع صورة «${p.name}» ✓`)
+  }
+
+  // إنشاء مركبة/خدمة جديدة من اللوحة بلا تحديث للتطبيق.
+  const addVehicle = async () => {
+    const id = newVeh.service_id.trim().toLowerCase()
+    if (!id || !newVeh.name.trim()) {
+      setPriceMsg('خطأ: المعرّف والاسم مطلوبان')
+      return
+    }
+    if (pricing.some((p) => p.service_id === id)) {
+      setPriceMsg('خطأ: المعرّف مستخدم مسبقاً')
+      return
+    }
+    setBusyId('__new__')
+    setPriceMsg('')
+    const { error } = await createServicePricing({
+      service_id: id,
+      name: newVeh.name.trim(),
+      base_fare: newVeh.base_fare,
+      per_km_urban: newVeh.per_km_urban,
+      per_km_far: newVeh.per_km_far,
+      per_minute: newVeh.per_minute,
+      commission_rate: null,
+      sort_order: pricing.length,
+      active: true,
+      tagline: newVeh.tagline.trim() || null,
+      seats: newVeh.seats,
+      art: newVeh.art,
+      tint: newVeh.tint,
+      noun: newVeh.noun.trim() || null,
+      female_driver: newVeh.female_driver,
+      sharable: newVeh.sharable,
+      destination_optional: false,
+      state: 'coming_soon',
+    })
+    setBusyId(null)
+    if (error) {
+      setPriceMsg(`خطأ: ${error}`)
+      return
+    }
+    await reloadPricing()
+    setShowAddVeh(false)
+    setNewVeh({
+      service_id: '', name: '', tagline: '', art: 'sedan', tint: '#EDEFEC', seats: 4, noun: '',
+      base_fare: 600, per_km_urban: 130, per_km_far: 160, per_minute: 18, female_driver: false, sharable: true,
+    })
+    setPriceMsg('تمت إضافة المركبة ✓ (تبدأ بحالة «قريباً»)')
+  }
+
+  const removeVehicle = async (p: ServicePricing) => {
+    if (!window.confirm(`حذف «${p.name}» نهائياً؟ يُفضّل استخدام حالة «مخفي» بدل الحذف.`)) return
+    setBusyId(p.service_id)
+    const { error } = await deleteServicePricing(p.service_id)
+    setBusyId(null)
+    if (!error) setPricing((cur) => cur.filter((x) => x.service_id !== p.service_id))
+    setPriceMsg(error ? `خطأ: ${error}` : `تم حذف «${p.name}»`)
   }
 
   const commissionPct = settings ? Math.round(settings.commission_rate * 100) : 0
@@ -1749,26 +1866,184 @@ export default function AdminDashboard() {
 
         {tab === 'settings' && (
           <>
-            {/* تسعير المركبات */}
+            {/* المركبات والخدمات — تسعير + حالة + صورة + إضافة/حذف */}
             <div className="card p-4">
-              <p className="font-bold">تسعير المركبات</p>
+              <div className="mb-1 flex items-center justify-between">
+                <p className="font-bold">المركبات والخدمات</p>
+                <button
+                  onClick={() => setShowAddVeh((v) => !v)}
+                  className="rounded-xl bg-royal px-3 py-1.5 text-sm font-bold text-white"
+                >
+                  {showAddVeh ? 'إلغاء' : '+ إضافة مركبة'}
+                </button>
+              </div>
               <p className="mb-3 text-xs text-ink-muted">
-                الأجرة = فتح العداد + شرائح الكيلومتر + الدقائق، مضروبة في معامل Surge.
+                أضِف أو عدّل المركبات وحالتها بلا تحديث للتطبيق. الأجرة = فتح العداد + شرائح
+                الكيلومتر + الدقائق، مضروبة في معامل Surge.
               </p>
+
+              {/* نموذج إضافة مركبة جديدة */}
+              {showAddVeh && (
+                <div className="mb-4 rounded-2xl border-2 border-dashed border-royal/30 bg-royal/[0.03] p-3">
+                  <p className="mb-2 text-sm font-bold text-royal">مركبة جديدة</p>
+                  <div className="grid grid-cols-2 gap-2">
+                    <label className="block">
+                      <span className="mb-1 block text-xs text-ink-soft">المعرّف (إنجليزي)</span>
+                      <input
+                        dir="ltr"
+                        className="w-full rounded-xl border border-hairline bg-white px-3 py-2 text-left text-ink outline-none focus:border-green"
+                        placeholder="mini"
+                        value={newVeh.service_id}
+                        onChange={(e) => setNewVeh({ ...newVeh, service_id: e.target.value })}
+                      />
+                    </label>
+                    <label className="block">
+                      <span className="mb-1 block text-xs text-ink-soft">الاسم</span>
+                      <input
+                        className="w-full rounded-xl border border-hairline bg-white px-3 py-2 text-ink outline-none focus:border-green"
+                        placeholder="ميني"
+                        value={newVeh.name}
+                        onChange={(e) => setNewVeh({ ...newVeh, name: e.target.value })}
+                      />
+                    </label>
+                    <label className="col-span-2 block">
+                      <span className="mb-1 block text-xs text-ink-soft">الوصف</span>
+                      <input
+                        className="w-full rounded-xl border border-hairline bg-white px-3 py-2 text-ink outline-none focus:border-green"
+                        placeholder="سيارة صغيرة · اقتصادية"
+                        value={newVeh.tagline}
+                        onChange={(e) => setNewVeh({ ...newVeh, tagline: e.target.value })}
+                      />
+                    </label>
+                    <label className="block">
+                      <span className="mb-1 block text-xs text-ink-soft">شكل المركبة</span>
+                      <select
+                        className="w-full rounded-xl border border-hairline bg-white px-3 py-2 text-ink outline-none focus:border-green"
+                        value={newVeh.art}
+                        onChange={(e) => setNewVeh({ ...newVeh, art: e.target.value })}
+                      >
+                        <option value="sedan">سيدان</option>
+                        <option value="ladies">نسائي</option>
+                        <option value="van">فان/هايس</option>
+                        <option value="microbus">أمجاد</option>
+                        <option value="rickshaw">ركشة</option>
+                        <option value="tow">سطحة</option>
+                      </select>
+                    </label>
+                    <NumField
+                      label="عدد المقاعد"
+                      value={newVeh.seats}
+                      onChange={(v) => setNewVeh({ ...newVeh, seats: v })}
+                    />
+                    <NumField
+                      label="فتح العداد"
+                      value={newVeh.base_fare}
+                      onChange={(v) => setNewVeh({ ...newVeh, base_fare: v })}
+                    />
+                    <NumField
+                      label="داخل المدينة / كم"
+                      value={newVeh.per_km_urban}
+                      onChange={(v) => setNewVeh({ ...newVeh, per_km_urban: v })}
+                    />
+                    <NumField
+                      label="خارج المدينة / كم"
+                      value={newVeh.per_km_far}
+                      onChange={(v) => setNewVeh({ ...newVeh, per_km_far: v })}
+                    />
+                    <NumField
+                      label="سعر الدقيقة"
+                      value={newVeh.per_minute}
+                      onChange={(v) => setNewVeh({ ...newVeh, per_minute: v })}
+                    />
+                  </div>
+                  <div className="mt-2 flex flex-wrap items-center gap-4">
+                    <label className="flex items-center gap-2 text-sm">
+                      <input
+                        type="checkbox"
+                        className="accent-green"
+                        checked={newVeh.female_driver}
+                        onChange={(e) => setNewVeh({ ...newVeh, female_driver: e.target.checked })}
+                      />
+                      خدمة نسائية
+                    </label>
+                    <label className="flex items-center gap-2 text-sm">
+                      <input
+                        type="checkbox"
+                        className="accent-green"
+                        checked={newVeh.sharable}
+                        onChange={(e) => setNewVeh({ ...newVeh, sharable: e.target.checked })}
+                      />
+                      تدعم الترحيل
+                    </label>
+                    <button
+                      onClick={addVehicle}
+                      disabled={busyId === '__new__'}
+                      className="ms-auto rounded-xl bg-royal px-4 py-2 text-sm font-bold text-white disabled:opacity-60"
+                    >
+                      {busyId === '__new__' ? '…' : 'إضافة'}
+                    </button>
+                  </div>
+                </div>
+              )}
+
               <div className="space-y-3">
                 {pricing.map((p) => (
                   <div key={p.service_id} className="rounded-2xl border border-hairline p-3">
                     <div className="mb-2 flex items-center justify-between">
                       <p className="font-bold">{p.name}</p>
-                      <button
-                        onClick={() => savePrice(p)}
-                        disabled={busyId === p.service_id}
-                        className="btn-primary px-3 py-1.5 text-sm"
-                      >
-                        {busyId === p.service_id ? '…' : 'حفظ'}
-                      </button>
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={() => removeVehicle(p)}
+                          disabled={busyId === p.service_id}
+                          className="rounded-lg border border-red-200 px-2.5 py-1.5 text-xs font-bold text-red-500"
+                        >
+                          حذف
+                        </button>
+                        <button
+                          onClick={() => savePrice(p)}
+                          disabled={busyId === p.service_id}
+                          className="btn-primary px-3 py-1.5 text-sm"
+                        >
+                          {busyId === p.service_id ? '…' : 'حفظ'}
+                        </button>
+                      </div>
                     </div>
+
+                    {/* حالة الخدمة */}
+                    <div className="mb-3 flex flex-wrap gap-1.5">
+                      {STATE_OPTS.map((o) => {
+                        const cur = (p.state ?? 'available') === o.value
+                        return (
+                          <button
+                            key={o.value}
+                            onClick={() => changeState(p, o.value)}
+                            disabled={busyId === p.service_id}
+                            className={`rounded-full px-3 py-1 text-xs font-bold transition ${
+                              cur ? 'text-white' : 'bg-ivory text-ink-soft hover:bg-hairline/40'
+                            }`}
+                            style={cur ? { backgroundColor: o.color } : undefined}
+                          >
+                            {o.label}
+                          </button>
+                        )
+                      })}
+                    </div>
+
                     <div className="grid grid-cols-2 gap-2">
+                      <label className="col-span-2 block">
+                        <span className="mb-1 block text-xs text-ink-soft">الوصف الظاهر للعميل</span>
+                        <input
+                          className="w-full rounded-xl border border-hairline bg-white px-3 py-2 text-ink outline-none focus:border-green"
+                          value={p.tagline ?? ''}
+                          onChange={(e) =>
+                            setPricing((cur) =>
+                              cur.map((x) =>
+                                x.service_id === p.service_id ? { ...x, tagline: e.target.value } : x,
+                              ),
+                            )
+                          }
+                        />
+                      </label>
                       <NumField
                         label="فتح العداد"
                         value={p.base_fare}
@@ -1817,6 +2092,39 @@ export default function AdminDashboard() {
                             )
                           }
                           className="w-full rounded-xl border border-hairline bg-white px-3 py-2 text-ink outline-none focus:border-green"
+                        />
+                      </label>
+                      <NumField
+                        label="عدد المقاعد"
+                        value={p.seats ?? 4}
+                        onChange={(v) =>
+                          setPricing((cur) =>
+                            cur.map((x) => (x.service_id === p.service_id ? { ...x, seats: v } : x)),
+                          )
+                        }
+                      />
+                    </div>
+
+                    {/* صورة المركبة */}
+                    <div className="mt-3 flex items-center gap-3">
+                      <div className="grid h-14 w-20 shrink-0 place-items-center overflow-hidden rounded-xl border border-hairline bg-ivory">
+                        {p.image_url ? (
+                          <img src={p.image_url} alt={p.name} className="h-full w-full object-contain" />
+                        ) : (
+                          <span className="text-[10px] text-ink-muted">لا صورة</span>
+                        )}
+                      </div>
+                      <label className="cursor-pointer rounded-xl border border-hairline px-3 py-2 text-sm font-bold text-royal hover:bg-ivory">
+                        {busyId === p.service_id ? '…' : 'رفع صورة'}
+                        <input
+                          type="file"
+                          accept="image/*"
+                          className="hidden"
+                          onChange={(e) => {
+                            const f = e.target.files?.[0]
+                            if (f) void uploadImage(p, f)
+                            e.target.value = ''
+                          }}
                         />
                       </label>
                     </div>

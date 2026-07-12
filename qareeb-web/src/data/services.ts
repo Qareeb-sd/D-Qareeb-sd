@@ -11,11 +11,15 @@
 
 export type VehicleArt = 'sedan' | 'ladies' | 'van' | 'microbus' | 'rickshaw' | 'tow'
 
+/** حالة الخدمة كما يتحكّم بها الأدمن وتنعكس على تطبيق العميل. */
+export type ServiceState = 'available' | 'maintenance' | 'coming_soon' | 'hidden'
+
 export interface Service {
   id: string
   name: string
   tagline: string
   image: string
+  imageUrl?: string // صورة مرفوعة من لوحة الأدمن (تُفضّل على image المحلّية)
   art: VehicleArt
   tint: string
   seats: number
@@ -23,6 +27,7 @@ export interface Service {
   femaleDriver?: boolean
   sharable?: boolean // يدعم ترحيل
   destinationOptional?: boolean // الوجهة اختيارية (مشوار مفتوح)
+  state?: ServiceState // available افتراضياً
 }
 
 export const services: Service[] = [
@@ -107,6 +112,28 @@ export const services: Service[] = [
   },
 ]
 
-export const getService = (id: string) => services.find((s) => s.id === id)
+/**
+ * ذاكرة الخدمات وقت التشغيل: تُحمّل من قاعدة البيانات (service_pricing) عبر
+ * ServicesContext ثم تُحقن هنا، فتصبح كل الشاشات ديناميكية بلا تحديث للتطبيق.
+ * قبل التحميل نعود إلى القائمة المبدئية (services) حتى لا تظهر شاشة فارغة.
+ */
+let runtime: Service[] | null = null
+
+/** يحقن قائمة الخدمات القادمة من قاعدة البيانات. */
+export function setRuntimeServices(list: Service[] | null) {
+  runtime = list && list.length ? list : null
+}
+
+/** كل الخدمات (المخفية مشمولة — الفلترة تتم في طبقة العرض). */
+export function allServices(): Service[] {
+  return runtime ?? services
+}
+
+/** الخدمات المرئية للعميل (تستبعد المخفية). */
+export function visibleServices(): Service[] {
+  return allServices().filter((s) => (s.state ?? 'available') !== 'hidden')
+}
+
+export const getService = (id: string) => allServices().find((s) => s.id === id)
 
 export const DEFAULT_SERVICE_ID = services[0].id

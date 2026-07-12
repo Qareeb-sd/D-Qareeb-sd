@@ -5,6 +5,7 @@ import { AuthProvider } from '@/store/AuthContext'
 import { RideProvider } from '@/store/RideContext'
 import { DriverProvider } from '@/store/DriverContext'
 import { MapsProvider } from '@/store/MapsContext'
+import { ServicesProvider } from '@/store/ServicesContext'
 import ErrorBoundary from '@/components/ErrorBoundary'
 
 /**
@@ -38,9 +39,11 @@ export default function App() {
           <AuthProvider>
             <RideProvider>
               <DriverProvider>
-                <Suspense fallback={<Splash />}>
-                  <AppRoutes />
-                </Suspense>
+                <ServicesProvider>
+                  <Suspense fallback={<Splash />}>
+                    <AppRoutes />
+                  </Suspense>
+                </ServicesProvider>
               </DriverProvider>
             </RideProvider>
           </AuthProvider>

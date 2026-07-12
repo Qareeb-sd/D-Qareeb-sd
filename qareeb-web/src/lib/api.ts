@@ -15,7 +15,9 @@ import type {
   StaffPerm,
   AdminAccess,
   TrackedRide,
+  ServiceState,
 } from './types'
+import { services as seedServices, type Service, type VehicleArt } from '@/data/services'
 
 /**
  * طبقة الوصول للبيانات.
@@ -82,6 +84,86 @@ export async function updateServicePricing(
     .update({ ...patch, updated_at: new Date().toISOString() })
     .eq('service_id', serviceId)
   return error ? { error: error.message } : {}
+}
+
+// ---------- الخدمات الديناميكية (حالات + إضافة مركبة من اللوحة) ----------
+const ALLOWED_ART = ['sedan', 'ladies', 'van', 'microbus', 'rickshaw', 'tow']
+
+/** يحوّل صفّ service_pricing إلى كائن Service لعرضه في تطبيق العميل. */
+function rowToService(p: ServicePricing): Service {
+  const art = (p.art && ALLOWED_ART.includes(p.art) ? p.art : 'sedan') as VehicleArt
+  return {
+    id: p.service_id,
+    name: p.name,
+    tagline: p.tagline ?? '',
+    image: `/vehicles/${p.service_id}.png`,
+    imageUrl: p.image_url ?? undefined,
+    art,
+    tint: p.tint || '#EDEFEC',
+    seats: p.seats ?? 4,
+    noun: p.noun ?? 'المركبة',
+    femaleDriver: p.female_driver ?? false,
+    sharable: p.sharable ?? true,
+    destinationOptional: p.destination_optional ?? false,
+    state: p.state ?? 'available',
+  }
+}
+
+/**
+ * قائمة الخدمات جاهزة للعرض (Service[]) — تُبنى من جدول service_pricing.
+ * تُستبعد غير النشطة (active=false) لكن تبقى المخفية ليتحكم بها الأدمن،
+ * والفلترة النهائية للحالة تتم في طبقة العرض.
+ */
+export async function listServices(): Promise<Service[]> {
+  if (!isSupabaseConfigured) return seedServices
+  const { data } = await supabase
+    .from('service_pricing')
+    .select('*')
+    .order('sort_order', { ascending: true })
+  if (!data || !data.length) return seedServices
+  return (data as ServicePricing[]).filter((p) => p.active !== false).map(rowToService)
+}
+
+/** يغيّر حالة الخدمة (available/maintenance/coming_soon/hidden). */
+export async function setServiceState(
+  serviceId: string,
+  state: ServiceState,
+): Promise<{ error?: string }> {
+  return updateServicePricing(serviceId, { state })
+}
+
+/** ينشئ خدمة/مركبة جديدة من لوحة الأدمن (بلا تحديث للتطبيق). */
+export async function createServicePricing(
+  row: Partial<ServicePricing> & { service_id: string; name: string },
+): Promise<{ error?: string }> {
+  if (!isSupabaseConfigured) return {}
+  const { error } = await supabase
+    .from('service_pricing')
+    .insert({ ...row, updated_at: new Date().toISOString() })
+  return error ? { error: error.message } : {}
+}
+
+/** يحذف خدمة (يُفضّل استخدام الحالة «مخفي» بدل الحذف للحفاظ على السجلّات). */
+export async function deleteServicePricing(serviceId: string): Promise<{ error?: string }> {
+  if (!isSupabaseConfigured) return {}
+  const { error } = await supabase.from('service_pricing').delete().eq('service_id', serviceId)
+  return error ? { error: error.message } : {}
+}
+
+/** يرفع صورة مركبة إلى مخزن vehicles ويعيد رابطها العام. */
+export async function uploadVehicleImage(
+  serviceId: string,
+  file: File,
+): Promise<{ url?: string; error?: string }> {
+  if (!isSupabaseConfigured) return { error: 'قاعدة البيانات غير مضبوطة' }
+  const ext = (file.name.split('.').pop() || 'png').toLowerCase()
+  const path = `${serviceId}-${Date.now()}.${ext}`
+  const { error } = await supabase.storage
+    .from('vehicles')
+    .upload(path, file, { upsert: true, contentType: file.type || 'image/png' })
+  if (error) return { error: error.message }
+  const { data } = supabase.storage.from('vehicles').getPublicUrl(path)
+  return { url: data.publicUrl }
 }
 
 // ---------- المحفظة ----------

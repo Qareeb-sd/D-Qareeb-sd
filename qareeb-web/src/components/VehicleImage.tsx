@@ -15,6 +15,8 @@ export default function VehicleImage({
   className?: string
 }) {
   const [failed, setFailed] = useState(false)
+  // تُفضّل الصورة المرفوعة من لوحة الأدمن (imageUrl) على الصورة المحلّية.
+  const src = service.imageUrl || service.image
 
   if (failed) {
     return (
@@ -28,7 +30,7 @@ export default function VehicleImage({
     <div className={`relative flex items-center justify-center overflow-hidden ${className ?? ''}`}>
       {/* object-contain: تُعرض المركبة كاملة دون قصّ */}
       <img
-        src={service.image}
+        src={src}
         alt={service.name}
         loading="lazy"
         onError={() => setFailed(true)}

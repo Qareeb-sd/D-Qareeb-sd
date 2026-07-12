@@ -1384,3 +1384,44 @@ returns table (
    where r.share_token = p_token
 $$;
 grant execute on function public.track_shared_ride(text) to anon, authenticated;
+
+-- ============================================================
+--  الخدمات الديناميكية: حقول العرض + الحالة + صور الاستضافة
+--  يتيح إضافة/تعديل مركبة من لوحة الأدمن دون تحديث التطبيق.
+-- ============================================================
+alter table public.service_pricing
+  add column if not exists tagline               text,
+  add column if not exists seats                 int  not null default 4,
+  add column if not exists art                   text not null default 'sedan',
+  add column if not exists tint                  text not null default '#EDEFEC',
+  add column if not exists image_url             text,
+  add column if not exists female_driver         boolean not null default false,
+  add column if not exists sharable              boolean not null default true,
+  add column if not exists destination_optional  boolean not null default false,
+  add column if not exists noun                  text,
+  add column if not exists state                 text not null default 'available';
+
+-- الحالة ضمن القيم المسموحة
+alter table public.service_pricing drop constraint if exists service_state_chk;
+alter table public.service_pricing
+  add constraint service_state_chk check (state in ('available','maintenance','coming_soon','hidden'));
+
+-- تعبئة حقول العرض للمركبات الأساسية (لا يمسّ ما عُدّل يدوياً)
+update public.service_pricing set tagline=coalesce(tagline,'سيارة عادية · اقتصادي وسريع'), art='sedan',    tint='#EDEFEC', seats=4,  noun=coalesce(noun,'السيارة'), sharable=true                      where service_id='standard';
+update public.service_pricing set tagline=coalesce(tagline,'سائقة · للنساء والعائلات'),    art='ladies',   tint='#E85C9E', seats=4,  noun=coalesce(noun,'السيارة'), female_driver=true, sharable=true  where service_id='ladies';
+update public.service_pricing set tagline=coalesce(tagline,'داماس · نقل عائلي'),           art='microbus', tint='#3A6FB0', seats=7,  noun=coalesce(noun,'الأمجاد'), sharable=true                      where service_id='amjad';
+update public.service_pricing set tagline=coalesce(tagline,'11 راكب · للمجموعات'),         art='van',      tint='#CED2CE', seats=11, noun=coalesce(noun,'الهايس'),  sharable=true                      where service_id='hiace';
+update public.service_pricing set tagline=coalesce(tagline,'مشاوير قصيرة · اقتصادي'),      art='rickshaw', tint='#2B2F2C', seats=3,  noun=coalesce(noun,'الركشة'),  sharable=true                      where service_id='rickshaw';
+update public.service_pricing set tagline=coalesce(tagline,'استأجر بالساعة أو اليوم'),     art='sedan',    tint='#EDEFEC', seats=4,  noun=coalesce(noun,'السيارة'), sharable=true, destination_optional=true where service_id='open';
+update public.service_pricing set tagline=coalesce(tagline,'سطحة · نقل وإنقاذ المركبات'),  art='tow',      tint='#EDEFEC', seats=2,  noun=coalesce(noun,'السطحة'),  sharable=false                     where service_id='tow';
+
+-- bucket صور المركبات (قراءة عامة — يقرأها التطبيق بالرابط)
+insert into storage.buckets (id, name, public) values ('vehicles','vehicles', true)
+  on conflict (id) do nothing;
+
+-- كتابة صور المركبات: للأدمن (صلاحية settings) فقط؛ القراءة عامة تلقائياً
+drop policy if exists "admin write vehicles" on storage.objects;
+create policy "admin write vehicles" on storage.objects
+  for all to authenticated
+  using (bucket_id = 'vehicles' and public.has_perm('settings'))
+  with check (bucket_id = 'vehicles' and public.has_perm('settings'));

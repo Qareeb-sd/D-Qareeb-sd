@@ -106,6 +106,8 @@ export interface Settings {
 }
 
 /** تسعيرة نوع مركبة واحد — تُدار من لوحة الأدمن. */
+export type ServiceState = 'available' | 'maintenance' | 'coming_soon' | 'hidden'
+
 export interface ServicePricing {
   service_id: string
   name: string
@@ -117,6 +119,17 @@ export interface ServicePricing {
   sort_order: number
   active: boolean
   updated_at: string
+  // حقول العرض الديناميكية (تُدار من لوحة الأدمن)
+  tagline?: string | null
+  seats?: number
+  art?: string
+  tint?: string
+  image_url?: string | null
+  female_driver?: boolean
+  sharable?: boolean
+  destination_optional?: boolean
+  noun?: string | null
+  state?: ServiceState
 }
 
 // ---------- الطوارئ (SOS) ----------
