@@ -50,7 +50,7 @@ export default function Home() {
   }
 
   return (
-    <div className="relative h-full min-h-screen w-full overflow-hidden bg-ivory font-plex">
+    <div className="relative flex h-full min-h-screen w-full flex-col overflow-hidden bg-ivory font-plex">
       {/* الخريطة كخلفية ممتدة */}
       <div className="absolute inset-0">
         <MapView center={KHARTOUM} driverMarkers={nearbyCars} zoom={15} className="absolute inset-0" />
@@ -86,9 +86,12 @@ export default function Home() {
         </button>
       </header>
 
+      {/* مساحة تُظهر الخريطة، وتدفع البطاقة والشريط للأسفل */}
+      <div className="relative z-0 flex-1" />
+
       {/* البطاقة السفلية */}
-      <section className="absolute inset-x-0 bottom-0 z-20 animate-sheet-up">
-        <div className="rounded-t-[28px] bg-white px-5 pb-24 pt-3 shadow-soft">
+      <section className="relative z-20 animate-sheet-up">
+        <div className="rounded-t-[28px] bg-white px-5 pb-4 pt-3 shadow-soft">
           {/* مقبض ذهبي */}
           <div className="mx-auto mb-4 h-1 w-10 rounded-full bg-sand/60" />
 
