@@ -4,7 +4,7 @@ import { Capacitor } from '@capacitor/core'
 import { Fingerprint } from 'lucide-react'
 import Logo from '@/components/Logo'
 import { useAuth } from '@/store/AuthContext'
-import { biometricAvailable, biometricEnabled, biometricLogin, enableBiometric } from '@/lib/biometric'
+import { biometricEnabled, biometricLogin, enableBiometric } from '@/lib/biometric'
 
 // عرض خيار البصمة على الجهاز فقط — دون استدعاء المكوّن الأصلي في مسار الدخول.
 const canBio = Capacitor.isNativePlatform()
@@ -28,12 +28,21 @@ export default function Auth() {
       .catch(() => setBioReady(false))
   }, [])
 
-  // تفعيل البصمة بعد الدخول — أفضل جهد، لا يعطّل الدخول أبداً.
-  const safeEnable = async (ph: string, pw: string) => {
+  // تفعيل البصمة بنتيجة واضحة، مع حدّ زمني حتى لا يعلق الدخول أبداً.
+  const tryEnable = async (ph: string, pw: string) => {
+    const timeout = new Promise<{ ok: boolean; reason?: string }>((r) =>
+      setTimeout(() => r({ ok: false, reason: 'انتهت المهلة' }), 8000),
+    )
     try {
-      if (await biometricAvailable()) await enableBiometric(ph, pw)
-    } catch {
-      /* تجاهل — الدخول تمّ */
+      const res = await Promise.race([enableBiometric(ph, pw), timeout])
+      if (res.ok) {
+        setBioReady(true)
+        alert('تم تفعيل الدخول بالبصمة ✓')
+      } else {
+        alert('تعذّر تفعيل البصمة: ' + (res.reason ?? 'خطأ غير معروف'))
+      }
+    } catch (e) {
+      alert('تعذّر تفعيل البصمة: ' + ((e as Error)?.message ?? 'خطأ'))
     }
   }
 
@@ -42,10 +51,14 @@ export default function Auth() {
     setError('')
     setBusy(true)
     const { error } = await signInWithPhone(phone, password, undefined, { createIfMissing: false })
+    if (error) {
+      setBusy(false)
+      return setError(error)
+    }
+    // تفعيل البصمة (إن طُلب) بنتيجة واضحة، ثم التوجيه.
+    if (remember) await tryEnable(phone, password)
     setBusy(false)
-    if (error) return setError(error)
-    navigate('/home') // الدخول ينجح دائماً بلا اعتماد على البصمة
-    if (remember) void safeEnable(phone, password)
+    navigate('/home')
   }
 
   const loginByBiometric = async () => {

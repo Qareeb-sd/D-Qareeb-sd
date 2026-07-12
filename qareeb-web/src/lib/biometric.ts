@@ -29,22 +29,34 @@ export async function biometricAvailable(): Promise<boolean> {
   }
 }
 
-/** هل فعّل المستخدم الدخول بالبصمة (وحفظ بياناته) على هذا الجهاز؟ */
+/** هل فعّل المستخدم الدخول بالبصمة على هذا الجهاز؟ (علامة محلية فقط — بلا نداء أصلي) */
 export async function biometricEnabled(): Promise<boolean> {
-  if (localStorage.getItem(FLAG) !== '1') return false
-  return biometricAvailable()
+  return localStorage.getItem(FLAG) === '1'
 }
 
-/** حفظ بيانات الدخول بعد أول دخول ناجح + تفعيل العلامة. */
-export async function enableBiometric(phone: string, password: string): Promise<boolean> {
+/**
+ * حفظ بيانات الدخول لتفعيل البصمة — يعيد نتيجة واضحة (نجاح/سبب الفشل)
+ * حتى يُعرض للمستخدم بدل الفشل الصامت.
+ */
+export async function enableBiometric(
+  phone: string,
+  password: string,
+): Promise<{ ok: boolean; reason?: string }> {
   const N = await nb()
-  if (!N) return false
+  if (!N) return { ok: false, reason: 'متاح على الجهاز فقط' }
   try {
+    const avail = await N.isAvailable()
+    if (!avail.isAvailable) {
+      return {
+        ok: false,
+        reason: 'لا توجد بصمة/وجه مُسجّل على الجهاز — أضِفه من إعدادات الهاتف ثم أعد المحاولة.',
+      }
+    }
     await N.setCredentials({ username: phone, password, server: SERVER })
     localStorage.setItem(FLAG, '1')
-    return true
-  } catch {
-    return false
+    return { ok: true }
+  } catch (e) {
+    return { ok: false, reason: (e as Error)?.message || 'تعذّر حفظ بيانات البصمة' }
   }
 }
 
