@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import {
   LayoutDashboard,
+  MapPinned,
   Inbox,
   Car,
   Users,
@@ -102,6 +103,7 @@ import type {
 
 type Tab =
   | 'overview'
+  | 'map'
   | 'requests'
   | 'drivers'
   | 'customers'
@@ -116,6 +118,7 @@ type Tab =
 /** التبويبات مع الصلاحية المطلوبة لكلٍّ (null = تكفي أي صلاحية). */
 const tabs: { id: Tab; label: string; perm: StaffPerm | null; ownerOnly?: boolean; Icon: LucideIcon }[] = [
   { id: 'overview', label: 'نظرة عامة', perm: null, Icon: LayoutDashboard },
+  { id: 'map', label: 'الخريطة المباشرة', perm: null, Icon: MapPinned },
   { id: 'requests', label: 'الطلبات', perm: 'requests', Icon: Inbox },
   { id: 'drivers', label: 'السائقون', perm: 'drivers', Icon: Car },
   { id: 'customers', label: 'العملاء', perm: 'drivers', Icon: Users },
@@ -891,9 +894,12 @@ export default function AdminDashboard() {
             <div className="card p-4">
               <div className="mb-3 flex items-center justify-between">
                 <p className="font-bold">النشاط المباشر على الخريطة</p>
-                <span className="chip bg-green-soft text-green">
-                  {activeRides.length} رحلة نشطة
-                </span>
+                <button
+                  onClick={() => setTab('map')}
+                  className="flex items-center gap-1 rounded-full bg-green-soft px-3 py-1 text-xs font-bold text-green hover:bg-green/10"
+                >
+                  <MapPinned className="h-3.5 w-3.5" /> عرض بملء الشاشة
+                </button>
               </div>
               <MapView
                 zoom={activeRides.length ? 11 : 6}
@@ -929,6 +935,51 @@ export default function AdminDashboard() {
               )}
             </div>
           </>
+        )}
+
+        {tab === 'map' && (
+          <div className="flex flex-col gap-3">
+            {/* شريط معلومات */}
+            <div className="flex flex-wrap items-center gap-3">
+              <span className="flex items-center gap-2 rounded-full bg-green-soft px-3 py-1.5 text-sm font-bold text-green">
+                <span className="h-2.5 w-2.5 animate-pulse rounded-full bg-green" />
+                {activeRides.length} رحلة نشطة الآن
+              </span>
+              <span className="flex items-center gap-1.5 text-xs text-ink-muted">
+                <span className="inline-block h-3 w-3 rounded-full bg-danger" /> نقطة انطلاق الرحلة
+              </span>
+              <span className="flex items-center gap-1.5 text-xs text-ink-muted">
+                <span className="inline-block h-3 w-3 rounded-full bg-green" /> موقع السائق المباشر
+              </span>
+              <button
+                onClick={() => void listActiveRides().then(setActiveRides)}
+                className="mr-auto rounded-full border border-hairline bg-white px-3 py-1.5 text-sm font-bold text-green hover:bg-green-soft"
+              >
+                تحديث
+              </button>
+            </div>
+
+            {/* خريطة كبيرة تملأ الصفحة */}
+            <MapView
+              zoom={activeRides.length ? 11 : 6}
+              center={
+                activeRides[0]
+                  ? { lat: activeRides[0].pickup_lat, lng: activeRides[0].pickup_lng }
+                  : undefined
+              }
+              markers={activeRides.map((r) => ({ lat: r.pickup_lat, lng: r.pickup_lng }))}
+              driverMarkers={activeRides
+                .filter((r) => r.driver_lat != null && r.driver_lng != null)
+                .map((r) => ({ lat: r.driver_lat as number, lng: r.driver_lng as number }))}
+              className="h-[calc(100vh-190px)] min-h-[420px] w-full rounded-2xl border border-hairline"
+            />
+
+            {activeRides.length === 0 && (
+              <p className="text-center text-sm text-ink-muted">
+                لا توجد رحلات نشطة حالياً — ستظهر تلقائياً على الخريطة عند بدء أيّ رحلة.
+              </p>
+            )}
+          </div>
         )}
 
         {tab === 'requests' && (
