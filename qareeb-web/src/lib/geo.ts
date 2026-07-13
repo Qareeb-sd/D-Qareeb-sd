@@ -12,6 +12,17 @@ export interface GeoPos {
 
 const isNative = Capacitor.isNativePlatform()
 
+/** يطلب إذن الموقع مبكراً (بلا جلب موقع) — لتجهيزه قبل بدء الرحلة. */
+export async function ensureGeoPermission(): Promise<void> {
+  if (!isNative) return
+  try {
+    const { Geolocation } = await import('@capacitor/geolocation')
+    await Geolocation.requestPermissions()
+  } catch {
+    /* تجاهل */
+  }
+}
+
 /** موقع واحد فوري (يعيد null إن تعذّر/رُفض الإذن). */
 export async function getCurrentPos(): Promise<GeoPos | null> {
   if (isNative) {

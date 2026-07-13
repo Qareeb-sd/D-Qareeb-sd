@@ -24,7 +24,14 @@ import LocationSearchPanel, { type SavedEntry } from '@/components/LocationSearc
 import { useRide } from '@/store/RideContext'
 import { useAuth } from '@/store/AuthContext'
 import { DEFAULT_SERVICE_ID, getService } from '@/data/services'
-import { createRide, prepayRide, cancelRide, getServicePricing, getSettings } from '@/lib/api'
+import {
+  createRide,
+  prepayRide,
+  cancelRide,
+  getActiveCustomerRide,
+  getServicePricing,
+  getSettings,
+} from '@/lib/api'
 import { estimateFare, estimateRoute } from '@/lib/pricing'
 import { fetchRoute } from '@/lib/maps'
 import { getCurrentPos } from '@/lib/geo'
@@ -67,7 +74,8 @@ const SAVED = [
 export default function SelectLocation() {
   const navigate = useNavigate()
   const { profile } = useAuth()
-  const { serviceId, payment, setPayment, setPickup, setDropoff, setFare, setRideId } = useRide()
+  const { serviceId, payment, setPayment, setPickup, setDropoff, setFare, setRideId, restore } =
+    useRide()
 
   const sid = serviceId ?? DEFAULT_SERVICE_ID
   const service = getService(sid)
@@ -240,6 +248,21 @@ export default function SelectLocation() {
 
   const confirm = async () => {
     setBusy(true)
+    // منع طلب أكثر من رحلة في وقت واحد — إن وُجدت رحلة نشطة، عُد لمتابعتها.
+    if (profile?.id) {
+      const existing = await getActiveCustomerRide(profile.id)
+      if (existing) {
+        restore(existing)
+        setBusy(false)
+        alert('لديك رحلة جارية بالفعل — سنعيدك لمتابعتها.')
+        navigate(
+          existing.status === 'searching' || existing.status === 'requested'
+            ? '/find-driver'
+            : '/trip',
+        )
+        return
+      }
+    }
     const pickup = { pos: pickupPos, address: pickupAddr || 'نقطة الإقلاع' }
     const dropoff = { pos: dropoffPos, address: dropoffAddr || 'الوجهة' }
     setPickup(pickup)

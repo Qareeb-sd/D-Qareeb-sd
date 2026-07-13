@@ -19,7 +19,7 @@ import { subscribeToRide } from '@/lib/realtime'
 import { getService } from '@/data/services'
 import { money } from '@/lib/format'
 import { fetchRoutePath } from '@/lib/maps'
-import { watchPos } from '@/lib/geo'
+import { watchPos, getCurrentPos } from '@/lib/geo'
 
 const paymentLabels: Record<string, string> = {
   cash: 'كاش',
@@ -81,6 +81,13 @@ export default function DriverTrip() {
     if (!rid) return
     let cancelled = false
     let stop = () => {}
+    // موقع فوري أولاً (ليراه الراكب بسرعة) ثم تتبّع مستمر.
+    void getCurrentPos().then((here) => {
+      if (here && !cancelled) {
+        setPos(here)
+        void updateDriverLocation(rid, here.lat, here.lng)
+      }
+    })
     void watchPos((here) => {
       setPos(here)
       void updateDriverLocation(rid, here.lat, here.lng)

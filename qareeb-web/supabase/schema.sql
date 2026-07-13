@@ -1727,3 +1727,15 @@ returns table (
    limit p_limit;
 $$;
 grant execute on function public.admin_list_rides(int) to authenticated;
+
+-- ============================================================
+--  منع أكثر من رحلة نشطة للعميل الواحد (دفاع على مستوى القاعدة).
+--  ملفوف في do-block: إن وُجدت رحلات نشطة مكرّرة سابقاً لا يُوقف تنفيذ الملف.
+-- ============================================================
+do $$ begin
+  create unique index if not exists rides_one_active_per_customer
+    on public.rides (customer_id)
+    where status in ('requested','searching','accepted','arrived','in_progress');
+exception when others then
+  raise notice 'تعذّر إنشاء فهرس الرحلة النشطة الوحيدة (قد توجد رحلات نشطة مكرّرة): %', sqlerrm;
+end $$;

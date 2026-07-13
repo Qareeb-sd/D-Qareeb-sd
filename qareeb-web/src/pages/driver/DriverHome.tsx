@@ -23,6 +23,7 @@ import {
   alertNewRide,
 } from '@/lib/notifications'
 import { startCaptainBg, stopCaptainBg } from '@/lib/captainBg'
+import { ensureGeoPermission } from '@/lib/geo'
 import { getService } from '@/data/services'
 import { money } from '@/lib/format'
 import type { Driver, Ride } from '@/lib/types'
@@ -65,8 +66,9 @@ export default function DriverHome() {
       // إن كان متصلاً مسبقاً (فتح التطبيق من جديد) شغّل الخدمة الأمامية.
       if (isOn) void startCaptainBg()
     })
-    // اطلب إذن الإشعارات مبكراً حتى تصل تنبيهات الطلبات فور الاتصال.
+    // اطلب إذن الإشعارات والموقع مبكراً (يُبثّ موقع السائق للراكب فور القبول).
     void enableNotifications().then(setNotifOn)
+    void ensureGeoPermission()
   }, [userId])
 
   // أوقف الخدمة الأمامية عند مغادرة الشاشة إن لم يعد متصلاً (احتياط).
