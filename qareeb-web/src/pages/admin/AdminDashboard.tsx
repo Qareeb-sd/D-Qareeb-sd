@@ -165,6 +165,23 @@ const STATE_OPTS: { value: ServiceState; label: string; color: string }[] = [
 /** ترتيب الفترات الزمنية للعرض: صباحاً ← ظهراً ← مساءً ← ليلاً. */
 const PERIOD_ORDER: ServicePeriod['period'][] = ['morning', 'afternoon', 'evening', 'night']
 
+/**
+ * جدول التسعير الموصى به (per_min=56، per_km=طلب المشوار). أربع مجموعات أسعار
+ * لكل فترة: [base_fare/per_km, min_fare]. تُطبَّق بضغطة زر ثم تبقى قابلة للتعديل.
+ */
+type RateTuple = readonly [number, number] // [base_fare & per_km, min_fare]
+const RECOMMENDED_RATES: Record<string, Record<ServicePeriod['period'], RateTuple>> = {
+  eco: { morning: [3508, 8800], afternoon: [3508, 8800], evening: [3859, 9600], night: [4034, 10100] },
+  rickshaw: { morning: [1559, 3900], afternoon: [1559, 3900], evening: [1715, 4300], night: [1793, 4500] },
+  hiace: { morning: [5457, 13600], afternoon: [5457, 13600], evening: [6275, 15000], night: [6275, 15700] },
+  sahab: { morning: [12902, 15500], afternoon: [12902, 15500], evening: [14193, 17000], night: [14838, 17800] },
+}
+/** ربط معرّف الخدمة بمجموعة الأسعار الموصى بها. */
+const RECOMMENDED_GROUP: Record<string, keyof typeof RECOMMENDED_RATES> = {
+  standard: 'eco', open: 'eco', amjad: 'eco', ladies: 'eco',
+  rickshaw: 'rickshaw', hiace: 'hiace', tow: 'sahab',
+}
+
 /** أسماء الصلاحيات المعروضة للمالك عند إضافة موظف. */
 const permLabels: { id: StaffPerm; label: string; desc: string }[] = [
   { id: 'requests', label: 'الطلبات', desc: 'اعتماد التعبئات وطلبات السائقين' },
@@ -793,17 +810,43 @@ export default function AdminDashboard() {
   }
 
   // ===== التسعير حسب الفترة الزمنية =====
+  // صفّ فترة افتراضي يُبنى من التسعير العام للخدمة عند غياب صفّ محفوظ،
+  // حتى يبقى المحرّر قابلاً للتحرير والحفظ فوراً دون الحاجة لبذر مسبق.
+  const defaultPeriodRow = (
+    serviceId: string,
+    period: ServicePeriod['period'],
+  ): ServicePeriod => {
+    const p = pricing.find((x) => x.service_id === serviceId)
+    return {
+      service_id: serviceId,
+      period,
+      base_fare: p?.base_fare ?? 0,
+      per_km: p?.per_km_urban ?? 0,
+      per_min: p?.per_minute ?? 56,
+      min_fare: p?.base_fare ?? 0,
+    }
+  }
+
+  const periodRowFor = (serviceId: string, period: ServicePeriod['period']): ServicePeriod =>
+    periods.find((r) => r.service_id === serviceId && r.period === period) ??
+    defaultPeriodRow(serviceId, period)
+
   const setPeriodField = (
     serviceId: string,
     period: ServicePeriod['period'],
     field: keyof ServicePeriod,
     value: number,
   ) =>
-    setPeriods((cur) =>
-      cur.map((r) =>
-        r.service_id === serviceId && r.period === period ? { ...r, [field]: value } : r,
-      ),
-    )
+    setPeriods((cur) => {
+      const exists = cur.some((r) => r.service_id === serviceId && r.period === period)
+      if (exists) {
+        return cur.map((r) =>
+          r.service_id === serviceId && r.period === period ? { ...r, [field]: value } : r,
+        )
+      }
+      // صفّ لم يُحفظ بعد — نُنشئه من الافتراضي ثم نطبّق التعديل.
+      return [...cur, { ...defaultPeriodRow(serviceId, period), [field]: value }]
+    })
 
   const savePeriodRow = async (row: ServicePeriod) => {
     const key = `period-${row.service_id}-${row.period}`
@@ -818,6 +861,60 @@ export default function AdminDashboard() {
     setPeriodMsg(
       `تم حفظ «${getService(row.service_id)?.name ?? row.service_id} — ${PERIOD_LABEL[row.period]}» ✓`,
     )
+    void listServicePeriods().then(setPeriods)
+  }
+
+  // حفظ الفترات الأربع لخدمة واحدة دفعة واحدة (يبذر الصفوف الناقصة).
+  const saveServicePeriods = async (serviceId: string, serviceName: string) => {
+    setBusyId(`svc-${serviceId}`)
+    setPeriodMsg('')
+    for (const pk of PERIOD_ORDER) {
+      const { error } = await upsertServicePeriod(periodRowFor(serviceId, pk))
+      if (error) {
+        setBusyId(null)
+        setPeriodMsg(`خطأ: ${error}`)
+        return
+      }
+    }
+    setBusyId(null)
+    setPeriodMsg(`تم حفظ فترات «${serviceName}» ✓`)
+    void listServicePeriods().then(setPeriods)
+  }
+
+  // تطبيق جدول التسعير الموصى به على كل الخدمات المعروفة (يبقى قابلاً للتعديل).
+  const applyRecommendedPricing = async () => {
+    if (
+      !window.confirm(
+        'تطبيق جدول التسعير الموصى به على كل الخدمات؟ سيُستبدل التسعير الحالي حسب الفترات (يبقى قابلاً للتعديل بعدها).',
+      )
+    )
+      return
+    setBusyId('recommend')
+    setPeriodMsg('')
+    let applied = 0
+    for (const svc of pricing) {
+      const group = RECOMMENDED_GROUP[svc.service_id]
+      if (!group) continue // خدمة مخصّصة — تُترك للتعديل اليدوي
+      for (const pk of PERIOD_ORDER) {
+        const [base, min] = RECOMMENDED_RATES[group][pk]
+        const { error } = await upsertServicePeriod({
+          service_id: svc.service_id,
+          period: pk,
+          base_fare: base,
+          per_km: base,
+          per_min: 56,
+          min_fare: min,
+        })
+        if (error) {
+          setBusyId(null)
+          setPeriodMsg(`خطأ: ${error}`)
+          return
+        }
+      }
+      applied++
+    }
+    setBusyId(null)
+    setPeriodMsg(`تم تطبيق الجدول الموصى به على ${applied} خدمة ✓`)
     void listServicePeriods().then(setPeriods)
   }
 
@@ -2198,8 +2295,9 @@ export default function AdminDashboard() {
                 </button>
               </div>
               <p className="mb-3 text-xs text-ink-muted">
-                أضِف أو عدّل المركبات وحالتها بلا تحديث للتطبيق. الأجرة = فتح العداد + شرائح
-                الكيلومتر + الدقائق، مضروبة في معامل Surge.
+                أضِف أو عدّل المركبات (الاسم، الوصف، الحالة، الصورة، المقاعد، العمولة) بلا تحديث
+                للتطبيق. أمّا أسعار الأجرة المعتمدة فتُضبط من «التسعير حسب الفترة الزمنية» أدناه؛
+                والقيم هنا تُستخدم كتسعير احتياطي فقط.
               </p>
 
               {/* نموذج إضافة مركبة جديدة */}
@@ -2454,99 +2552,103 @@ export default function AdminDashboard() {
               {priceMsg && <p className="mt-3 text-sm text-green">{priceMsg}</p>}
             </div>
 
-            {/* التسعير حسب الفترة الزمنية */}
-            <div className="card p-4">
-              <p className="font-bold">التسعير حسب الفترة الزمنية</p>
+            {/* التسعير حسب الفترة الزمنية — الأسعار المعتمدة فعلياً للعميل */}
+            <div className="card border-2 border-green/30 p-4">
+              <div className="mb-1 flex items-center gap-2">
+                <p className="font-bold text-green">التسعير حسب الفترة الزمنية</p>
+                <span className="rounded-full bg-green px-2 py-0.5 text-[10px] font-bold text-white">
+                  المعتمد للعميل
+                </span>
+              </div>
               <p className="mb-3 text-xs text-ink-muted">
-                الأجرة = فتح العداد + سعر الكم × كم + سعر الدقيقة × دقيقة، ثم الحدّ الأدنى، وتقرّب
-                لأقرب ١٠٠. الفترة المميّزة هي السارية الآن.
+                الأجرة = طلب المشوار + سعر الكيلومتر × كم + سعر الدقيقة × دقيقة، ثم يُطبَّق الحدّ
+                الأدنى، وتقرّب لأقرب ١٠٠. لكل خدمة أربع فترات (صباحاً/ظهراً/مساءً/ليلاً)، والفترة
+                المميّزة هي السارية الآن. عدّل القيم واضغط «حفظ» — تُطبَّق فوراً على العميل.
               </p>
 
-              {periods.length === 0 ? (
-                <p className="rounded-2xl border border-dashed border-hairline bg-ivory px-3 py-4 text-center text-sm text-ink-muted">
-                  شغّل مخطّط قاعدة البيانات المحدّث لتفعيل التسعير حسب الفترة
-                </p>
-              ) : (
-                <div className="space-y-4">
-                  {Array.from(new Set(periods.map((r) => r.service_id))).map((sid) => {
-                    const nowPeriod = currentPeriod()
-                    const rows = PERIOD_ORDER.map((pk) =>
-                      periods.find((r) => r.service_id === sid && r.period === pk),
-                    ).filter((r): r is ServicePeriod => Boolean(r))
-                    return (
-                      <div key={sid} className="rounded-2xl border border-hairline p-3">
-                        <p className="mb-2 font-bold text-green">
-                          {getService(sid)?.name ?? sid}
-                        </p>
-                        <div className="space-y-2">
-                          {rows.map((row) => {
-                            const isNow = row.period === nowPeriod
-                            const key = `period-${row.service_id}-${row.period}`
-                            return (
-                              <div
-                                key={row.period}
-                                className={`rounded-xl p-2.5 ${
-                                  isNow
-                                    ? 'bg-green-soft ring-1 ring-green/40'
-                                    : 'bg-ivory'
-                                }`}
-                              >
-                                <div className="mb-1.5 flex items-center gap-2">
-                                  <span className="text-sm font-bold text-ink">
-                                    {PERIOD_LABEL[row.period]}
-                                  </span>
-                                  {isNow && (
-                                    <span className="rounded-full bg-green px-2 py-0.5 text-[10px] font-bold text-white">
-                                      الفترة الحالية
-                                    </span>
-                                  )}
-                                  <button
-                                    onClick={() => savePeriodRow(row)}
-                                    disabled={busyId === key}
-                                    className="ms-auto rounded-lg bg-royal px-3 py-1 text-xs font-bold text-white disabled:opacity-60"
-                                  >
-                                    {busyId === key ? '…' : 'حفظ'}
-                                  </button>
-                                </div>
-                                <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-                                  <NumField
-                                    label="فتح العداد"
-                                    value={row.base_fare}
-                                    onChange={(v) =>
-                                      setPeriodField(sid, row.period, 'base_fare', v)
-                                    }
-                                  />
-                                  <NumField
-                                    label="سعر الكم"
-                                    value={row.per_km}
-                                    onChange={(v) =>
-                                      setPeriodField(sid, row.period, 'per_km', v)
-                                    }
-                                  />
-                                  <NumField
-                                    label="سعر الدقيقة"
-                                    value={row.per_min}
-                                    onChange={(v) =>
-                                      setPeriodField(sid, row.period, 'per_min', v)
-                                    }
-                                  />
-                                  <NumField
-                                    label="الحدّ الأدنى"
-                                    value={row.min_fare}
-                                    onChange={(v) =>
-                                      setPeriodField(sid, row.period, 'min_fare', v)
-                                    }
-                                  />
-                                </div>
-                              </div>
-                            )
-                          })}
-                        </div>
+              <button
+                onClick={applyRecommendedPricing}
+                disabled={busyId === 'recommend'}
+                className="mb-3 w-full rounded-xl border border-sand bg-sand-soft/50 px-4 py-2.5 text-sm font-bold text-sand-ink hover:bg-sand-soft disabled:opacity-60"
+              >
+                {busyId === 'recommend' ? 'جارٍ التطبيق…' : 'تطبيق جدول التسعير الموصى به'}
+              </button>
+
+              <div className="space-y-4">
+                {pricing.map((svc) => {
+                  const sid = svc.service_id
+                  const nowPeriod = currentPeriod()
+                  return (
+                    <div key={sid} className="rounded-2xl border border-hairline p-3">
+                      <div className="mb-2 flex items-center justify-between gap-2">
+                        <p className="font-bold text-green">{svc.name}</p>
+                        <button
+                          onClick={() => saveServicePeriods(sid, svc.name)}
+                          disabled={busyId === `svc-${sid}`}
+                          className="rounded-lg border border-green px-3 py-1 text-xs font-bold text-green hover:bg-green-soft disabled:opacity-60"
+                        >
+                          {busyId === `svc-${sid}` ? '…' : 'حفظ كل الفترات'}
+                        </button>
                       </div>
-                    )
-                  })}
-                </div>
-              )}
+                      <div className="space-y-2">
+                        {PERIOD_ORDER.map((pk) => {
+                          const row = periodRowFor(sid, pk)
+                          const isNow = pk === nowPeriod
+                          const key = `period-${sid}-${pk}`
+                          return (
+                            <div
+                              key={pk}
+                              className={`rounded-xl p-2.5 ${
+                                isNow ? 'bg-green-soft ring-1 ring-green/40' : 'bg-ivory'
+                              }`}
+                            >
+                              <div className="mb-1.5 flex items-center gap-2">
+                                <span className="text-sm font-bold text-ink">
+                                  {PERIOD_LABEL[pk]}
+                                </span>
+                                {isNow && (
+                                  <span className="rounded-full bg-green px-2 py-0.5 text-[10px] font-bold text-white">
+                                    الفترة الحالية
+                                  </span>
+                                )}
+                                <button
+                                  onClick={() => savePeriodRow(row)}
+                                  disabled={busyId === key}
+                                  className="ms-auto rounded-lg bg-royal px-3 py-1 text-xs font-bold text-white disabled:opacity-60"
+                                >
+                                  {busyId === key ? '…' : 'حفظ'}
+                                </button>
+                              </div>
+                              <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+                                <NumField
+                                  label="طلب المشوار"
+                                  value={row.base_fare}
+                                  onChange={(v) => setPeriodField(sid, pk, 'base_fare', v)}
+                                />
+                                <NumField
+                                  label="سعر الكيلومتر"
+                                  value={row.per_km}
+                                  onChange={(v) => setPeriodField(sid, pk, 'per_km', v)}
+                                />
+                                <NumField
+                                  label="سعر الدقيقة"
+                                  value={row.per_min}
+                                  onChange={(v) => setPeriodField(sid, pk, 'per_min', v)}
+                                />
+                                <NumField
+                                  label="الحدّ الأدنى"
+                                  value={row.min_fare}
+                                  onChange={(v) => setPeriodField(sid, pk, 'min_fare', v)}
+                                />
+                              </div>
+                            </div>
+                          )
+                        })}
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
               {periodMsg && <p className="mt-3 text-sm text-green">{periodMsg}</p>}
             </div>
 
