@@ -182,3 +182,10 @@ html.native-map-open #root,
 html.native-map-open .screen {
   background-color: transparent !important;
 }
+
+/* حاويات الشاشات (ivory/bg) تُصبح شفّافة أيضاً حتى تظهر الخريطة الأصلية من خلفها.
+   اللوحات والبطاقات تستخدم bg-white فتبقى معتمة وتُرسم فوق الخريطة كالمعتاد. */
+html.native-map-open .bg-ivory,
+html.native-map-open .bg-bg {
+  background-color: transparent !important;
+}

@@ -35,11 +35,11 @@ interface MapViewProps {
 }
 
 const isNative = Capacitor.isNativePlatform()
-// الخريطة الأصلية (Native Google) تُفعَّل فقط عند ضبط VITE_USE_NATIVE_MAPS=1.
-// افتراضياً نستخدم خريطة CARTO (Leaflet) التي تعمل دائماً وبمظهر جيّد داخل
-// السودان — حتى لا تظهر شاشة رمادية إن لم يكن مفتاح قوقل جاهزاً (انتشار/فوترة).
-const nativeEnabled = import.meta.env.VITE_USE_NATIVE_MAPS === '1'
-const useNative = isNative && nativeEnabled && Boolean(GOOGLE_MAPS_API_KEY)
+// على الجهاز: تُستخدم خرائط قوقل الأصلية افتراضياً متى توفّر المفتاح
+// (VITE_GOOGLE_MAPS_API_KEY في .env + تفعيل "Maps SDK for Android").
+// للعودة إلى CARTO (Leaflet): ضع VITE_USE_NATIVE_MAPS=0 في .env.
+const nativeDisabled = import.meta.env.VITE_USE_NATIVE_MAPS === '0'
+const useNative = isNative && !nativeDisabled && Boolean(GOOGLE_MAPS_API_KEY)
 
 /** شارة تشخيص مؤقتة — تُظهر سبب عدم ظهور الخريطة الأصلية من لقطة واحدة. */
 function DiagBadge({ text, tone }: { text: string; tone: 'ok' | 'warn' | 'err' }) {
