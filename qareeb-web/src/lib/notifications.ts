@@ -1,19 +1,25 @@
 /**
- * تنبيهات محلية للسائق (بلا خادم) — تعمل ما دام التطبيق مفتوحاً/«متصل».
- * عند وصول طلب جديد عبر Realtime: إشعار منبثق + صوت + اهتزاز.
- * لا تحتاج VAPID ولا Edge Function ولا اشتراكات — ضغطة إذن واحدة تكفي.
+ * تنبيهات السائق بطلب جديد: إشعار + صوت + اهتزاز.
+ *  • على أندرويد: مسار أصلي (إضافة CaptainBg) يعمل في الخلفية/الشاشة مقفلة.
+ *  • على الويب: Notification API + WebAudio + اهتزاز (أثناء فتح التطبيق فقط).
  */
+import { isAndroid, notifyRideNative, requestNotifNative } from './captainBg'
 
 export const notificationsSupported =
-  typeof window !== 'undefined' && 'Notification' in window
+  isAndroid || (typeof window !== 'undefined' && 'Notification' in window)
 
 export function notificationsGranted(): boolean {
-  return notificationsSupported && Notification.permission === 'granted'
+  if (isAndroid) return true // يُدار الإذن أصلياً عند الاتصال
+  return typeof Notification !== 'undefined' && Notification.permission === 'granted'
 }
 
 /** يطلب إذن الإشعارات (مرة واحدة). يُرجع true إن مُنح. */
 export async function enableNotifications(): Promise<boolean> {
-  if (!notificationsSupported) return false
+  if (isAndroid) {
+    await requestNotifNative()
+    return true
+  }
+  if (typeof Notification === 'undefined') return false
   if (Notification.permission === 'granted') return true
   if (Notification.permission === 'denied') return false
   const result = await Notification.requestPermission()
@@ -46,7 +52,12 @@ function beep() {
 
 /** ينبّه السائق بطلب جديد: إشعار + صوت + اهتزاز. */
 export async function alertNewRide(): Promise<void> {
-  const title = '🚗 طلب رحلة جديد'
+  // على أندرويد: المسار الأصلي (صوت + اهتزاز + شاشة القفل + الخلفية).
+  if (isAndroid) {
+    const shown = await notifyRideNative('طلب رحلة جديد', 'يوجد راكب قريب منك — افتح قريب للقبول')
+    if (shown) return
+  }
+  const title = 'طلب رحلة جديد'
   const options: NotificationOptions = {
     body: 'يوجد راكب قريب منك — افتح «قريب» للقبول',
     icon: '/icon-192.png',
@@ -55,7 +66,7 @@ export async function alertNewRide(): Promise<void> {
     dir: 'rtl',
     lang: 'ar',
   }
-  if (notificationsGranted()) {
+  if (typeof Notification !== 'undefined' && Notification.permission === 'granted') {
     try {
       // على الجوال يجب استخدام الـ Service Worker لعرض الإشعار.
       const reg =

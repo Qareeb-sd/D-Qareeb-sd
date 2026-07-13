@@ -22,6 +22,7 @@ import {
   enableNotifications,
   alertNewRide,
 } from '@/lib/notifications'
+import { startCaptainBg, stopCaptainBg } from '@/lib/captainBg'
 import { getService } from '@/data/services'
 import { money } from '@/lib/format'
 import type { Driver, Ride } from '@/lib/types'
@@ -59,9 +60,20 @@ export default function DriverHome() {
   useEffect(() => {
     void getDriver(userId).then((d) => {
       setDriver(d)
-      setOnline(d?.is_online ?? false)
+      const isOn = d?.is_online ?? false
+      setOnline(isOn)
+      // إن كان متصلاً مسبقاً (فتح التطبيق من جديد) شغّل الخدمة الأمامية.
+      if (isOn) void startCaptainBg()
     })
   }, [userId])
+
+  // أوقف الخدمة الأمامية عند مغادرة الشاشة إن لم يعد متصلاً (احتياط).
+  useEffect(() => {
+    return () => {
+      if (!online) void stopCaptainBg()
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   const toggleNotif = async () => {
     const ok = await enableNotifications()
@@ -109,6 +121,9 @@ export default function DriverHome() {
   const toggleOnline = async () => {
     const next = !online
     setOnline(next)
+    // خدمة الخلفية: تعمل أثناء «متصل» فقط، وتتوقف عند «غير متصل».
+    if (next) void startCaptainBg()
+    else void stopCaptainBg()
     if (driver) await setDriverOnline(driver.id, next)
   }
 
