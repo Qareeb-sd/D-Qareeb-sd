@@ -1865,3 +1865,60 @@ begin
     end if;
   end if;
 end $$;
+
+-- ============================================================
+--  التسعير حسب الفترة الزمنية (صباح/ظهر/مساء/ليل) — بتوقيت الخرطوم UTC+2
+--  الصيغة: الأجرة = فتح العداد + (سعر الكيلومتر × كم) + (سعر الدقيقة × دقيقة)
+--          ثم الحدّ الأدنى min_fare فقط (بلا سقف)، وتقرّب لأقرب 100.
+--  قابلة للتعديل من لوحة الأدمن (صلاحية settings).
+-- ============================================================
+create table if not exists public.service_pricing_periods (
+  service_id  text not null references public.service_pricing(service_id) on delete cascade,
+  period      text not null check (period in ('morning','afternoon','evening','night')),
+  base_fare   numeric(12,2) not null default 0,
+  per_km      numeric(12,2) not null default 0,
+  per_min     numeric(12,2) not null default 56,
+  min_fare    numeric(12,2) not null default 0,
+  updated_at  timestamptz not null default now(),
+  primary key (service_id, period)
+);
+alter table public.service_pricing_periods enable row level security;
+drop policy if exists "read pricing periods" on public.service_pricing_periods;
+create policy "read pricing periods" on public.service_pricing_periods
+  for select using (auth.role() = 'authenticated');
+drop policy if exists "admin write pricing periods" on public.service_pricing_periods;
+create policy "admin write pricing periods" on public.service_pricing_periods
+  for all using (public.has_perm('settings')) with check (public.has_perm('settings'));
+
+-- بذور التسعير حسب الفترات (تُطبَّق مرّة؛ تعديلات الأدمن تبقى بفضل do nothing).
+-- الفئات: economy→standard/open/amjad · women→ladies · rickshaw · hiace · sahab→tow
+insert into public.service_pricing_periods (service_id, period, base_fare, per_km, per_min, min_fare) values
+  ('standard','morning',   3508, 3508, 56,  8800),
+  ('standard','afternoon', 3508, 3508, 56,  8800),
+  ('standard','evening',   3859, 3859, 56,  9600),
+  ('standard','night',     4034, 4034, 56, 10100),
+  ('open','morning',       3508, 3508, 56,  8800),
+  ('open','afternoon',     3508, 3508, 56,  8800),
+  ('open','evening',       3859, 3859, 56,  9600),
+  ('open','night',         4034, 4034, 56, 10100),
+  ('amjad','morning',      3508, 3508, 56,  8800),
+  ('amjad','afternoon',    3508, 3508, 56,  8800),
+  ('amjad','evening',      3859, 3859, 56,  9600),
+  ('amjad','night',        4034, 4034, 56, 10100),
+  ('ladies','morning',     3508, 3508, 56,  8800),
+  ('ladies','afternoon',   3508, 3508, 56,  8800),
+  ('ladies','evening',     3859, 3859, 56,  9600),
+  ('ladies','night',       4034, 4034, 56, 10100),
+  ('rickshaw','morning',   1559, 1559, 56,  3900),
+  ('rickshaw','afternoon', 1559, 1559, 56,  3900),
+  ('rickshaw','evening',   1715, 1715, 56,  4300),
+  ('rickshaw','night',     1793, 1793, 56,  4500),
+  ('hiace','morning',      5457, 5457, 56, 13600),
+  ('hiace','afternoon',    5457, 5457, 56, 13600),
+  ('hiace','evening',      6275, 6275, 56, 15000),
+  ('hiace','night',        6275, 6275, 56, 15700),
+  ('tow','morning',       12902,12902, 56, 15500),
+  ('tow','afternoon',     12902,12902, 56, 15500),
+  ('tow','evening',       14193,14193, 56, 17000),
+  ('tow','night',         14838,14838, 56, 17800)
+on conflict (service_id, period) do nothing;

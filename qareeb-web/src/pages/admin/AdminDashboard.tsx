@@ -88,12 +88,16 @@ import {
   deletePromo,
   setDriverVip,
   setDriverCommissionFree,
+  listServicePeriods,
+  upsertServicePeriod,
+  type ServicePeriod,
   type AdminStats,
   type AdminDriverRow,
   type AdminRideRow,
   type FinancialSummary,
 } from '@/lib/api'
 import { subscribeToSos, subscribeToTopups, subscribeToDriverApplications } from '@/lib/realtime'
+import { PERIOD_LABEL, currentPeriod } from '@/lib/pricing'
 import { exportCsv } from '@/lib/csv'
 import { getService } from '@/data/services'
 import type {
@@ -156,6 +160,9 @@ const STATE_OPTS: { value: ServiceState; label: string; color: string }[] = [
   { value: 'coming_soon', label: 'قريباً', color: '#3A6FB0' },
   { value: 'hidden', label: 'مخفي', color: '#8B9189' },
 ]
+
+/** ترتيب الفترات الزمنية للعرض: صباحاً ← ظهراً ← مساءً ← ليلاً. */
+const PERIOD_ORDER: ServicePeriod['period'][] = ['morning', 'afternoon', 'evening', 'night']
 
 /** أسماء الصلاحيات المعروضة للمالك عند إضافة موظف. */
 const permLabels: { id: StaffPerm; label: string; desc: string }[] = [
@@ -223,6 +230,10 @@ export default function AdminDashboard() {
   const [savedMsg, setSavedMsg] = useState('')
   const [priceMsg, setPriceMsg] = useState('')
 
+  // التسعير حسب الفترة الزمنية
+  const [periods, setPeriods] = useState<ServicePeriod[]>([])
+  const [periodMsg, setPeriodMsg] = useState('')
+
   // أكواد الخصم (برومو)
   const [promos, setPromos] = useState<PromoCode[]>([])
   const [promoMsg, setPromoMsg] = useState('')
@@ -283,7 +294,10 @@ export default function AdminDashboard() {
       void listAdminCustomers().then((c) => setCustomers(c as AdminCustomer[]))
     if (tab === 'complaints' && complaints === null)
       void listComplaints().then((c) => setComplaints(c as Complaint[]))
-    if (tab === 'settings') void listPromos().then(setPromos)
+    if (tab === 'settings') {
+      void listPromos().then(setPromos)
+      void listServicePeriods().then(setPeriods)
+    }
   }, [tab, drivers, customers, complaints])
 
   // صلاحياتي + قائمة الموظفين (للمالك).
@@ -775,6 +789,35 @@ export default function AdminDashboard() {
     setBusyId(null)
     if (error) return alert(error)
     reloadDrivers()
+  }
+
+  // ===== التسعير حسب الفترة الزمنية =====
+  const setPeriodField = (
+    serviceId: string,
+    period: ServicePeriod['period'],
+    field: keyof ServicePeriod,
+    value: number,
+  ) =>
+    setPeriods((cur) =>
+      cur.map((r) =>
+        r.service_id === serviceId && r.period === period ? { ...r, [field]: value } : r,
+      ),
+    )
+
+  const savePeriodRow = async (row: ServicePeriod) => {
+    const key = `period-${row.service_id}-${row.period}`
+    setBusyId(key)
+    setPeriodMsg('')
+    const { error } = await upsertServicePeriod(row)
+    setBusyId(null)
+    if (error) {
+      setPeriodMsg(`خطأ: ${error}`)
+      return
+    }
+    setPeriodMsg(
+      `تم حفظ «${getService(row.service_id)?.name ?? row.service_id} — ${PERIOD_LABEL[row.period]}» ✓`,
+    )
+    void listServicePeriods().then(setPeriods)
   }
 
   // ===== أكواد الخصم (برومو) =====
@@ -2382,6 +2425,102 @@ export default function AdminDashboard() {
                 ))}
               </div>
               {priceMsg && <p className="mt-3 text-sm text-green">{priceMsg}</p>}
+            </div>
+
+            {/* التسعير حسب الفترة الزمنية */}
+            <div className="card p-4">
+              <p className="font-bold">التسعير حسب الفترة الزمنية</p>
+              <p className="mb-3 text-xs text-ink-muted">
+                الأجرة = فتح العداد + سعر الكم × كم + سعر الدقيقة × دقيقة، ثم الحدّ الأدنى، وتقرّب
+                لأقرب ١٠٠. الفترة المميّزة هي السارية الآن.
+              </p>
+
+              {periods.length === 0 ? (
+                <p className="rounded-2xl border border-dashed border-hairline bg-ivory px-3 py-4 text-center text-sm text-ink-muted">
+                  شغّل مخطّط قاعدة البيانات المحدّث لتفعيل التسعير حسب الفترة
+                </p>
+              ) : (
+                <div className="space-y-4">
+                  {Array.from(new Set(periods.map((r) => r.service_id))).map((sid) => {
+                    const nowPeriod = currentPeriod()
+                    const rows = PERIOD_ORDER.map((pk) =>
+                      periods.find((r) => r.service_id === sid && r.period === pk),
+                    ).filter((r): r is ServicePeriod => Boolean(r))
+                    return (
+                      <div key={sid} className="rounded-2xl border border-hairline p-3">
+                        <p className="mb-2 font-bold text-green">
+                          {getService(sid)?.name ?? sid}
+                        </p>
+                        <div className="space-y-2">
+                          {rows.map((row) => {
+                            const isNow = row.period === nowPeriod
+                            const key = `period-${row.service_id}-${row.period}`
+                            return (
+                              <div
+                                key={row.period}
+                                className={`rounded-xl p-2.5 ${
+                                  isNow
+                                    ? 'bg-green-soft ring-1 ring-green/40'
+                                    : 'bg-ivory'
+                                }`}
+                              >
+                                <div className="mb-1.5 flex items-center gap-2">
+                                  <span className="text-sm font-bold text-ink">
+                                    {PERIOD_LABEL[row.period]}
+                                  </span>
+                                  {isNow && (
+                                    <span className="rounded-full bg-green px-2 py-0.5 text-[10px] font-bold text-white">
+                                      الفترة الحالية
+                                    </span>
+                                  )}
+                                  <button
+                                    onClick={() => savePeriodRow(row)}
+                                    disabled={busyId === key}
+                                    className="ms-auto rounded-lg bg-royal px-3 py-1 text-xs font-bold text-white disabled:opacity-60"
+                                  >
+                                    {busyId === key ? '…' : 'حفظ'}
+                                  </button>
+                                </div>
+                                <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+                                  <NumField
+                                    label="فتح العداد"
+                                    value={row.base_fare}
+                                    onChange={(v) =>
+                                      setPeriodField(sid, row.period, 'base_fare', v)
+                                    }
+                                  />
+                                  <NumField
+                                    label="سعر الكم"
+                                    value={row.per_km}
+                                    onChange={(v) =>
+                                      setPeriodField(sid, row.period, 'per_km', v)
+                                    }
+                                  />
+                                  <NumField
+                                    label="سعر الدقيقة"
+                                    value={row.per_min}
+                                    onChange={(v) =>
+                                      setPeriodField(sid, row.period, 'per_min', v)
+                                    }
+                                  />
+                                  <NumField
+                                    label="الحدّ الأدنى"
+                                    value={row.min_fare}
+                                    onChange={(v) =>
+                                      setPeriodField(sid, row.period, 'min_fare', v)
+                                    }
+                                  />
+                                </div>
+                              </div>
+                            )
+                          })}
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+              )}
+              {periodMsg && <p className="mt-3 text-sm text-green">{periodMsg}</p>}
             </div>
 
             {/* إعدادات المنصة */}

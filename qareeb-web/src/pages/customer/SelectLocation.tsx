@@ -32,9 +32,10 @@ import {
   getServicePricing,
   getSettings,
   validatePromo,
+  listServicePeriods,
   type PromoResult,
 } from '@/lib/api'
-import { estimateFare, estimateRoute } from '@/lib/pricing'
+import { estimateFare, estimateRoute, computeFare, currentPeriod, type PeriodRate } from '@/lib/pricing'
 import { fetchRoute } from '@/lib/maps'
 import { getCurrentPos } from '@/lib/geo'
 import { km, mins, money } from '@/lib/format'
@@ -99,6 +100,7 @@ export default function SelectLocation() {
 
   const [pricing, setPricing] = useState<ServicePricing | null>(null)
   const [settings, setSettings] = useState<Settings | null>(null)
+  const [periodRate, setPeriodRate] = useState<PeriodRate | null>(null)
   const [quote, setQuote] = useState<Quote | null>(null)
   const [busy, setBusy] = useState(false)
   const [promoCode, setPromoCode] = useState('')
@@ -229,10 +231,19 @@ export default function SelectLocation() {
   }
 
   useEffect(() => {
-    void Promise.all([getServicePricing(sid), getSettings()]).then(([p, s]) => {
-      setPricing(p)
-      setSettings(s)
-    })
+    void Promise.all([getServicePricing(sid), getSettings(), listServicePeriods()]).then(
+      ([p, s, periods]) => {
+        setPricing(p)
+        setSettings(s)
+        // تسعير الفترة الحالية للخدمة المختارة (النموذج الجديد)؛ إن غاب نعود للقديم.
+        const row = periods.find((r) => r.service_id === sid && r.period === currentPeriod())
+        setPeriodRate(
+          row
+            ? { base_fare: row.base_fare, per_km: row.per_km, per_min: row.per_min, min_fare: row.min_fare }
+            : null,
+        )
+      },
+    )
   }, [sid])
 
   useEffect(() => {
@@ -243,19 +254,22 @@ export default function SelectLocation() {
       const real = bothPlaced ? await fetchRoute(pickupPos, dropoffPos) : null
       const route = real ?? estimateRoute(pickupPos, dropoffPos)
       if (!alive) return
-      const fare = estimateFare({
-        distanceKm: route.distanceKm,
-        durationMin: route.durationMin,
-        pricing,
-        settings,
-      }).total
+      // النموذج الجديد (فترات) إن توفّر، وإلا التسعير القديم (شرائح).
+      const fare = periodRate
+        ? computeFare(route.distanceKm, route.durationMin, periodRate)
+        : estimateFare({
+            distanceKm: route.distanceKm,
+            durationMin: route.durationMin,
+            pricing,
+            settings,
+          }).total
       setQuote({ ...route, fare, real: Boolean(real) })
     }, 700)
     return () => {
       alive = false
       clearTimeout(t)
     }
-  }, [pickupPos, dropoffPos, pickupSet, dropoffSet, pricing, settings])
+  }, [pickupPos, dropoffPos, pickupSet, dropoffSet, pricing, settings, periodRate])
 
   const activePos = active === 'pickup' ? pickupPos : dropoffPos
   const setActivePos = active === 'pickup' ? setPickupPos : setDropoffPos

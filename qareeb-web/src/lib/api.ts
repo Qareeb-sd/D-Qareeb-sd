@@ -89,6 +89,34 @@ export async function updateServicePricing(
   return error ? { error: error.message } : {}
 }
 
+// ---------- التسعير حسب الفترة الزمنية ----------
+export interface ServicePeriod {
+  service_id: string
+  period: 'morning' | 'afternoon' | 'evening' | 'night'
+  base_fare: number
+  per_km: number
+  per_min: number
+  min_fare: number
+}
+
+/** كل صفوف التسعير حسب الفترات (لكل الخدمات والفترات). */
+export async function listServicePeriods(): Promise<ServicePeriod[]> {
+  if (!isSupabaseConfigured) return []
+  const { data } = await supabase.from('service_pricing_periods').select('*')
+  return (data as ServicePeriod[]) ?? []
+}
+
+/** تعديل/إضافة صفّ تسعير لفترة (أدمن — صلاحية settings). */
+export async function upsertServicePeriod(
+  row: ServicePeriod,
+): Promise<{ error?: string }> {
+  if (!isSupabaseConfigured) return {}
+  const { error } = await supabase
+    .from('service_pricing_periods')
+    .upsert({ ...row, updated_at: new Date().toISOString() })
+  return error ? { error: error.message } : {}
+}
+
 // ---------- الخدمات الديناميكية (حالات + إضافة مركبة من اللوحة) ----------
 const ALLOWED_ART = ['sedan', 'ladies', 'van', 'microbus', 'rickshaw', 'tow']
 

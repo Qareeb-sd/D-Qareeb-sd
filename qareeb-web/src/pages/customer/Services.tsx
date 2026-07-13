@@ -4,7 +4,8 @@ import { ChevronRight, Clock } from 'lucide-react'
 import BottomNav from '@/components/BottomNav'
 import VehicleImage from '@/components/VehicleImage'
 import ServiceStateOverlay from '@/components/ServiceStateOverlay'
-import { listServicePricing } from '@/lib/api'
+import { listServicePricing, listServicePeriods } from '@/lib/api'
+import { currentPeriod } from '@/lib/pricing'
 import { money } from '@/lib/format'
 import { useRide } from '@/store/RideContext'
 import { useServices } from '@/store/ServicesContext'
@@ -18,9 +19,11 @@ export default function Services() {
   const [prices, setPrices] = useState<Record<string, number>>({})
 
   useEffect(() => {
-    void listServicePricing().then((rows) => {
+    void Promise.all([listServicePeriods(), listServicePricing()]).then(([periods, rows]) => {
+      const p = currentPeriod()
       const map: Record<string, number> = {}
       rows.forEach((r) => (map[r.service_id] = r.base_fare))
+      periods.filter((r) => r.period === p).forEach((r) => (map[r.service_id] = r.min_fare))
       setPrices(map)
     })
   }, [])

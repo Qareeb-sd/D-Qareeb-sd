@@ -6,7 +6,8 @@ import MapView from '@/components/MapView'
 import VehicleImage from '@/components/VehicleImage'
 import ServiceStateOverlay from '@/components/ServiceStateOverlay'
 import Logo from '@/components/Logo'
-import { listServicePricing, getActiveCustomerRide } from '@/lib/api'
+import { listServicePricing, listServicePeriods, getActiveCustomerRide } from '@/lib/api'
+import { currentPeriod } from '@/lib/pricing'
 import { money } from '@/lib/format'
 import { KHARTOUM } from '@/theme'
 import { useRide } from '@/store/RideContext'
@@ -37,9 +38,12 @@ export default function Home() {
   const [activeRide, setActiveRide] = useState<Ride | null>(null)
 
   useEffect(() => {
-    void listServicePricing().then((rows) => {
+    // السعر المعروض = الحدّ الأدنى للفترة الحالية (وإلا فتح العداد القديم).
+    void Promise.all([listServicePeriods(), listServicePricing()]).then(([periods, rows]) => {
+      const p = currentPeriod()
       const map: Record<string, number> = {}
       rows.forEach((r) => (map[r.service_id] = r.base_fare))
+      periods.filter((r) => r.period === p).forEach((r) => (map[r.service_id] = r.min_fare))
       setPrices(map)
     })
   }, [])
