@@ -1046,6 +1046,9 @@ end $$;
 -- ============================================================
 --  بيانات السائق المُسنَد لرحلة (يقرؤها العميل/السائق/الأدمن فقط)
 -- ============================================================
+-- نُسقطها أولاً حتى يعمل إعادة التشغيل إن كانت القاعدة تحمل النسخة المحدّثة
+-- (٧ أعمدة) — تغيير نوع الإرجاع لا يُسمح مع create or replace.
+drop function if exists public.get_ride_driver(uuid);
 create or replace function public.get_ride_driver(p_ride uuid)
 returns table (full_name text, phone text, rating numeric, vehicle_type text, plate_number text)
 language sql stable security definer set search_path = public as $$
