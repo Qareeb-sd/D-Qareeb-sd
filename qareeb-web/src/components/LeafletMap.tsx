@@ -9,19 +9,21 @@ import { KHARTOUM } from '@/theme'
  * الواجهة نفسها: center/marker/driver/markers/driverMarkers/zoom/أحداث.
  */
 
-// أيقونة السائق: سيارة داخل دائرة زمردية (SVG مضمّن — بلا إيموجي، هوية «الواحة»).
+// أيقونة السائق: سيارة واضحة داخل شارة زمردية كبيرة بظلّ — بلا إيموجي، هوية «الواحة».
 const carIcon = L.divIcon({
   className: '',
   html:
-    `<svg xmlns="http://www.w3.org/2000/svg" width="46" height="46" viewBox="0 0 46 46">` +
-    `<circle cx="23" cy="23" r="18" fill="#0E3B2E" stroke="#fff" stroke-width="3"/>` +
-    `<g transform="translate(11,13)" fill="#C4A265">` +
-    `<path d="M2 11.5a1 1 0 0 1-1-1V8.2c0-.5.2-1 .6-1.4l1.2-1L4.4 2.5A2 2 0 0 1 6.3 1.2h11.4a2 2 0 0 1 1.9 1.3l1.6 3.3 1.2 1c.4.4.6.9.6 1.4v2.3a1 1 0 0 1-1 1h-1.2a2.6 2.6 0 0 1-5.2 0H8.4a2.6 2.6 0 0 1-5.2 0H2Z"/>` +
-    `</g>` +
-    `<circle cx="18.6" cy="30.5" r="2.1" fill="#0E3B2E" stroke="#fff" stroke-width="1"/>` +
-    `<circle cx="27.4" cy="30.5" r="2.1" fill="#0E3B2E" stroke="#fff" stroke-width="1"/></svg>`,
-  iconSize: [46, 46],
-  iconAnchor: [23, 23],
+    `<svg xmlns="http://www.w3.org/2000/svg" width="56" height="56" viewBox="0 0 56 56">` +
+    `<defs><filter id="cs" x="-30%" y="-30%" width="160%" height="160%">` +
+    `<feDropShadow dx="0" dy="2" stdDeviation="2.4" flood-color="#0E3B2E" flood-opacity="0.35"/></filter></defs>` +
+    `<circle cx="28" cy="28" r="21" fill="#0E3B2E" stroke="#fff" stroke-width="3.5" filter="url(#cs)"/>` +
+    `<g transform="translate(14.5,14.5) scale(1.12)" fill="#E8D9B6">` +
+    `<path d="M18.92 6.01C18.72 5.42 18.16 5 17.5 5h-11c-.66 0-1.21.42-1.42 1.01L3 12v8c0 .55.45 1 1 1h1c.55 0 1-.45 1-1v-1h12v1c0 .55.45 1 1 1h1c.55 0 1-.45 1-1v-8l-2.08-5.99z"/>` +
+    `<path d="M6.5 6.5h11L19 11H5z" fill="#0E3B2E"/>` +
+    `<circle cx="6.9" cy="14.6" r="1.7" fill="#0E3B2E"/><circle cx="17.1" cy="14.6" r="1.7" fill="#0E3B2E"/>` +
+    `</g></svg>`,
+  iconSize: [56, 56],
+  iconAnchor: [28, 28],
 })
 
 // دبوس موقع (أحمر) للعلامات الثابتة.

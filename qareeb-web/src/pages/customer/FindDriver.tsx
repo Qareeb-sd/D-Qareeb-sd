@@ -5,6 +5,7 @@ import Logo from '@/components/Logo'
 import { useRide } from '@/store/RideContext'
 import { subscribeToRide } from '@/lib/realtime'
 import { cancelRide } from '@/lib/api'
+import { notify } from '@/lib/notifications'
 import { isSupabaseConfigured } from '@/lib/supabase'
 
 /**
@@ -28,6 +29,8 @@ export default function FindDriver() {
     const unsub = rideId
       ? subscribeToRide(rideId, (ride) => {
           if (ride.status !== 'searching' && ride.status !== 'requested' && ride.status !== 'cancelled') {
+            // إشعار العميل بقبول السائق (صوت + اهتزاز) ثم الانتقال لشاشة المتابعة.
+            void notify('تم قبول رحلتك', 'السائق في الطريق إليك — تابع وصوله على الخريطة')
             navigate('/trip')
           }
         })

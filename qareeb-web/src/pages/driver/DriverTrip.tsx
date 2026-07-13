@@ -112,26 +112,32 @@ export default function DriverTrip() {
         : null
     : null
 
-  // اجلب خطّ الملاحة الحيّ من موقع السائق إلى الهدف الحالي، وحدّثه مع الحركة.
+  // نقاط الرحلة (لعرضها دائماً على الخريطة).
+  const pickupPt: google.maps.LatLngLiteral | null = activeRide
+    ? { lat: activeRide.pickup_lat, lng: activeRide.pickup_lng }
+    : null
+  const dropoffPt: google.maps.LatLngLiteral | null =
+    activeRide?.dropoff_lat && activeRide?.dropoff_lng
+      ? { lat: activeRide.dropoff_lat, lng: activeRide.dropoff_lng }
+      : null
+
+  // خطّ المسار: من موقع السائق للهدف إن توفّر، وإلا نظرة عامّة (التقاط ← وجهة).
+  const rOrigin = pos ?? pickupPt
+  const rDest = pos ? target : dropoffPt
   useEffect(() => {
-    if (!pos || !target) {
+    if (!rOrigin || !rDest) {
       setRoutePts([])
       return
     }
     let alive = true
-    void fetchRoutePath(pos, target).then((r) => {
+    void fetchRoutePath(rOrigin, rDest).then((r) => {
       if (alive && r) setRoutePts(r.points)
     })
     return () => {
       alive = false
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [
-    pos?.lat,
-    pos?.lng,
-    target?.lat,
-    target?.lng,
-  ])
+  }, [rOrigin?.lat, rOrigin?.lng, rDest?.lat, rDest?.lng])
 
   if (recovering) {
     return (
@@ -203,7 +209,7 @@ export default function DriverTrip() {
           <MapView
             center={pos ?? target ?? { lat: activeRide.pickup_lat, lng: activeRide.pickup_lng }}
             driver={pos ?? undefined}
-            marker={target ?? undefined}
+            markers={[pickupPt, dropoffPt].filter(Boolean) as google.maps.LatLngLiteral[]}
             route={routePts}
             zoom={15}
             className="absolute inset-0"

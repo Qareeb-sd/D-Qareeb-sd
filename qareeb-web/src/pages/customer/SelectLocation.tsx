@@ -14,18 +14,28 @@ import {
   Star,
   Route as RouteIcon,
   Clock4,
+  Banknote,
+  Landmark,
+  Wallet,
+  type LucideIcon,
 } from 'lucide-react'
 import MapView from '@/components/MapView'
 import LocationSearchPanel, { type SavedEntry } from '@/components/LocationSearchPanel'
 import { useRide } from '@/store/RideContext'
 import { useAuth } from '@/store/AuthContext'
 import { DEFAULT_SERVICE_ID, getService } from '@/data/services'
-import { createRide, getServicePricing, getSettings } from '@/lib/api'
+import { createRide, prepayRide, cancelRide, getServicePricing, getSettings } from '@/lib/api'
 import { estimateFare, estimateRoute } from '@/lib/pricing'
 import { fetchRoute } from '@/lib/maps'
 import { km, mins, money } from '@/lib/format'
 import { KHARTOUM } from '@/theme'
-import type { Settings, ServicePricing } from '@/lib/types'
+import type { Settings, ServicePricing, PaymentMethod } from '@/lib/types'
+
+const PAYMENTS: { id: PaymentMethod; label: string; icon: LucideIcon }[] = [
+  { id: 'cash', label: 'كاش', icon: Banknote },
+  { id: 'bank_transfer', label: 'تحويل بنكي', icon: Landmark },
+  { id: 'wallet', label: 'محفظة قريب', icon: Wallet },
+]
 
 type Field = 'pickup' | 'dropoff'
 /** طرق تحديد نقطة الانطلاق: تلقائي (GPS) · كتابة عنوان · تحديد من الخريطة. */
@@ -56,7 +66,7 @@ const SAVED = [
 export default function SelectLocation() {
   const navigate = useNavigate()
   const { profile } = useAuth()
-  const { serviceId, setPickup, setDropoff, setFare, setRideId } = useRide()
+  const { serviceId, payment, setPayment, setPickup, setDropoff, setFare, setRideId } = useRide()
 
   const sid = serviceId ?? DEFAULT_SERVICE_ID
   const service = getService(sid)
@@ -242,10 +252,11 @@ export default function SelectLocation() {
     setPickup(pickup)
     setDropoff(dropoff)
     setFare(quote?.fare ?? 0)
-    const { id } = await createRide({
+    const { id, error } = await createRide({
       customer_id: profile?.id,
       service_id: sid,
       status: 'searching',
+      payment_method: payment,
       pickup_lat: pickup.pos.lat,
       pickup_lng: pickup.pos.lng,
       pickup_address: pickup.address,
@@ -254,7 +265,22 @@ export default function SelectLocation() {
       dropoff_address: dropoff.address,
       fare: quote?.fare ?? 0,
     })
-    setRideId(id ?? null)
+    if (error || !id) {
+      setBusy(false)
+      return alert(error ?? 'تعذّر إنشاء الرحلة، حاول مجدداً.')
+    }
+    // الدفع بالمحفظة: خصم فوري قبل البحث؛ إن فشل (رصيد غير كافٍ) نُلغي الطلب.
+    if (payment === 'wallet') {
+      const pay = await prepayRide(id)
+      if (pay.error) {
+        await cancelRide(id)
+        setBusy(false)
+        return alert(pay.error === 'رصيد المحفظة غير كافٍ'
+          ? 'رصيد محفظتك غير كافٍ — اشحن المحفظة أو اختر طريقة دفع أخرى.'
+          : pay.error)
+      }
+    }
+    setRideId(id)
     setBusy(false)
     navigate('/find-driver')
   }
@@ -487,6 +513,36 @@ export default function SelectLocation() {
           {!destOptional && !destChosen && (
             <p className="mt-3 text-center text-[12px] text-warning">حدّد وجهتك للمتابعة</p>
           )}
+
+          {/* طريقة الدفع — تُختار قبل الطلب */}
+          <div className="mt-4">
+            <p className="mb-1.5 text-[13px] font-bold text-royal">طريقة الدفع</p>
+            <div className="grid grid-cols-3 gap-2">
+              {PAYMENTS.map((p) => {
+                const Icon = p.icon
+                const on = payment === p.id
+                return (
+                  <button
+                    key={p.id}
+                    onClick={() => setPayment(p.id)}
+                    className={`press-scale flex flex-col items-center gap-1 rounded-2xl border p-2.5 text-center text-[12px] transition ${
+                      on
+                        ? 'border-transparent bg-royal font-bold text-white ring-gold'
+                        : 'border-hairline bg-white text-ink-soft'
+                    }`}
+                  >
+                    <Icon className="h-5 w-5" strokeWidth={1.8} />
+                    {p.label}
+                  </button>
+                )
+              })}
+            </div>
+            {payment === 'wallet' && (
+              <p className="mt-1.5 text-[11px] text-ink-muted">
+                سيُخصم المبلغ من محفظتك فور تأكيد الرحلة، ويُسترجَع إن أُلغيت.
+              </p>
+            )}
+          </div>
 
           {/* زر التأكيد */}
           <button

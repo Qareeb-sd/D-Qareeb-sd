@@ -1440,3 +1440,126 @@ create table if not exists public.otp_codes (
 );
 alter table public.otp_codes enable row level security;
 -- عمداً بلا سياسات: يُمنع كل وصول من مفتاح anon/authenticated.
+
+-- ============================================================
+--  الدفع المسبق بالمحفظة: عند اختيار «محفظة قريب» يُخصم فوراً عند الطلب.
+--  عند الإكمال لا يُخصم من العميل ثانيةً (يُقيَّد للسائق فقط)؛ وعند الإلغاء
+--  يُسترجَع للعميل. الكاش/التحويل يبقى كما هو (تسوية عند الإكمال).
+-- ============================================================
+alter table public.rides add column if not exists prepaid boolean not null default false;
+
+-- خصم الأجرة مسبقاً من محفظة العميل (يستدعيه العميل عند تأكيد رحلة محفظة).
+create or replace function public.prepay_ride(p_ride uuid)
+returns void language plpgsql security definer set search_path = public as $$
+declare
+  v_customer uuid; v_fare numeric; v_payment payment_method;
+  v_prepaid boolean; v_status ride_status; v_wallet uuid; v_bal numeric;
+begin
+  select customer_id, fare, payment_method, prepaid, status
+    into v_customer, v_fare, v_payment, v_prepaid, v_status
+    from public.rides where id = p_ride for update;
+  if v_customer is null then raise exception 'الرحلة غير موجودة'; end if;
+  if auth.uid() <> v_customer then raise exception 'غير مصرّح'; end if;
+  if v_payment <> 'wallet' then return; end if;      -- الدفع المسبق للمحفظة فقط
+  if v_prepaid then return; end if;                  -- مدفوعة مسبقاً
+  if v_status in ('completed','cancelled') then raise exception 'لا يمكن الدفع لهذه الرحلة'; end if;
+  v_fare := coalesce(v_fare, 0);
+  select id, balance into v_wallet, v_bal from public.wallets where user_id = v_customer for update;
+  if v_wallet is null then raise exception 'المحفظة غير موجودة'; end if;
+  if v_bal < v_fare then raise exception 'رصيد المحفظة غير كافٍ'; end if;
+  update public.wallets set balance = balance - v_fare, updated_at = now() where id = v_wallet;
+  insert into public.transactions (wallet_id, type, amount, ride_id, note)
+    values (v_wallet, 'ride_payment', -v_fare, p_ride, 'دفع مسبق (محفظة)');
+  update public.rides set prepaid = true where id = p_ride;
+end $$;
+grant execute on function public.prepay_ride(uuid) to authenticated;
+
+-- تسوية الرحلة (نسخة محدّثة): تتخطّى خصم العميل إن كانت مدفوعة مسبقاً.
+create or replace function public.settle_ride(p_ride uuid)
+returns void language plpgsql security definer set search_path = public as $$
+declare
+  v_driver_user uuid; v_customer uuid; v_fare numeric; v_status ride_status;
+  v_payment payment_method; v_service text; v_rate numeric; v_commission numeric;
+  v_net numeric; v_dwallet uuid; v_cwallet uuid; v_cbalance numeric; v_prepaid boolean;
+begin
+  select driver_id, customer_id, fare, status, payment_method, service_id, prepaid
+    into v_driver_user, v_customer, v_fare, v_status, v_payment, v_service, v_prepaid
+    from public.rides where id = p_ride for update;
+
+  if v_driver_user is null then raise exception 'الرحلة بلا سائق'; end if;
+  if auth.uid() <> v_driver_user and not public.is_admin() then raise exception 'غير مصرّح'; end if;
+  if v_status = 'completed' then raise exception 'الرحلة مسوّاة مسبقاً'; end if;
+  if v_status = 'cancelled' then raise exception 'الرحلة ملغاة'; end if;
+
+  v_rate := coalesce(
+    (select commission_rate from public.service_pricing where service_id = v_service),
+    (select commission_rate from public.settings where id = 1));
+  v_fare       := coalesce(v_fare, 0);
+  v_commission := round(v_fare * coalesce(v_rate, 0));
+  v_net        := v_fare - v_commission;
+
+  -- خصم من العميل عند الدفع بالمحفظة فقط إن لم يُدفع مسبقاً.
+  if v_payment = 'wallet' and not v_prepaid then
+    select id, balance into v_cwallet, v_cbalance from public.wallets where user_id = v_customer for update;
+    if v_cwallet is null then raise exception 'محفظة العميل غير موجودة'; end if;
+    if v_cbalance < v_fare then raise exception 'رصيد محفظة العميل غير كافٍ'; end if;
+    update public.wallets set balance = balance - v_fare, updated_at = now() where id = v_cwallet;
+    insert into public.transactions (wallet_id, type, amount, ride_id, note)
+      values (v_cwallet, 'ride_payment', -v_fare, p_ride, 'دفع رحلة');
+  end if;
+
+  update public.rides set status = 'completed' where id = p_ride;
+
+  select id into v_dwallet from public.wallets where user_id = v_driver_user for update;
+  if v_dwallet is not null then
+    if v_payment = 'wallet' then
+      update public.wallets set balance = balance + v_net, updated_at = now() where id = v_dwallet;
+      insert into public.transactions (wallet_id, type, amount, ride_id, note) values
+        (v_dwallet, 'ride_earning', v_fare,        p_ride, 'أرباح رحلة (إجمالي)'),
+        (v_dwallet, 'commission',   -v_commission, p_ride, 'عمولة المنصة');
+    else
+      update public.wallets set balance = balance - v_commission, updated_at = now() where id = v_dwallet;
+      insert into public.transactions (wallet_id, type, amount, ride_id, note) values
+        (v_dwallet, 'commission', -v_commission, p_ride, 'عمولة المنصة (نقدي/تحويل)');
+    end if;
+  end if;
+end $$;
+
+-- إلغاء الرحلة (نسخة محدّثة): تسترجع الدفع المسبق للعميل عند الإلغاء.
+create or replace function public.cancel_ride(p_ride uuid)
+returns void language plpgsql security definer set search_path = public as $$
+declare
+  v_customer uuid; v_driver uuid; v_status ride_status;
+  v_fare numeric; v_prepaid boolean; v_cwallet uuid;
+begin
+  select customer_id, driver_id, status, fare, prepaid
+    into v_customer, v_driver, v_status, v_fare, v_prepaid
+    from public.rides where id = p_ride for update;
+
+  if v_customer is null then raise exception 'الرحلة غير موجودة'; end if;
+  if v_status in ('completed', 'cancelled') then raise exception 'لا يمكن إلغاء هذه الرحلة'; end if;
+
+  if auth.uid() = v_customer then
+    if v_status not in ('requested', 'searching', 'accepted', 'arrived') then
+      raise exception 'لا يمكن الإلغاء بعد بدء الرحلة';
+    end if;
+    update public.rides set status = 'cancelled' where id = p_ride;
+    -- استرجاع الدفع المسبق (إن وُجد).
+    if v_prepaid then
+      select id into v_cwallet from public.wallets where user_id = v_customer for update;
+      if v_cwallet is not null then
+        update public.wallets set balance = balance + coalesce(v_fare,0), updated_at = now() where id = v_cwallet;
+        insert into public.transactions (wallet_id, type, amount, ride_id, note)
+          values (v_cwallet, 'topup', coalesce(v_fare,0), p_ride, 'استرجاع دفع رحلة ملغاة');
+      end if;
+      update public.rides set prepaid = false where id = p_ride;
+    end if;
+  elsif auth.uid() = v_driver then
+    if v_status not in ('accepted', 'arrived') then
+      raise exception 'لا يمكن التخلّي عن الرحلة الآن';
+    end if;
+    update public.rides set status = 'searching', driver_id = null where id = p_ride;
+  else
+    raise exception 'غير مصرّح';
+  end if;
+end $$;

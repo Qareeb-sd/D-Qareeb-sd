@@ -1085,6 +1085,13 @@ export async function settleRide(rideId: string): Promise<{ error?: string }> {
   return error ? { error: error.message } : {}
 }
 
+/** الدفع المسبق بالمحفظة: يخصم الأجرة فوراً عند تأكيد رحلة «محفظة قريب». */
+export async function prepayRide(rideId: string): Promise<{ error?: string }> {
+  if (!isSupabaseConfigured) return {}
+  const { error } = await supabase.rpc('prepay_ride', { p_ride: rideId })
+  return error ? { error: error.message } : {}
+}
+
 const demoDriverTransactions: Transaction[] = [
   {
     id: 'de1',

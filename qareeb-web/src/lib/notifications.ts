@@ -53,13 +53,17 @@ function beep() {
 /** ينبّه السائق بطلب جديد: إشعار + صوت + اهتزاز. */
 export async function alertNewRide(): Promise<void> {
   // على أندرويد: المسار الأصلي (صوت + اهتزاز + شاشة القفل + الخلفية).
+  await notify('طلب رحلة جديد', 'يوجد راكب قريب منك — افتح «قريب» للقبول')
+}
+
+/** إشعار عام (صوت + اهتزاز) — يُستخدم أيضاً لإخطار العميل بقبول رحلته. */
+export async function notify(title: string, body: string): Promise<void> {
   if (isAndroid) {
-    const shown = await notifyRideNative('طلب رحلة جديد', 'يوجد راكب قريب منك — افتح قريب للقبول')
+    const shown = await notifyRideNative(title, body)
     if (shown) return
   }
-  const title = 'طلب رحلة جديد'
   const options: NotificationOptions = {
-    body: 'يوجد راكب قريب منك — افتح «قريب» للقبول',
+    body,
     icon: '/icon-192.png',
     badge: '/icon-192.png',
     tag: 'qareeb-ride',
