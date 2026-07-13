@@ -35,11 +35,11 @@ interface MapViewProps {
 }
 
 const isNative = Capacitor.isNativePlatform()
-// على الجهاز: تُستخدم خرائط قوقل الأصلية افتراضياً متى توفّر المفتاح
-// (VITE_GOOGLE_MAPS_API_KEY في .env + تفعيل "Maps SDK for Android").
-// للعودة إلى CARTO (Leaflet): ضع VITE_USE_NATIVE_MAPS=0 في .env.
-const nativeDisabled = import.meta.env.VITE_USE_NATIVE_MAPS === '0'
-const useNative = isNative && !nativeDisabled && Boolean(GOOGLE_MAPS_API_KEY)
+// افتراضياً: خريطة CARTO (Leaflet) — تعرض الشوارع فعلاً على الجهاز داخل السودان.
+// خرائط قوقل الأصلية تظهر فارغة/رمادية على بعض الأجهزة (مشكلة SurfaceView) رغم
+// نجاح المصادقة، لذا تُفعَّل فقط عند الطلب الصريح: VITE_USE_NATIVE_MAPS=1.
+const nativeEnabled = import.meta.env.VITE_USE_NATIVE_MAPS === '1'
+const useNative = isNative && nativeEnabled && Boolean(GOOGLE_MAPS_API_KEY)
 
 /** شارة تشخيص مؤقتة — تُظهر سبب عدم ظهور الخريطة الأصلية من لقطة واحدة. */
 function DiagBadge({ text, tone }: { text: string; tone: 'ok' | 'warn' | 'err' }) {
