@@ -118,6 +118,25 @@ export default function Trip() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [rideId, navigate])
 
+  // استطلاع احتياطي كل 5 ثوانٍ — يحدّث موقع السائق والحالة حتى لو تعطّل Realtime.
+  useEffect(() => {
+    if (!isSupabaseConfigured || !rideId) return
+    const iv = setInterval(async () => {
+      const ride = await getRide(rideId)
+      if (!ride) return
+      setStatus(ride.status)
+      if (ride.driver_lat != null && ride.driver_lng != null)
+        setDriverPos({ lat: ride.driver_lat, lng: ride.driver_lng })
+      if (ride.status === 'completed') navigate('/rate')
+      else if (ride.status === 'cancelled') {
+        reset()
+        navigate('/home')
+      }
+    }, 5000)
+    return () => clearInterval(iv)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rideId, navigate])
+
   // الهدف على الخريطة: نقطة الالتقاط قبل بدء الرحلة، ثم الوجهة أثناءها.
   const target: google.maps.LatLngLiteral | null =
     status === 'in_progress' ? dropoff?.pos ?? null : pickup?.pos ?? null

@@ -65,6 +65,8 @@ export default function DriverHome() {
       // إن كان متصلاً مسبقاً (فتح التطبيق من جديد) شغّل الخدمة الأمامية.
       if (isOn) void startCaptainBg()
     })
+    // اطلب إذن الإشعارات مبكراً حتى تصل تنبيهات الطلبات فور الاتصال.
+    void enableNotifications().then(setNotifOn)
   }, [userId])
 
   // أوقف الخدمة الأمامية عند مغادرة الشاشة إن لم يعد متصلاً (احتياط).
@@ -109,8 +111,9 @@ export default function DriverHome() {
 
     void load()
     // Realtime: أعِد الجلب فور أي تغيّر على الرحلات + استطلاع احتياطي بطيء.
+    // Realtime (فوري إن عمل) + استطلاع احتياطي كل 8 ثوانٍ (يعمل حتى لو تعطّل).
     const unsub = subscribeToRides(load)
-    const iv = setInterval(load, 20000)
+    const iv = setInterval(load, 8000)
     return () => {
       alive = false
       unsub()

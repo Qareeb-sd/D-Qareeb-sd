@@ -1,10 +1,10 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import Screen from '@/components/Screen'
 import Logo from '@/components/Logo'
 import { useRide } from '@/store/RideContext'
 import { subscribeToRide } from '@/lib/realtime'
-import { cancelRide } from '@/lib/api'
+import { cancelRide, getRide } from '@/lib/api'
 import { notify } from '@/lib/notifications'
 import { isSupabaseConfigured } from '@/lib/supabase'
 
@@ -16,6 +16,7 @@ export default function FindDriver() {
   const navigate = useNavigate()
   const { rideId, reset } = useRide()
   const [busy, setBusy] = useState(false)
+  const done = useRef(false)
 
   const cancel = async () => {
     setBusy(true)
@@ -25,22 +26,40 @@ export default function FindDriver() {
   }
 
   useEffect(() => {
-    // Realtime: انتظر تحديث حالة الرحلة إلى "مقبولة" فأبعد.
+    // عند قبول السائق: إشعار العميل (صوت + اهتزاز) ثم الانتقال لشاشة المتابعة.
+    const onAccepted = () => {
+      if (done.current) return
+      done.current = true
+      void notify('تم قبول رحلتك', 'السائق في الطريق إليك — تابع وصوله على الخريطة')
+      navigate('/trip')
+    }
+
+    // Realtime (فوري إن عمل).
     const unsub = rideId
       ? subscribeToRide(rideId, (ride) => {
           if (ride.status !== 'searching' && ride.status !== 'requested' && ride.status !== 'cancelled') {
-            // إشعار العميل بقبول السائق (صوت + اهتزاز) ثم الانتقال لشاشة المتابعة.
-            void notify('تم قبول رحلتك', 'السائق في الطريق إليك — تابع وصوله على الخريطة')
-            navigate('/trip')
+            onAccepted()
           }
         })
       : () => {}
+
+    // استطلاع احتياطي كل 4 ثوانٍ — يعمل حتى لو تعطّل Realtime على الجهاز.
+    const poll =
+      isSupabaseConfigured && rideId
+        ? setInterval(async () => {
+            const ride = await getRide(rideId)
+            if (!ride) return
+            if (ride.status === 'cancelled') return
+            if (ride.status !== 'searching' && ride.status !== 'requested') onAccepted()
+          }, 4000)
+        : undefined
 
     // بديل المعاينة: انتقال تلقائي.
     const t = !isSupabaseConfigured ? setTimeout(() => navigate('/trip'), 2500) : undefined
 
     return () => {
       unsub()
+      if (poll) clearInterval(poll)
       if (t) clearTimeout(t)
     }
   }, [rideId, navigate])

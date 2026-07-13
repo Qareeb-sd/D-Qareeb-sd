@@ -58,10 +58,12 @@ export async function alertNewRide(): Promise<void> {
 
 /** إشعار عام (صوت + اهتزاز) — يُستخدم أيضاً لإخطار العميل بقبول رحلته. */
 export async function notify(title: string, body: string): Promise<void> {
-  if (isAndroid) {
-    const shown = await notifyRideNative(title, body)
-    if (shown) return
-  }
+  // على أندرويد: إشعار أصلي (يعمل في الخلفية/الشاشة مقفلة).
+  if (isAndroid) void notifyRideNative(title, body)
+  // نبرة + اهتزاز دائماً كتنبيه أمامي احتياطي (تعمل والتطبيق مفتوح).
+  if ('vibrate' in navigator) navigator.vibrate([200, 100, 200])
+  beep()
+  if (isAndroid) return
   const options: NotificationOptions = {
     body,
     icon: '/icon-192.png',
@@ -81,6 +83,4 @@ export async function notify(title: string, body: string): Promise<void> {
       /* تجاهل — يبقى الصوت والاهتزاز */
     }
   }
-  if ('vibrate' in navigator) navigator.vibrate([200, 100, 200])
-  beep()
 }
