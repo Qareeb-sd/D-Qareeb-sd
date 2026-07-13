@@ -1045,20 +1045,10 @@ end $$;
 
 -- ============================================================
 --  بيانات السائق المُسنَد لرحلة (يقرؤها العميل/السائق/الأدمن فقط)
+--  ملاحظة: التعريف الفعلي (٧ أعمدة: يضيف صورتَي السائق والمركبة) موجود
+--  أدناه في قسم «المساءلة» ومسبوق بـ drop — لتفادي تعارض تغيير نوع الإرجاع
+--  عند إعادة التشغيل. لذا لا نُعرّفها هنا.
 -- ============================================================
--- نُسقطها أولاً حتى يعمل إعادة التشغيل إن كانت القاعدة تحمل النسخة المحدّثة
--- (٧ أعمدة) — تغيير نوع الإرجاع لا يُسمح مع create or replace.
-drop function if exists public.get_ride_driver(uuid);
-create or replace function public.get_ride_driver(p_ride uuid)
-returns table (full_name text, phone text, rating numeric, vehicle_type text, plate_number text)
-language sql stable security definer set search_path = public as $$
-  select u.full_name, u.phone, d.rating, d.vehicle_type, d.plate_number
-  from public.rides r
-  join public.users u on u.id = r.driver_id
-  left join public.drivers d on d.user_id = r.driver_id
-  where r.id = p_ride
-    and (auth.uid() = r.customer_id or auth.uid() = r.driver_id or public.is_admin());
-$$;
 
 -- ============================================================
 --  التخزين: إثباتات التحويل (bucket خاص topup-proofs)
