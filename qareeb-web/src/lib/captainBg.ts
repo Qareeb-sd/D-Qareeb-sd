@@ -12,6 +12,7 @@ interface CaptainBgPlugin {
   stop(): Promise<void>
   notifyRide(o: { title: string; body: string }): Promise<void>
   requestNotif(): Promise<void>
+  requestLocation(): Promise<void>
 }
 
 const CaptainBg = registerPlugin<CaptainBgPlugin>('CaptainBg')
@@ -56,5 +57,18 @@ export async function requestNotifNative(): Promise<void> {
     await CaptainBg.requestNotif()
   } catch {
     /* تجاهل */
+  }
+}
+
+/**
+ * يطلب إذن الموقع وقت التشغيل — ضروري ليعمل navigator.geolocation داخل WebView
+ * على أندرويد (تتبّع موقع السائق + تحديد الموقع الحالي). آمن على الويب.
+ */
+export async function ensureLocationPermission(): Promise<void> {
+  if (!isAndroid) return
+  try {
+    await CaptainBg.requestLocation()
+  } catch {
+    /* تجاهل — يظلّ navigator.geolocation يطلب الإذن إن أمكن */
   }
 }

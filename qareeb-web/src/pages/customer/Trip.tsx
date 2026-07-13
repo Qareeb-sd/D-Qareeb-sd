@@ -162,8 +162,8 @@ export default function Trip() {
     <Screen title="رحلتك الآن" bare>
       <SosButton rideId={rideId} role="customer" />
       <div className="flex h-full flex-col bg-ivory font-plex">
-        {/* الخريطة الحيّة تملأ المساحة العليا */}
-        <div className="relative flex-1">
+        {/* الخريطة الحيّة تملأ المساحة العليا (بحدّ أدنى حتى لا ينهار ارتفاعها) */}
+        <div className="relative min-h-[48vh] flex-1">
           <MapView
             markers={[pickup?.pos, dropoff?.pos].filter(Boolean) as google.maps.LatLngLiteral[]}
             driver={driverPos ?? undefined}

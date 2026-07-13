@@ -26,7 +26,11 @@ import com.getcapacitor.annotation.PermissionCallback;
 @CapacitorPlugin(
     name = "CaptainBg",
     permissions = {
-        @Permission(alias = "notifications", strings = { Manifest.permission.POST_NOTIFICATIONS })
+        @Permission(alias = "notifications", strings = { Manifest.permission.POST_NOTIFICATIONS }),
+        @Permission(alias = "location", strings = {
+            Manifest.permission.ACCESS_FINE_LOCATION,
+            Manifest.permission.ACCESS_COARSE_LOCATION
+        })
     }
 )
 public class CaptainBgPlugin extends Plugin {
@@ -102,6 +106,21 @@ public class CaptainBgPlugin extends Plugin {
 
     @PermissionCallback
     private void notifCallback(PluginCall call) {
+        call.resolve();
+    }
+
+    /** طلب إذن الموقع وقت التشغيل (لعمل تتبّع الموقع في WebView). */
+    @PluginMethod
+    public void requestLocation(PluginCall call) {
+        if (getPermissionState("location") != PermissionState.GRANTED) {
+            requestPermissionForAlias("location", call, "locationCallback");
+        } else {
+            call.resolve();
+        }
+    }
+
+    @PermissionCallback
+    private void locationCallback(PluginCall call) {
         call.resolve();
     }
 

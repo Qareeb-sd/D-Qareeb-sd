@@ -24,6 +24,7 @@
     "@capacitor/android": "^8.4.1",
     "@capacitor/app": "^8.1.0",
     "@capacitor/core": "^8.4.1",
+    "@capacitor/geolocation": "^8.2.0",
     "@capacitor/google-maps": "^8.0.1",
     "@react-google-maps/api": "^2.20.3",
     "@supabase/supabase-js": "^2.45.4",

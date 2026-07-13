@@ -19,6 +19,7 @@ import { subscribeToRide } from '@/lib/realtime'
 import { getService } from '@/data/services'
 import { money } from '@/lib/format'
 import { fetchRoutePath } from '@/lib/maps'
+import { watchPos } from '@/lib/geo'
 
 const paymentLabels: Record<string, string> = {
   cash: 'كاش',
@@ -74,19 +75,23 @@ export default function DriverTrip() {
   }, [activeRide, profile?.id, setActiveRide])
 
   // تحديث موقع السائق اللحظي للراكب + عرضه على الخريطة طوال وجوده في الشاشة.
+  // يستخدم @capacitor/geolocation الأصلي (يطلب الإذن ويعمل بموثوقية على الجهاز).
   useEffect(() => {
     const rid = activeRide?.id
-    if (!rid || !('geolocation' in navigator)) return
-    const watchId = navigator.geolocation.watchPosition(
-      (p) => {
-        const here = { lat: p.coords.latitude, lng: p.coords.longitude }
-        setPos(here)
-        void updateDriverLocation(rid, here.lat, here.lng)
-      },
-      undefined,
-      { enableHighAccuracy: true, maximumAge: 5000, timeout: 15000 },
-    )
-    return () => navigator.geolocation.clearWatch(watchId)
+    if (!rid) return
+    let cancelled = false
+    let stop = () => {}
+    void watchPos((here) => {
+      setPos(here)
+      void updateDriverLocation(rid, here.lat, here.lng)
+    }).then((s) => {
+      if (cancelled) s()
+      else stop = s
+    })
+    return () => {
+      cancelled = true
+      stop()
+    }
   }, [activeRide?.id])
 
   // Realtime: إن ألغى الراكب الرحلة، أبلغ السائق وأعده لقائمة الطلبات.
@@ -204,8 +209,8 @@ export default function DriverTrip() {
     <Screen title="الرحلة الجارية" bare>
       <SosButton rideId={activeRide.id} role="driver" />
       <div className="relative flex h-full flex-col bg-ivory font-plex">
-        {/* الخريطة الحيّة تملأ المساحة العليا */}
-        <div className="relative flex-1">
+        {/* الخريطة الحيّة تملأ المساحة العليا (بحدّ أدنى حتى لا ينهار ارتفاعها) */}
+        <div className="relative min-h-[48vh] flex-1">
           <MapView
             center={pos ?? target ?? { lat: activeRide.pickup_lat, lng: activeRide.pickup_lng }}
             driver={pos ?? undefined}

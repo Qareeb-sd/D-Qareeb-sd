@@ -27,6 +27,7 @@ import { DEFAULT_SERVICE_ID, getService } from '@/data/services'
 import { createRide, prepayRide, cancelRide, getServicePricing, getSettings } from '@/lib/api'
 import { estimateFare, estimateRoute } from '@/lib/pricing'
 import { fetchRoute } from '@/lib/maps'
+import { getCurrentPos } from '@/lib/geo'
 import { km, mins, money } from '@/lib/format'
 import { KHARTOUM } from '@/theme'
 import type { Settings, ServicePricing, PaymentMethod } from '@/lib/types'
@@ -100,30 +101,22 @@ export default function SelectLocation() {
     }
   })
 
-  const useMyLocation = () => {
-    if (!navigator.geolocation) {
-      setGpsErr('تحديد الموقع غير مدعوم')
-      return
-    }
+  const useMyLocation = async () => {
     setGpsBusy(true)
     setGpsErr('')
     setPickupMode('current')
-    navigator.geolocation.getCurrentPosition(
-      (p) => {
-        const pos = { lat: p.coords.latitude, lng: p.coords.longitude }
-        setPickupPos(pos)
-        setDropoffPos((d) => (d === KHARTOUM ? pos : d))
-        setPickupAddr('موقعي الحالي')
-        setPickupSet(true)
-        setActive('dropoff')
-        setGpsBusy(false)
-      },
-      () => {
-        setGpsBusy(false)
-        setGpsErr('تعذّر تحديد الموقع — فعّل صلاحية الموقع')
-      },
-      { enableHighAccuracy: true, timeout: 8000 },
-    )
+    const pos = await getCurrentPos()
+    if (!pos) {
+      setGpsBusy(false)
+      setGpsErr('تعذّر تحديد الموقع — فعّل صلاحية الموقع')
+      return
+    }
+    setPickupPos(pos)
+    setDropoffPos((d) => (d === KHARTOUM ? pos : d))
+    setPickupAddr('موقعي الحالي')
+    setPickupSet(true)
+    setActive('dropoff')
+    setGpsBusy(false)
   }
 
   // أول دخول: حاول تحديد الموقع تلقائياً.
