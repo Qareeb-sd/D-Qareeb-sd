@@ -297,8 +297,9 @@ export default function SelectLocation() {
       dropoff_lng: dropoff.pos.lng,
       dropoff_address: dropoff.address,
       fare: effectiveFare,
-      promo_code: promo?.valid ? promoCode.trim() : null,
-      discount: promo?.valid ? promo.discount : 0,
+      // حقول الخصم تُرسَل فقط عند تطبيق كود صالح (حتى تعمل الرحلة العادية
+      // قبل تنفيذ مخطّط قاعدة البيانات المحدّث).
+      ...(promo?.valid ? { promo_code: promoCode.trim(), discount: promo.discount } : {}),
     })
     if (error || !id) {
       setBusy(false)
