@@ -83,6 +83,11 @@ import {
   listAdminCustomers,
   listComplaints,
   resolveComplaint,
+  listPromos,
+  upsertPromo,
+  deletePromo,
+  setDriverVip,
+  setDriverCommissionFree,
   type AdminStats,
   type AdminDriverRow,
   type AdminRideRow,
@@ -111,6 +116,7 @@ import type {
   AdminCustomer,
   Complaint,
   ServiceState,
+  PromoCode,
 } from '@/lib/types'
 
 type Tab =
@@ -216,6 +222,20 @@ export default function AdminDashboard() {
   const [busyId, setBusyId] = useState<string | null>(null)
   const [savedMsg, setSavedMsg] = useState('')
   const [priceMsg, setPriceMsg] = useState('')
+
+  // أكواد الخصم (برومو)
+  const [promos, setPromos] = useState<PromoCode[]>([])
+  const [promoMsg, setPromoMsg] = useState('')
+  const emptyPromoForm = {
+    code: '',
+    discount_type: 'percent' as 'percent' | 'fixed',
+    discount_value: '',
+    min_fare: '0',
+    max_uses: '',
+    expires_at: '',
+    active: true,
+  }
+  const [promoForm, setPromoForm] = useState(emptyPromoForm)
   const [showAddVeh, setShowAddVeh] = useState(false)
   const [newVeh, setNewVeh] = useState({
     service_id: '',
@@ -263,6 +283,7 @@ export default function AdminDashboard() {
       void listAdminCustomers().then((c) => setCustomers(c as AdminCustomer[]))
     if (tab === 'complaints' && complaints === null)
       void listComplaints().then((c) => setComplaints(c as Complaint[]))
+    if (tab === 'settings') void listPromos().then(setPromos)
   }, [tab, drivers, customers, complaints])
 
   // صلاحياتي + قائمة الموظفين (للمالك).
@@ -721,6 +742,80 @@ export default function AdminDashboard() {
     setBusyId(null)
     if (error) return alert(error)
     setDrivers((cur) => (cur ? cur.filter((d) => d.user_id !== userId) : cur))
+  }
+
+  // ===== VIP وإعفاء العمولة للسائقين =====
+  const reloadDrivers = () => void listAllDrivers().then(setDrivers)
+
+  const toggleVip = async (d: AdminDriverRow) => {
+    setBusyId(d.user_id)
+    const { error } = await setDriverVip(d.user_id, !d.vip)
+    setBusyId(null)
+    if (error) return alert(error)
+    reloadDrivers()
+  }
+
+  const grantCommissionFree = async (d: AdminDriverRow) => {
+    const input = window.prompt('كم يوماً للإعفاء من العمولة؟', '30')
+    if (input === null) return
+    const days = Number(input)
+    if (!days || days <= 0) return alert('أدخل عدد أيام صحيح')
+    const until = new Date(Date.now() + days * 86400000).toISOString()
+    setBusyId(d.user_id)
+    const { error } = await setDriverCommissionFree(d.user_id, until)
+    setBusyId(null)
+    if (error) return alert(error)
+    reloadDrivers()
+  }
+
+  const cancelCommissionFree = async (d: AdminDriverRow) => {
+    if (!window.confirm('إلغاء إعفاء العمولة لهذا السائق؟')) return
+    setBusyId(d.user_id)
+    const { error } = await setDriverCommissionFree(d.user_id, null)
+    setBusyId(null)
+    if (error) return alert(error)
+    reloadDrivers()
+  }
+
+  // ===== أكواد الخصم (برومو) =====
+  const reloadPromos = () => void listPromos().then(setPromos)
+
+  const savePromo = async () => {
+    const code = promoForm.code.trim()
+    if (!code) return setPromoMsg('خطأ: الكود مطلوب')
+    setPromoMsg('')
+    const { error } = await upsertPromo({
+      code,
+      discount_type: promoForm.discount_type,
+      discount_value: Number(promoForm.discount_value) || 0,
+      min_fare: Number(promoForm.min_fare) || 0,
+      max_uses: promoForm.max_uses.trim() ? Number(promoForm.max_uses) : null,
+      expires_at: promoForm.expires_at ? new Date(promoForm.expires_at).toISOString() : null,
+      active: promoForm.active,
+    })
+    if (error) return setPromoMsg(`خطأ: ${error}`)
+    setPromoMsg(`تم حفظ الكود «${code}» ✓`)
+    setPromoForm(emptyPromoForm)
+    reloadPromos()
+  }
+
+  const editPromo = (p: PromoCode) =>
+    setPromoForm({
+      code: p.code,
+      discount_type: p.discount_type,
+      discount_value: String(p.discount_value),
+      min_fare: String(p.min_fare),
+      max_uses: p.max_uses == null ? '' : String(p.max_uses),
+      expires_at: p.expires_at ? p.expires_at.slice(0, 10) : '',
+      active: p.active,
+    })
+
+  const removePromo = async (code: string) => {
+    if (!window.confirm(`حذف الكود «${code}»؟`)) return
+    setPromoMsg('')
+    const { error } = await deletePromo(code)
+    if (error) return setPromoMsg(`خطأ: ${error}`)
+    reloadPromos()
   }
 
   const clearSos = async (id: string) => {
@@ -1366,8 +1461,12 @@ export default function AdminDashboard() {
               </p>
             ) : (
               <div className="divide-y divide-hairline">
-                {filteredDrivers.map((d) => (
-                  <div key={d.id} className="flex items-center gap-3 py-3">
+                {filteredDrivers.map((d) => {
+                  const cfActive =
+                    d.commission_free_until != null &&
+                    new Date(d.commission_free_until).getTime() > Date.now()
+                  return (
+                  <div key={d.id} className="flex flex-wrap items-center gap-3 py-3">
                     <span
                       className={`h-2.5 w-2.5 shrink-0 rounded-full ${
                         d.is_online ? 'bg-green' : 'bg-hairline'
@@ -1375,7 +1474,14 @@ export default function AdminDashboard() {
                       title={d.is_online ? 'متصل' : 'غير متصل'}
                     />
                     <div className="min-w-0 flex-1">
-                      <p className="truncate font-bold">{d.users?.full_name ?? 'سائق'}</p>
+                      <p className="truncate font-bold">
+                        {d.users?.full_name ?? 'سائق'}
+                        {d.vip && (
+                          <span className="mr-2 chip bg-gold/15 text-[11px] font-bold text-gold">
+                            VIP
+                          </span>
+                        )}
+                      </p>
                       <p className="truncate text-xs text-ink-muted" dir="ltr">
                         {d.users?.phone ?? '—'}
                       </p>
@@ -1387,15 +1493,49 @@ export default function AdminDashboard() {
                         <Star className="h-3 w-3 fill-gold text-gold" /> {d.rating ?? '—'}
                       </p>
                     </div>
-                    <button
-                      onClick={() => removeDriver(d.user_id, d.users?.full_name ?? 'سائق')}
-                      disabled={busyId === d.user_id}
-                      className="shrink-0 rounded-lg border border-danger/40 px-2.5 py-1 text-xs font-bold text-danger hover:bg-danger/5"
-                    >
-                      حذف
-                    </button>
+                    <div className="flex shrink-0 flex-wrap items-center gap-1.5">
+                      <button
+                        onClick={() => toggleVip(d)}
+                        disabled={busyId === d.user_id}
+                        title="VIP — بلا عمولة (اشتراك)"
+                        className={`rounded-lg px-2.5 py-1 text-xs font-bold ${
+                          d.vip
+                            ? 'bg-gold text-white'
+                            : 'border border-hairline text-ink-soft hover:bg-green-soft'
+                        }`}
+                      >
+                        {d.vip ? 'VIP ✓' : 'جعل VIP'}
+                      </button>
+                      {cfActive ? (
+                        <button
+                          onClick={() => cancelCommissionFree(d)}
+                          disabled={busyId === d.user_id}
+                          title="إلغاء الإعفاء"
+                          className="rounded-lg border border-royal/40 bg-royal/5 px-2.5 py-1 text-xs font-bold text-royal hover:bg-royal/10"
+                        >
+                          معفى حتى{' '}
+                          {new Date(d.commission_free_until!).toLocaleDateString('ar-SD')} · إلغاء
+                        </button>
+                      ) : (
+                        <button
+                          onClick={() => grantCommissionFree(d)}
+                          disabled={busyId === d.user_id}
+                          className="rounded-lg border border-hairline px-2.5 py-1 text-xs font-bold text-ink-soft hover:bg-green-soft"
+                        >
+                          إعفاء عمولة
+                        </button>
+                      )}
+                      <button
+                        onClick={() => removeDriver(d.user_id, d.users?.full_name ?? 'سائق')}
+                        disabled={busyId === d.user_id}
+                        className="rounded-lg border border-danger/40 px-2.5 py-1 text-xs font-bold text-danger hover:bg-danger/5"
+                      >
+                        حذف
+                      </button>
+                    </div>
                   </div>
-                ))}
+                  )
+                })}
               </div>
             )}
           </div>
@@ -2315,6 +2455,170 @@ export default function AdminDashboard() {
                 </button>
               </form>
             )}
+
+            {/* أكواد الخصم (برومو) */}
+            <div className="card space-y-3 p-4">
+              <p className="font-bold">أكواد الخصم (برومو)</p>
+              <p className="text-xs text-ink-muted">
+                أنشئ أكواد خصم للعملاء — نسبة مئوية أو مبلغ ثابت، مع حدّ أدنى للأجرة وسقف
+                استخدامات وتاريخ انتهاء اختياريين. اضغط أيّ كود لتعديله.
+              </p>
+
+              {/* نموذج إنشاء/تعديل كود */}
+              <div className="rounded-2xl border border-hairline bg-green-mint/50 p-3">
+                <div className="grid grid-cols-2 gap-2 md:grid-cols-3">
+                  <label className="block">
+                    <span className="mb-1 block text-xs text-ink-soft">الكود</span>
+                    <input
+                      dir="ltr"
+                      className="w-full rounded-xl border border-hairline bg-white px-3 py-2 text-left text-ink outline-none focus:border-green"
+                      placeholder="WELCOME20"
+                      value={promoForm.code}
+                      onChange={(e) => setPromoForm({ ...promoForm, code: e.target.value })}
+                    />
+                  </label>
+                  <label className="block">
+                    <span className="mb-1 block text-xs text-ink-soft">نوع الخصم</span>
+                    <select
+                      className="w-full rounded-xl border border-hairline bg-white px-3 py-2 text-ink outline-none focus:border-green"
+                      value={promoForm.discount_type}
+                      onChange={(e) =>
+                        setPromoForm({
+                          ...promoForm,
+                          discount_type: e.target.value as 'percent' | 'fixed',
+                        })
+                      }
+                    >
+                      <option value="percent">نسبة %</option>
+                      <option value="fixed">مبلغ ثابت</option>
+                    </select>
+                  </label>
+                  <label className="block">
+                    <span className="mb-1 block text-xs text-ink-soft">قيمة الخصم</span>
+                    <input
+                      type="number"
+                      inputMode="decimal"
+                      min={0}
+                      className="w-full rounded-xl border border-hairline bg-white px-3 py-2 text-ink outline-none focus:border-green"
+                      value={promoForm.discount_value}
+                      onChange={(e) =>
+                        setPromoForm({ ...promoForm, discount_value: e.target.value })
+                      }
+                    />
+                  </label>
+                  <label className="block">
+                    <span className="mb-1 block text-xs text-ink-soft">الحدّ الأدنى للأجرة</span>
+                    <input
+                      type="number"
+                      inputMode="decimal"
+                      min={0}
+                      className="w-full rounded-xl border border-hairline bg-white px-3 py-2 text-ink outline-none focus:border-green"
+                      value={promoForm.min_fare}
+                      onChange={(e) => setPromoForm({ ...promoForm, min_fare: e.target.value })}
+                    />
+                  </label>
+                  <label className="block">
+                    <span className="mb-1 block text-xs text-ink-soft">أقصى عدد استخدامات</span>
+                    <input
+                      type="number"
+                      inputMode="numeric"
+                      min={0}
+                      className="w-full rounded-xl border border-hairline bg-white px-3 py-2 text-ink outline-none focus:border-green"
+                      placeholder="بلا حدّ"
+                      value={promoForm.max_uses}
+                      onChange={(e) => setPromoForm({ ...promoForm, max_uses: e.target.value })}
+                    />
+                  </label>
+                  <label className="block">
+                    <span className="mb-1 block text-xs text-ink-soft">تاريخ الانتهاء</span>
+                    <input
+                      type="date"
+                      className="w-full rounded-xl border border-hairline bg-white px-3 py-2 text-ink outline-none focus:border-green"
+                      value={promoForm.expires_at}
+                      onChange={(e) => setPromoForm({ ...promoForm, expires_at: e.target.value })}
+                    />
+                  </label>
+                </div>
+                <div className="mt-2 flex flex-wrap items-center gap-3">
+                  <label className="flex items-center gap-2 text-sm">
+                    <input
+                      type="checkbox"
+                      className="accent-green"
+                      checked={promoForm.active}
+                      onChange={(e) => setPromoForm({ ...promoForm, active: e.target.checked })}
+                    />
+                    مفعّل
+                  </label>
+                  {promoMsg && (
+                    <p
+                      className={`text-sm ${
+                        promoMsg.startsWith('خطأ') ? 'text-danger' : 'text-green'
+                      }`}
+                    >
+                      {promoMsg}
+                    </p>
+                  )}
+                  <div className="ms-auto flex items-center gap-2">
+                    {promoForm.code && (
+                      <button
+                        onClick={() => setPromoForm(emptyPromoForm)}
+                        className="rounded-xl border border-hairline px-3 py-2 text-sm font-bold text-ink-soft hover:bg-green-soft"
+                      >
+                        مسح
+                      </button>
+                    )}
+                    <button onClick={savePromo} className="btn-primary px-4 py-2 text-sm">
+                      حفظ الكود
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              {/* قائمة الأكواد */}
+              {promos.length === 0 ? (
+                <p className="py-4 text-center text-sm text-ink-muted">لا توجد أكواد بعد</p>
+              ) : (
+                <div className="divide-y divide-hairline">
+                  {promos.map((p) => (
+                    <div key={p.code} className="flex items-center gap-3 py-2.5">
+                      <button
+                        onClick={() => editPromo(p)}
+                        className="min-w-0 flex-1 text-right"
+                        title="تعديل الكود"
+                      >
+                        <p className="font-bold text-green" dir="ltr" style={{ textAlign: 'right' }}>
+                          {p.code}
+                        </p>
+                        <p className="text-xs text-ink-muted">
+                          خصم{' '}
+                          {p.discount_type === 'percent'
+                            ? `${p.discount_value}%`
+                            : `${p.discount_value} ج.س`}
+                          {p.min_fare ? ` · حد أدنى ${p.min_fare} ج.س` : ''}
+                          {p.max_uses != null ? ` · حتى ${p.max_uses} استخدام` : ''}
+                          {p.expires_at
+                            ? ` · ينتهي ${new Date(p.expires_at).toLocaleDateString('ar-SD')}`
+                            : ''}
+                        </p>
+                      </button>
+                      <span
+                        className={`chip ${
+                          p.active ? 'bg-green-soft text-green' : 'bg-hairline text-ink-muted'
+                        }`}
+                      >
+                        {p.active ? 'مفعّل' : 'متوقف'}
+                      </span>
+                      <button
+                        onClick={() => removePromo(p.code)}
+                        className="shrink-0 rounded-lg border border-danger/40 px-2.5 py-1 text-xs font-bold text-danger hover:bg-danger/5"
+                      >
+                        حذف
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
           </>
         )}
 

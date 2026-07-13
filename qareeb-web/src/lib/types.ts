@@ -42,6 +42,10 @@ export interface Driver {
   is_online: boolean
   rating: number | null
   status?: DriverStatus // حالة قديمة (نظام تسجيل مبسّط) — التسجيل الرسمي عبر driver_applications
+  vip?: boolean // سائق VIP — بلا عمولة (اشتراك)
+  commission_free_until?: string | null // إعفاء عمولة مؤقّت حتى هذا التاريخ
+  photo_url?: string | null
+  vehicle_photo_url?: string | null
   created_at: string
 }
 
@@ -63,6 +67,8 @@ export interface Ride {
   driver_loc_at?: string | null
   payment_method: PaymentMethod
   rating: number | null
+  promo_code?: string | null
+  discount?: number
   created_at: string
 }
 
@@ -107,6 +113,18 @@ export interface Settings {
 
 /** تسعيرة نوع مركبة واحد — تُدار من لوحة الأدمن. */
 export type ServiceState = 'available' | 'maintenance' | 'coming_soon' | 'hidden'
+
+/** كود خصم للعملاء (يُدار من لوحة الأدمن). */
+export interface PromoCode {
+  code: string
+  discount_type: 'percent' | 'fixed'
+  discount_value: number
+  active: boolean
+  max_uses: number | null
+  min_fare: number
+  expires_at: string | null
+  created_at: string
+}
 
 export interface ServicePricing {
   service_id: string

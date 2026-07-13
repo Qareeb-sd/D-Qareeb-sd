@@ -52,6 +52,7 @@ export default function DriverTrip() {
   // موقع السائق الحيّ + خطّ الملاحة إلى الهدف الحالي.
   const [pos, setPos] = useState<google.maps.LatLngLiteral | null>(null)
   const [routePts, setRoutePts] = useState<google.maps.LatLngLiteral[]>([])
+  const [eta, setEta] = useState<{ km: number; min: number } | null>(null)
 
   useEffect(() => {
     void getSettings().then((s) => setRate(s.commission_rate))
@@ -139,11 +140,15 @@ export default function DriverTrip() {
   useEffect(() => {
     if (!rOrigin || !rDest) {
       setRoutePts([])
+      setEta(null)
       return
     }
     let alive = true
     void fetchRoutePath(rOrigin, rDest).then((r) => {
-      if (alive && r) setRoutePts(r.points)
+      if (alive && r) {
+        setRoutePts(r.points)
+        setEta({ km: r.distanceKm, min: r.durationMin })
+      }
     })
     return () => {
       alive = false
@@ -227,7 +232,7 @@ export default function DriverTrip() {
             className="absolute inset-0"
           />
 
-          {/* لافتة الهدف الحالي أعلى الخريطة */}
+          {/* لافتة الهدف الحالي + المسافة/الزمن أعلى الخريطة */}
           <div className="absolute inset-x-3 top-3 flex items-center gap-3 rounded-2xl bg-white/95 p-3 shadow-float backdrop-blur">
             <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-royal-soft text-royal">
               <MapPin className="h-5 w-5" strokeWidth={2} />
@@ -236,15 +241,24 @@ export default function DriverTrip() {
               <p className="text-[11px] font-bold text-sand-ink">{headingLabel}</p>
               <p className="truncate text-sm font-semibold text-royal">{headingAddress}</p>
             </div>
+            {eta && (
+              <div className="shrink-0 text-center">
+                <p className="text-base font-extrabold leading-none text-royal">
+                  {Math.max(1, Math.round(eta.min))}
+                  <span className="text-[10px] font-bold"> د</span>
+                </p>
+                <p className="text-[10px] text-ink-muted">{eta.km.toFixed(1)} كم</p>
+              </div>
+            )}
           </div>
 
-          {/* زر فتح الملاحة الخارجية */}
+          {/* ملاحة صوتية خارجية (اختياري) — الخريطة الداخلية تكفي عادةً */}
           <button
             onClick={openNav}
-            className="press-scale absolute bottom-4 left-4 flex items-center gap-2 rounded-full bg-royal px-4 py-3 text-sm font-bold text-white shadow-float ring-1 ring-sand/40"
+            className="press-scale absolute bottom-4 left-4 flex items-center gap-1.5 rounded-full bg-white/95 px-3 py-2 text-[12px] font-bold text-royal shadow-float ring-1 ring-hairline"
           >
-            <Navigation className="h-4 w-4" strokeWidth={2.2} />
-            افتح الملاحة
+            <Navigation className="h-3.5 w-3.5" strokeWidth={2.2} />
+            ملاحة صوتية
           </button>
         </div>
 

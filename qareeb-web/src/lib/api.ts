@@ -18,6 +18,7 @@ import type {
   ServiceState,
   RideStatus,
   PaymentMethod,
+  PromoCode,
 } from './types'
 import { services as seedServices, type Service, type VehicleArt } from '@/data/services'
 
@@ -1145,6 +1146,69 @@ export async function settleRide(rideId: string): Promise<{ error?: string }> {
 export async function prepayRide(rideId: string): Promise<{ error?: string }> {
   if (!isSupabaseConfigured) return {}
   const { error } = await supabase.rpc('prepay_ride', { p_ride: rideId })
+  return error ? { error: error.message } : {}
+}
+
+// ---------- البرومو كود + إعفاء العمولة + VIP ----------
+export interface PromoResult {
+  valid: boolean
+  discount: number
+  final: number
+  message: string
+}
+
+/** يتحقّق من كود خصم ويعيد قيمة الخصم والسعر النهائي (بلا كشف الأكواد). */
+export async function validatePromo(code: string, fare: number): Promise<PromoResult> {
+  if (!isSupabaseConfigured) return { valid: false, discount: 0, final: fare, message: 'غير متاح' }
+  const { data, error } = await supabase.rpc('validate_promo', { p_code: code, p_fare: fare })
+  const row = Array.isArray(data) ? data[0] : data
+  if (error || !row) return { valid: false, discount: 0, final: fare, message: 'تعذّر التحقّق' }
+  return {
+    valid: Boolean(row.valid),
+    discount: Number(row.discount ?? 0),
+    final: Number(row.final ?? fare),
+    message: String(row.message ?? ''),
+  }
+}
+
+/** قائمة أكواد الخصم (أدمن/موظف). */
+export async function listPromos(): Promise<PromoCode[]> {
+  if (!isSupabaseConfigured) return []
+  const { data } = await supabase.from('promo_codes').select('*').order('created_at', { ascending: false })
+  return data ?? []
+}
+
+/** إنشاء/تعديل كود خصم (أدمن — صلاحية settings). */
+export async function upsertPromo(promo: Partial<PromoCode> & { code: string }): Promise<{ error?: string }> {
+  if (!isSupabaseConfigured) return {}
+  const { error } = await supabase.from('promo_codes').upsert({ ...promo, code: promo.code.trim() })
+  return error ? { error: error.message } : {}
+}
+
+/** حذف كود خصم. */
+export async function deletePromo(code: string): Promise<{ error?: string }> {
+  if (!isSupabaseConfigured) return {}
+  const { error } = await supabase.from('promo_codes').delete().eq('code', code)
+  return error ? { error: error.message } : {}
+}
+
+/** جعل سائق VIP (بلا عمولة — اشتراك) أو إلغاؤه. */
+export async function setDriverVip(userId: string, vip: boolean): Promise<{ error?: string }> {
+  if (!isSupabaseConfigured) return {}
+  const { error } = await supabase.rpc('admin_set_driver_vip', { p_user: userId, p_vip: vip })
+  return error ? { error: error.message } : {}
+}
+
+/** منح سائق إعفاء عمولة مؤقّت حتى تاريخ (null = إلغاء الإعفاء). */
+export async function setDriverCommissionFree(
+  userId: string,
+  until: string | null,
+): Promise<{ error?: string }> {
+  if (!isSupabaseConfigured) return {}
+  const { error } = await supabase.rpc('admin_set_driver_commission_free', {
+    p_user: userId,
+    p_until: until,
+  })
   return error ? { error: error.message } : {}
 }
 

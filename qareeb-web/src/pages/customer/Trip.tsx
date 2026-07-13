@@ -58,6 +58,7 @@ export default function Trip() {
   const [status, setStatus] = useState<RideStatus | null>(null)
   const [driverPos, setDriverPos] = useState<google.maps.LatLngLiteral | null>(null)
   const [routePts, setRoutePts] = useState<google.maps.LatLngLiteral[]>([])
+  const [eta, setEta] = useState<{ km: number; min: number } | null>(null)
   const [busy, setBusy] = useState(false)
   const notified = useRef(false)
 
@@ -147,11 +148,15 @@ export default function Trip() {
   useEffect(() => {
     if (!origin || !dest) {
       setRoutePts([])
+      setEta(null)
       return
     }
     let alive = true
     void fetchRoutePath(origin, dest).then((r) => {
-      if (alive && r) setRoutePts(r.points)
+      if (alive && r) {
+        setRoutePts(r.points)
+        setEta({ km: r.distanceKm, min: r.durationMin })
+      }
     })
     return () => {
       alive = false
@@ -197,7 +202,15 @@ export default function Trip() {
               <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-royal-soft text-royal">
                 <banner.Icon className="h-5 w-5" strokeWidth={2} />
               </span>
-              <p className="flex-1 font-bold text-royal">{banner.text}</p>
+              <div className="min-w-0 flex-1">
+                <p className="font-bold text-royal">{banner.text}</p>
+                {eta && status !== 'arrived' && (
+                  <p className="text-[12px] text-ink-soft">
+                    {status === 'in_progress' ? 'الوصول خلال' : 'يبعد'} ~
+                    {Math.max(1, Math.round(eta.min))} دقيقة · {eta.km.toFixed(1)} كم
+                  </p>
+                )}
+              </div>
             </div>
           )}
         </div>

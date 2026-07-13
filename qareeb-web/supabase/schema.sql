@@ -1739,3 +1739,136 @@ do $$ begin
 exception when others then
   raise notice 'تعذّر إنشاء فهرس الرحلة النشطة الوحيدة (قد توجد رحلات نشطة مكرّرة): %', sqlerrm;
 end $$;
+
+-- ============================================================
+--  البرومو كود (خصم للعملاء) + إعفاء عمولة السائق + سائق VIP
+-- ============================================================
+
+-- أكواد الخصم — تُدار من لوحة الأدمن (صلاحية settings).
+create table if not exists public.promo_codes (
+  code           text primary key,
+  discount_type  text not null default 'percent',   -- percent | fixed
+  discount_value numeric(12,2) not null,             -- % أو مبلغ ثابت (ج.س)
+  active         boolean not null default true,
+  max_uses       int,                                -- null = بلا حدّ
+  min_fare       numeric(12,2) not null default 0,
+  expires_at     timestamptz,
+  created_at     timestamptz not null default now()
+);
+alter table public.promo_codes enable row level security;
+drop policy if exists "staff read promo" on public.promo_codes;
+create policy "staff read promo" on public.promo_codes
+  for select using (public.is_staff_or_admin());
+drop policy if exists "admin write promo" on public.promo_codes;
+create policy "admin write promo" on public.promo_codes
+  for all using (public.has_perm('settings')) with check (public.has_perm('settings'));
+
+alter table public.rides add column if not exists promo_code text;
+alter table public.rides add column if not exists discount  numeric(12,2) not null default 0;
+
+create or replace function public.validate_promo(p_code text, p_fare numeric)
+returns table (valid boolean, discount numeric, final numeric, message text)
+language plpgsql stable security definer set search_path = public as $$
+declare r public.promo_codes; d numeric;
+begin
+  select * into r from public.promo_codes where lower(code) = lower(btrim(p_code));
+  if not found then return query select false, 0::numeric, p_fare, 'كود غير صحيح'; return; end if;
+  if not r.active then return query select false, 0::numeric, p_fare, 'الكود غير مفعّل'; return; end if;
+  if r.expires_at is not null and r.expires_at < now() then
+    return query select false, 0::numeric, p_fare, 'انتهت صلاحية الكود'; return; end if;
+  if p_fare < coalesce(r.min_fare, 0) then
+    return query select false, 0::numeric, p_fare, 'قيمة الرحلة أقلّ من حدّ الكود'; return; end if;
+  if r.max_uses is not null and
+     (select count(*) from public.rides where lower(promo_code) = lower(r.code)) >= r.max_uses then
+    return query select false, 0::numeric, p_fare, 'نفد استخدام الكود'; return; end if;
+  d := case when r.discount_type = 'percent'
+            then round(p_fare * r.discount_value / 100)
+            else least(r.discount_value, p_fare) end;
+  return query select true, d, greatest(0, p_fare - d), 'تم تطبيق الخصم ✓';
+end $$;
+grant execute on function public.validate_promo(text, numeric) to authenticated;
+
+alter table public.drivers add column if not exists vip boolean not null default false;
+alter table public.drivers add column if not exists commission_free_until timestamptz;
+
+create or replace function public.admin_set_driver_vip(p_user uuid, p_vip boolean)
+returns void language plpgsql security definer set search_path = public as $$
+begin
+  if not public.has_perm('drivers') then raise exception 'غير مصرّح'; end if;
+  update public.drivers set vip = p_vip where user_id = p_user;
+  perform public.log_action(case when p_vip then 'تعيين سائق VIP' else 'إلغاء VIP' end,
+    (select full_name from public.users where id = p_user));
+end $$;
+grant execute on function public.admin_set_driver_vip(uuid, boolean) to authenticated;
+
+create or replace function public.admin_set_driver_commission_free(p_user uuid, p_until timestamptz)
+returns void language plpgsql security definer set search_path = public as $$
+begin
+  if not public.has_perm('drivers') then raise exception 'غير مصرّح'; end if;
+  update public.drivers set commission_free_until = p_until where user_id = p_user;
+  perform public.log_action('إعفاء عمولة سائق',
+    (select full_name from public.users where id = p_user) || ' حتى ' || coalesce(p_until::text,'-'));
+end $$;
+grant execute on function public.admin_set_driver_commission_free(uuid, timestamptz) to authenticated;
+
+create or replace function public.settle_ride(p_ride uuid)
+returns void language plpgsql security definer set search_path = public as $$
+declare
+  v_driver_user uuid; v_customer uuid; v_fare numeric; v_status ride_status;
+  v_payment payment_method; v_service text; v_rate numeric; v_commission numeric;
+  v_net numeric; v_dwallet uuid; v_cwallet uuid; v_cbalance numeric; v_prepaid boolean;
+  v_vip boolean; v_free timestamptz;
+begin
+  select driver_id, customer_id, fare, status, payment_method, service_id, prepaid
+    into v_driver_user, v_customer, v_fare, v_status, v_payment, v_service, v_prepaid
+    from public.rides where id = p_ride for update;
+
+  if v_driver_user is null then raise exception 'الرحلة بلا سائق'; end if;
+  if auth.uid() <> v_driver_user and not public.is_admin() then raise exception 'غير مصرّح'; end if;
+  if v_status = 'completed' then raise exception 'الرحلة مسوّاة مسبقاً'; end if;
+  if v_status = 'cancelled' then raise exception 'الرحلة ملغاة'; end if;
+
+  v_rate := coalesce(
+    (select commission_rate from public.service_pricing where service_id = v_service),
+    (select commission_rate from public.settings where id = 1));
+
+  select vip, commission_free_until into v_vip, v_free
+    from public.drivers where user_id = v_driver_user;
+  if coalesce(v_vip, false) or (v_free is not null and v_free > now()) then
+    v_rate := 0;
+  end if;
+
+  v_fare       := coalesce(v_fare, 0);
+  v_commission := round(v_fare * coalesce(v_rate, 0));
+  v_net        := v_fare - v_commission;
+
+  if v_payment = 'wallet' and not v_prepaid then
+    select id, balance into v_cwallet, v_cbalance from public.wallets where user_id = v_customer for update;
+    if v_cwallet is null then raise exception 'محفظة العميل غير موجودة'; end if;
+    if v_cbalance < v_fare then raise exception 'رصيد محفظة العميل غير كافٍ'; end if;
+    update public.wallets set balance = balance - v_fare, updated_at = now() where id = v_cwallet;
+    insert into public.transactions (wallet_id, type, amount, ride_id, note)
+      values (v_cwallet, 'ride_payment', -v_fare, p_ride, 'دفع رحلة');
+  end if;
+
+  update public.rides set status = 'completed' where id = p_ride;
+
+  select id into v_dwallet from public.wallets where user_id = v_driver_user for update;
+  if v_dwallet is not null then
+    if v_payment = 'wallet' then
+      update public.wallets set balance = balance + v_net, updated_at = now() where id = v_dwallet;
+      insert into public.transactions (wallet_id, type, amount, ride_id, note) values
+        (v_dwallet, 'ride_earning', v_fare, p_ride, 'أرباح رحلة (إجمالي)');
+      if v_commission > 0 then
+        insert into public.transactions (wallet_id, type, amount, ride_id, note)
+          values (v_dwallet, 'commission', -v_commission, p_ride, 'عمولة المنصة');
+      end if;
+    else
+      if v_commission > 0 then
+        update public.wallets set balance = balance - v_commission, updated_at = now() where id = v_dwallet;
+        insert into public.transactions (wallet_id, type, amount, ride_id, note)
+          values (v_dwallet, 'commission', -v_commission, p_ride, 'عمولة المنصة (نقدي/تحويل)');
+      end if;
+    end if;
+  end if;
+end $$;

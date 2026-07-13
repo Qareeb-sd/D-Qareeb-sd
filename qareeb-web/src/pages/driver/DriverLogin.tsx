@@ -40,6 +40,7 @@ export default function DriverLogin() {
   const [devCode, setDevCode] = useState('')
   const [resendIn, setResendIn] = useState(0)
   const [bioReady, setBioReady] = useState(false)
+  const [remember, setRemember] = useState(true) // تفعيل البصمة عند الدخول
 
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
@@ -72,8 +73,16 @@ export default function DriverLogin() {
     setError('')
     setBusy(true)
     const { error } = await signInWithPhone(phone, password, undefined, { createIfMissing: false })
+    if (error) {
+      setBusy(false)
+      return setError(error)
+    }
+    // تفعيل البصمة عند الطلب (بحدّ زمني حتى لا يعلق الدخول).
+    if (remember && canBio) {
+      const timeout = new Promise<{ ok: boolean }>((r) => setTimeout(() => r({ ok: false }), 8000))
+      await Promise.race([enableBiometric(phone, password), timeout])
+    }
     setBusy(false)
-    if (error) return setError(error)
     navigate('/driver')
   }
 
@@ -258,6 +267,19 @@ export default function DriverLogin() {
           <form onSubmit={doLogin} className="space-y-4">
             <Field label="رقم الهاتف" dir="ltr" inputMode="tel" value={phone} onChange={setPhone} placeholder="+249 9X XXX XXXX" />
             <Field label="كلمة السر" dir="ltr" type="password" value={password} onChange={setPassword} placeholder="••••••" />
+            {/* تفعيل البصمة للمرّات القادمة (يظهر إن دعمها الجهاز ولم تُفعّل بعد) */}
+            {canBio && !bioReady && (
+              <label className="flex items-center gap-2 text-sm text-white/80">
+                <input
+                  type="checkbox"
+                  checked={remember}
+                  onChange={(e) => setRemember(e.target.checked)}
+                  className="h-4 w-4 accent-sand"
+                />
+                <Fingerprint className="h-4 w-4 text-sand" strokeWidth={1.8} />
+                فعّل الدخول بالبصمة/الوجه للمرّات القادمة
+              </label>
+            )}
             <button className="w-full rounded-2xl bg-sand py-3 font-extrabold text-royal transition active:scale-[0.99] disabled:opacity-60" type="submit" disabled={busy}>
               {busy ? '…' : 'دخول'}
             </button>

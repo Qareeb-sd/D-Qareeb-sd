@@ -31,6 +31,8 @@ import {
   getActiveCustomerRide,
   getServicePricing,
   getSettings,
+  validatePromo,
+  type PromoResult,
 } from '@/lib/api'
 import { estimateFare, estimateRoute } from '@/lib/pricing'
 import { fetchRoute } from '@/lib/maps'
@@ -99,6 +101,21 @@ export default function SelectLocation() {
   const [settings, setSettings] = useState<Settings | null>(null)
   const [quote, setQuote] = useState<Quote | null>(null)
   const [busy, setBusy] = useState(false)
+  const [promoCode, setPromoCode] = useState('')
+  const [promo, setPromo] = useState<PromoResult | null>(null)
+  const [promoBusy, setPromoBusy] = useState(false)
+
+  // السعر الفعّال بعد الخصم (إن طُبّق كود صالح).
+  const baseFare = quote?.fare ?? 0
+  const effectiveFare = promo?.valid ? promo.final : baseFare
+
+  const applyPromo = async () => {
+    if (!promoCode.trim() || !quote) return
+    setPromoBusy(true)
+    const res = await validatePromo(promoCode.trim(), baseFare)
+    setPromoBusy(false)
+    setPromo(res)
+  }
 
   const placesKey = `qareeb_places_${profile?.id ?? 'guest'}`
   const [places, setPlaces] = useState<Record<string, SavedPlace>>(() => {
@@ -267,7 +284,7 @@ export default function SelectLocation() {
     const dropoff = { pos: dropoffPos, address: dropoffAddr || 'الوجهة' }
     setPickup(pickup)
     setDropoff(dropoff)
-    setFare(quote?.fare ?? 0)
+    setFare(effectiveFare)
     const { id, error } = await createRide({
       customer_id: profile?.id,
       service_id: sid,
@@ -279,7 +296,9 @@ export default function SelectLocation() {
       dropoff_lat: dropoff.pos.lat,
       dropoff_lng: dropoff.pos.lng,
       dropoff_address: dropoff.address,
-      fare: quote?.fare ?? 0,
+      fare: effectiveFare,
+      promo_code: promo?.valid ? promoCode.trim() : null,
+      discount: promo?.valid ? promo.discount : 0,
     })
     if (error || !id) {
       setBusy(false)
@@ -530,6 +549,37 @@ export default function SelectLocation() {
 
           {!destOptional && !destChosen && (
             <p className="mt-3 text-center text-[12px] text-warning">حدّد وجهتك للمتابعة</p>
+          )}
+
+          {/* كود الخصم — يظهر بعد حساب السعر */}
+          {quote && destChosen && (
+            <div className="mt-3">
+              <div className="flex gap-2">
+                <input
+                  className="flex-1 rounded-2xl border border-hairline bg-white px-4 py-2.5 text-[13px] text-ink outline-none focus:border-royal"
+                  placeholder="كود خصم (إن وُجد)"
+                  value={promoCode}
+                  onChange={(e) => {
+                    setPromoCode(e.target.value)
+                    setPromo(null)
+                  }}
+                />
+                <button
+                  onClick={applyPromo}
+                  disabled={promoBusy || !promoCode.trim()}
+                  className="rounded-2xl bg-royal px-4 py-2.5 text-[13px] font-bold text-white disabled:opacity-50"
+                >
+                  {promoBusy ? '…' : 'تطبيق'}
+                </button>
+              </div>
+              {promo && (
+                <p className={`mt-1.5 text-[12px] ${promo.valid ? 'text-green' : 'text-danger'}`}>
+                  {promo.valid
+                    ? `${promo.message} — خصم ${money(promo.discount)} · السعر ${money(promo.final)}`
+                    : promo.message}
+                </p>
+              )}
+            </div>
           )}
 
           {/* طريقة الدفع — تُختار قبل الطلب */}
