@@ -1425,3 +1425,18 @@ create policy "admin write vehicles" on storage.objects
   for all to authenticated
   using (bucket_id = 'vehicles' and public.has_perm('settings'))
   with check (bucket_id = 'vehicles' and public.has_perm('settings'));
+
+-- ============================================================
+--  رموز التحقق (OTP) عبر واتساب — تُدار حصراً عبر Edge Functions
+--  بمفتاح service_role. يخزّن تجزئة الرمز فقط (لا الرمز الصريح).
+--  لا سياسات RLS = لا وصول من العميل إطلاقاً؛ الدوال تتجاوز RLS.
+-- ============================================================
+create table if not exists public.otp_codes (
+  phone        text primary key,
+  code_hash    text not null,
+  expires_at   timestamptz not null,
+  attempts     int not null default 0,
+  last_sent_at timestamptz not null default now()
+);
+alter table public.otp_codes enable row level security;
+-- عمداً بلا سياسات: يُمنع كل وصول من مفتاح anon/authenticated.
