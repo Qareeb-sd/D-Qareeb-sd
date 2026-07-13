@@ -204,6 +204,8 @@ export interface DriverApplication {
   photo_back_url: string | null
   photo_side_url: string | null
   photo_interior_url: string | null
+  driver_photo_url: string | null // صورة السائق (عرض للعميل)
+  vehicle_photo_url: string | null // صورة المركبة (عرض للعميل)
   status: DriverAppStatus
   review_note: string | null
   reviewed_by: string | null

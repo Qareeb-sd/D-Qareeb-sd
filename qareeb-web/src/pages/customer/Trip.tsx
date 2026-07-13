@@ -188,9 +188,17 @@ export default function Trip() {
           <div className="space-y-3 px-4 pt-4">
             {/* السائق */}
             <div className="flex items-center gap-3 rounded-2xl border border-hairline bg-ivory/50 p-3.5">
-              <div className="grid h-12 w-12 place-items-center rounded-full bg-royal-soft text-royal">
-                <UserRound className="h-6 w-6" strokeWidth={1.8} />
-              </div>
+              {driver?.photo_url ? (
+                <img
+                  src={driver.photo_url}
+                  alt={driver.full_name ?? 'السائق'}
+                  className="h-12 w-12 shrink-0 rounded-full object-cover ring-2 ring-sand/40"
+                />
+              ) : (
+                <div className="grid h-12 w-12 shrink-0 place-items-center rounded-full bg-royal-soft text-royal">
+                  <UserRound className="h-6 w-6" strokeWidth={1.8} />
+                </div>
+              )}
               <div className="flex-1">
                 <p className="font-bold text-royal">{driver?.full_name ?? 'سائق قريب'}</p>
                 <p className="flex items-center gap-1 text-sm text-ink-soft">
@@ -215,7 +223,15 @@ export default function Trip() {
 
             {/* المركبة والوجهة + الدفع */}
             <div className="flex items-center gap-3 rounded-2xl border border-hairline bg-ivory/50 p-3.5">
-              {service && <VehicleImage service={service} className="h-12 w-16" />}
+              {driver?.vehicle_photo_url ? (
+                <img
+                  src={driver.vehicle_photo_url}
+                  alt="المركبة"
+                  className="h-12 w-16 shrink-0 rounded-xl object-cover"
+                />
+              ) : (
+                service && <VehicleImage service={service} className="h-12 w-16" />
+              )}
               <div className="flex-1 text-sm">
                 <p className="text-ink-muted">الوجهة</p>
                 <p className="truncate font-medium">{dropoff?.address ?? '—'}</p>

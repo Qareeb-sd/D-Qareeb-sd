@@ -53,6 +53,7 @@ import {
   getDriverDocUrl,
   listAllDrivers,
   listAllRides,
+  adminListRides,
   listActiveRides,
   deleteDriver,
   getFinancialSummary,
@@ -84,6 +85,7 @@ import {
   resolveComplaint,
   type AdminStats,
   type AdminDriverRow,
+  type AdminRideRow,
   type FinancialSummary,
 } from '@/lib/api'
 import { subscribeToSos, subscribeToTopups, subscribeToDriverApplications } from '@/lib/realtime'
@@ -176,6 +178,7 @@ export default function AdminDashboard() {
   const [customers, setCustomers] = useState<AdminCustomer[] | null>(null)
   const [complaints, setComplaints] = useState<Complaint[] | null>(null)
   const [rides, setRides] = useState<Ride[] | null>(null)
+  const [detailRides, setDetailRides] = useState<AdminRideRow[] | null>(null)
   const [activeRides, setActiveRides] = useState<Ride[]>([])
   const [sos, setSos] = useState<SosAlert[]>([])
 
@@ -205,6 +208,7 @@ export default function AdminDashboard() {
   // بحث/فلترة
   const [rideQuery, setRideQuery] = useState('')
   const [rideStatus, setRideStatus] = useState('')
+  const [rideViolationsOnly, setRideViolationsOnly] = useState(false)
   const [driverQuery, setDriverQuery] = useState('')
   const [driverFilter, setDriverFilter] = useState<'all' | 'online' | 'offline'>('all')
   const [customerQuery, setCustomerQuery] = useState('')
@@ -231,7 +235,7 @@ export default function AdminDashboard() {
 
   useEffect(() => {
     void (async () => {
-      const [s, fin, t, cfg, pr, apps, rd] = await Promise.all([
+      const [s, fin, t, cfg, pr, apps, rd, drd] = await Promise.all([
         getAdminStats(),
         getFinancialSummary(),
         listPendingTopups(),
@@ -239,6 +243,7 @@ export default function AdminDashboard() {
         listServicePricing(),
         listDriverApplications('pending'),
         listAllRides(500),
+        adminListRides(500),
       ])
       setStats(s)
       setFinance(fin)
@@ -247,6 +252,7 @@ export default function AdminDashboard() {
       setPricing(pr)
       setDriverApps(apps)
       setRides(rd)
+      setDetailRides(drd)
     })()
   }, [])
 
@@ -382,15 +388,25 @@ export default function AdminDashboard() {
   }
 
   // قوائم مفلترة
-  const filteredRides = (rides ?? []).filter((r) => {
+  // الرحلات التفصيلية (للسلطات) — مصدر تبويب الرحلات مع فلترة الحالة/البحث/المخالفات.
+  const filteredDetailRides = (detailRides ?? []).filter((r) => {
     const okStatus = !rideStatus || r.status === rideStatus
-    const q = rideQuery.trim()
+    const okViolation = !rideViolationsOnly || r.driver_mismatch || r.vehicle_mismatch
+    const q = rideQuery.trim().toLowerCase()
+    const serviceName = getService(r.service_id)?.name ?? r.service_id
     const okQuery =
       !q ||
-      (r.pickup_address ?? '').includes(q) ||
-      (r.dropoff_address ?? '').includes(q) ||
-      (getService(r.service_id)?.name ?? '').includes(q)
-    return okStatus && okQuery
+      [
+        r.customer_name,
+        r.customer_phone,
+        r.driver_name,
+        r.driver_phone,
+        r.plate_number,
+        r.pickup_address,
+        r.dropoff_address,
+        serviceName,
+      ].some((f) => (f ?? '').toLowerCase().includes(q))
+    return okStatus && okViolation && okQuery
   })
   const filteredDrivers = (drivers ?? []).filter((d) => {
     const q = driverQuery.trim()
@@ -456,24 +472,46 @@ export default function AdminDashboard() {
     completed: 'مكتملة',
     cancelled: 'ملغاة',
   }
+  const payAr: Record<string, string> = {
+    cash: 'كاش',
+    bank_transfer: 'تحويل بنكي',
+    wallet: 'محفظة قريب',
+  }
   const exportRides = () =>
     exportCsv(
       `الرحلات-${day()}`,
       [
         { key: 'date', label: 'التاريخ' },
-        { key: 'service', label: 'المركبة' },
         { key: 'status', label: 'الحالة' },
-        { key: 'pickup', label: 'الإقلاع' },
-        { key: 'dropoff', label: 'الوجهة' },
+        { key: 'service', label: 'الخدمة' },
+        { key: 'customer', label: 'العميل' },
+        { key: 'customerPhone', label: 'هاتف العميل' },
+        { key: 'driver', label: 'السائق' },
+        { key: 'driverPhone', label: 'هاتف السائق' },
+        { key: 'plate', label: 'اللوحة' },
+        { key: 'vehicle', label: 'المركبة' },
+        { key: 'pickup', label: 'من' },
+        { key: 'dropoff', label: 'إلى' },
         { key: 'fare', label: 'الأجرة' },
+        { key: 'payment', label: 'الدفع' },
+        { key: 'violation', label: 'مخالفة' },
       ],
-      filteredRides.map((r) => ({
+      filteredDetailRides.map((r) => ({
         date: new Date(r.created_at).toLocaleString('ar-SD'),
-        service: getService(r.service_id)?.name ?? r.service_id,
         status: statusAr[r.status] ?? r.status,
+        service: getService(r.service_id)?.name ?? r.service_id,
+        customer: r.customer_name ?? '',
+        customerPhone: r.customer_phone ?? '',
+        driver: r.driver_name ?? '',
+        driverPhone: r.driver_phone ?? '',
+        plate: r.plate_number ?? '',
+        vehicle: getService(r.vehicle_type ?? '')?.name ?? r.vehicle_type ?? '',
         pickup: r.pickup_address ?? '',
         dropoff: r.dropoff_address ?? '',
         fare: Math.round(r.fare ?? 0),
+        payment:
+          (payAr[r.payment_method] ?? r.payment_method) + (r.prepaid ? ' · مدفوعة مسبقاً' : ''),
+        violation: r.driver_mismatch || r.vehicle_mismatch ? 'نعم' : 'لا',
       })),
     )
   const exportFinance = () =>
@@ -1482,16 +1520,31 @@ export default function AdminDashboard() {
           <div className="card p-4">
             <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
               <div className="flex items-center gap-2">
-                <p className="font-bold">الرحلات ({filteredRides.length})</p>
+                <p className="font-bold">الرحلات ({filteredDetailRides.length})</p>
                 <button
                   onClick={exportRides}
-                  disabled={filteredRides.length === 0}
+                  disabled={filteredDetailRides.length === 0}
                   className="rounded-lg border border-green/40 px-2.5 py-1 text-xs font-bold text-green hover:bg-green/5 disabled:opacity-40"
                 >
                   <Download className="inline h-4 w-4" /> تصدير CSV
                 </button>
               </div>
-              <div className="flex flex-wrap gap-2">
+              <div className="flex flex-wrap items-center gap-2">
+                <label
+                  className={`flex cursor-pointer items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs font-bold transition ${
+                    rideViolationsOnly
+                      ? 'border-danger/50 bg-danger/5 text-danger'
+                      : 'border-hairline text-ink-soft hover:bg-green-soft'
+                  }`}
+                >
+                  <input
+                    type="checkbox"
+                    className="accent-[#C5453B]"
+                    checked={rideViolationsOnly}
+                    onChange={(e) => setRideViolationsOnly(e.target.checked)}
+                  />
+                  ⚠ المخالفات فقط
+                </label>
                 <select
                   className="field w-auto"
                   value={rideStatus}
@@ -1508,34 +1561,91 @@ export default function AdminDashboard() {
                   className="field w-full max-w-xs"
                   value={rideQuery}
                   onChange={(e) => setRideQuery(e.target.value)}
-                  placeholder="🔍 بحث بالعنوان أو نوع المركبة"
+                  placeholder="🔍 بحث بالاسم/الهاتف/اللوحة/العنوان"
                 />
               </div>
             </div>
-            {rides === null ? (
+            {detailRides === null ? (
               <p className="py-6 text-center text-sm text-ink-muted">…</p>
-            ) : filteredRides.length === 0 ? (
+            ) : filteredDetailRides.length === 0 ? (
               <p className="py-6 text-center text-sm text-ink-muted">
-                {rides.length === 0 ? 'لا توجد رحلات بعد' : 'لا نتائج مطابقة'}
+                {detailRides.length === 0 ? 'لا توجد رحلات بعد' : 'لا نتائج مطابقة'}
               </p>
             ) : (
-              <div className="divide-y divide-hairline">
-                {filteredRides.map((r) => (
-                  <div key={r.id} className="flex items-center gap-3 py-3">
-                    <div className="min-w-0 flex-1">
-                      <p className="truncate font-bold">
-                        {getService(r.service_id)?.name ?? r.service_id}
-                      </p>
-                      <p className="truncate text-xs text-ink-muted">
+              <div className="space-y-3">
+                {filteredDetailRides.map((r) => {
+                  const flagged = r.driver_mismatch || r.vehicle_mismatch
+                  return (
+                    <div
+                      key={r.id}
+                      className={`rounded-2xl border p-3.5 ${
+                        flagged
+                          ? 'border-danger/40 border-r-4 border-r-danger bg-danger/5'
+                          : 'border-hairline bg-white'
+                      }`}
+                    >
+                      {/* الرأس: الخدمة + الحالة + الأجرة */}
+                      <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+                        <div className="flex items-center gap-2">
+                          <p className="font-bold">
+                            {getService(r.service_id)?.name ?? r.service_id}
+                          </p>
+                          <StatusBadge status={r.status} />
+                        </div>
+                        <p className="font-bold text-green">{money(r.fare ?? 0)}</p>
+                      </div>
+
+                      {/* شارة المخالفة */}
+                      {flagged && (
+                        <div className="mb-2 flex items-center gap-1.5 rounded-xl bg-danger px-3 py-1.5 text-xs font-extrabold text-white">
+                          ⚠ مخالفة:
+                          <span>
+                            {r.driver_mismatch ? 'السائق مختلف' : ''}
+                            {r.vehicle_mismatch ? `${r.driver_mismatch ? ' / ' : ''}المركبة مختلفة` : ''}
+                          </span>
+                        </div>
+                      )}
+
+                      {/* الطرفان */}
+                      <div className="grid gap-2 text-sm sm:grid-cols-2">
+                        <div>
+                          <p className="text-[11px] font-bold text-ink-muted">العميل</p>
+                          <p className="font-bold">{r.customer_name ?? '—'}</p>
+                          <p className="text-xs text-ink-muted" dir="ltr">
+                            {r.customer_phone ?? '—'}
+                          </p>
+                        </div>
+                        <div>
+                          <p className="text-[11px] font-bold text-ink-muted">السائق</p>
+                          <p className="font-bold">{r.driver_name ?? '—'}</p>
+                          <p className="text-xs text-ink-muted" dir="ltr">
+                            {r.driver_phone ?? '—'}
+                          </p>
+                          <p className="text-xs text-ink-soft">
+                            <span dir="ltr">{r.plate_number ?? '—'}</span>
+                            {' · '}
+                            {getService(r.vehicle_type ?? '')?.name ?? r.vehicle_type ?? '—'}
+                          </p>
+                        </div>
+                      </div>
+
+                      {/* المسار */}
+                      <p className="mt-2 text-xs text-ink-muted">
                         {r.pickup_address ?? '—'} ← {r.dropoff_address ?? '—'}
                       </p>
+
+                      {/* الدفع + التاريخ */}
+                      <div className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-ink-muted">
+                        <span className="font-bold text-ink-soft">
+                          {payAr[r.payment_method] ?? r.payment_method}
+                          {r.prepaid ? ' · مدفوعة مسبقاً' : ''}
+                        </span>
+                        <span>·</span>
+                        <span>{new Date(r.created_at).toLocaleString('ar-SD')}</span>
+                      </div>
                     </div>
-                    <div className="flex flex-col items-end gap-1">
-                      <p className="font-bold text-green">{money(r.fare ?? 0)}</p>
-                      <StatusBadge status={r.status} />
-                    </div>
-                  </div>
-                ))}
+                  )
+                })}
               </div>
             )}
           </div>

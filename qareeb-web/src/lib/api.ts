@@ -16,6 +16,8 @@ import type {
   AdminAccess,
   TrackedRide,
   ServiceState,
+  RideStatus,
+  PaymentMethod,
 } from './types'
 import { services as seedServices, type Service, type VehicleArt } from '@/data/services'
 
@@ -271,14 +273,44 @@ export async function submitReview(
   rideId: string,
   stars: number,
   complaint?: string | null,
+  mismatch?: { driver?: boolean; vehicle?: boolean },
 ): Promise<{ error?: string }> {
   if (!isSupabaseConfigured) return {}
   const { error } = await supabase.rpc('submit_review', {
     p_ride: rideId,
     p_stars: stars,
     p_complaint: complaint?.trim() || null,
+    p_driver_mismatch: mismatch?.driver ?? false,
+    p_vehicle_mismatch: mismatch?.vehicle ?? false,
   })
   return error ? { error: error.message } : {}
+}
+
+/** قائمة رحلات الأدمن بتفاصيل الطرفين والمركبة (للسلطات) + أعلام المخالفة. */
+export interface AdminRideRow {
+  id: string
+  status: RideStatus
+  service_id: string
+  fare: number | null
+  payment_method: PaymentMethod
+  prepaid: boolean
+  created_at: string
+  customer_name: string | null
+  customer_phone: string | null
+  driver_name: string | null
+  driver_phone: string | null
+  plate_number: string | null
+  vehicle_type: string | null
+  pickup_address: string | null
+  dropoff_address: string | null
+  driver_mismatch: boolean
+  vehicle_mismatch: boolean
+}
+
+export async function adminListRides(limit = 100): Promise<AdminRideRow[]> {
+  if (!isSupabaseConfigured) return []
+  const { data } = await supabase.rpc('admin_list_rides', { p_limit: limit })
+  return data ?? []
 }
 
 /** قائمة العملاء المسجّلين وتقييماتهم (للأدمن/الموظف). */
@@ -309,6 +341,8 @@ export interface RideDriverInfo {
   rating: number | null
   vehicle_type: string | null
   plate_number: string | null
+  photo_url: string | null
+  vehicle_photo_url: string | null
 }
 
 const demoRideDriver: RideDriverInfo = {
@@ -317,6 +351,8 @@ const demoRideDriver: RideDriverInfo = {
   rating: 4.9,
   vehicle_type: 'amjad',
   plate_number: 'خ ط م ١٢٣٤',
+  photo_url: null,
+  vehicle_photo_url: null,
 }
 
 export async function getRideDriver(rideId: string): Promise<RideDriverInfo | null> {
@@ -927,6 +963,26 @@ export async function getDriverDocUrl(path: string): Promise<string | null> {
   if (!isSupabaseConfigured) return null
   const { data } = await supabase.storage.from(DRIVER_DOCS_BUCKET).createSignedUrl(path, 3600)
   return data?.signedUrl ?? null
+}
+
+/**
+ * يرفع صورة عرض (صورة السائق أو المركبة) إلى bucket عام ويعيد رابطها المباشر —
+ * تُعرَض للعميل عند قبول الرحلة (بعكس وثائق KYC الخاصّة).
+ */
+export async function uploadDriverPhoto(
+  userId: string,
+  kind: 'selfie' | 'vehicle',
+  file: File,
+): Promise<{ url?: string; error?: string }> {
+  if (!isSupabaseConfigured) return { url: `demo/${kind}` }
+  const ext = (file.name.split('.').pop() || 'jpg').replace(/[^\w]+/g, '') || 'jpg'
+  const path = `${userId}/${kind}-${Date.now()}.${ext}`
+  const { error } = await supabase.storage
+    .from('driver-photos')
+    .upload(path, file, { upsert: true, contentType: file.type || 'image/jpeg' })
+  if (error) return { error: error.message }
+  const { data } = supabase.storage.from('driver-photos').getPublicUrl(path)
+  return { url: data.publicUrl }
 }
 
 export type DriverApplicationInput = Omit<

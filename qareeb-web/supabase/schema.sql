@@ -1563,3 +1563,167 @@ begin
     raise exception 'غير مصرّح';
   end if;
 end $$;
+
+-- ============================================================
+--  المساءلة والشفافية:
+--   • صورة السائق + صورة المركبة تظهران للعميل عند القبول.
+--   • التقييم يسأل: هل السائق/المركبة نفسها؟ عدم التطابق = مخالفة «حساب مُعار»
+--     تظهر للأدمن.
+--   • قائمة رحلات الأدمن بتفاصيل الطرفين والمركبة (للسلطات عند الطلب).
+-- ============================================================
+
+-- bucket عام لصور العرض (يقرأها العميل بالرابط). الوثائق السرّية تبقى في driver-docs.
+insert into storage.buckets (id, name, public) values ('driver-photos','driver-photos', true)
+  on conflict (id) do nothing;
+drop policy if exists "upload own driver photo" on storage.objects;
+create policy "upload own driver photo" on storage.objects
+  for insert to authenticated
+  with check (bucket_id = 'driver-photos' and (storage.foldername(name))[1] = auth.uid()::text);
+drop policy if exists "update own driver photo" on storage.objects;
+create policy "update own driver photo" on storage.objects
+  for update to authenticated
+  using (bucket_id = 'driver-photos' and (storage.foldername(name))[1] = auth.uid()::text);
+
+-- روابط صور العرض على الطلب والسائق
+alter table public.driver_applications add column if not exists driver_photo_url  text;
+alter table public.driver_applications add column if not exists vehicle_photo_url text;
+alter table public.drivers add column if not exists photo_url         text;
+alter table public.drivers add column if not exists vehicle_photo_url text;
+
+-- أعلام عدم تطابق السائق/المركبة على التقييم
+alter table public.reviews add column if not exists driver_mismatch  boolean not null default false;
+alter table public.reviews add column if not exists vehicle_mismatch boolean not null default false;
+
+-- اعتماد طلب سائق (نسخة محدّثة): تنسخ صور العرض إلى صفّ السائق.
+create or replace function public.approve_driver_application(p_app uuid)
+returns void language plpgsql security definer set search_path = public as $$
+declare
+  v_user uuid; v_vtype text; v_plate text; v_status driver_app_status; v_driver uuid;
+  v_photo text; v_vphoto text;
+begin
+  if not public.has_perm('requests') then raise exception 'غير مصرّح'; end if;
+
+  select user_id, vehicle_type, plate_number, status, driver_photo_url, vehicle_photo_url
+    into v_user, v_vtype, v_plate, v_status, v_photo, v_vphoto
+    from public.driver_applications where id = p_app for update;
+
+  if v_user is null then raise exception 'الطلب غير موجود'; end if;
+  if v_status <> 'pending' then raise exception 'الطلب روجع مسبقاً'; end if;
+
+  update public.driver_applications
+    set status = 'approved', reviewed_by = auth.uid(), updated_at = now()
+    where id = p_app;
+
+  select id into v_driver from public.drivers where user_id = v_user;
+  if v_driver is null then
+    insert into public.drivers (user_id, vehicle_type, plate_number, photo_url, vehicle_photo_url)
+      values (v_user, v_vtype, v_plate, v_photo, v_vphoto);
+  else
+    update public.drivers
+      set vehicle_type = v_vtype, plate_number = v_plate,
+          photo_url = coalesce(v_photo, photo_url),
+          vehicle_photo_url = coalesce(v_vphoto, vehicle_photo_url)
+      where id = v_driver;
+  end if;
+
+  update public.users set role = 'driver' where id = v_user;
+  perform public.log_action('اعتماد سائق',
+    (select full_name from public.users where id = v_user) || ' — ' || v_plate);
+end $$;
+
+-- بيانات السائق المُسنَد (نسخة محدّثة): تضيف صورتَي السائق والمركبة.
+drop function if exists public.get_ride_driver(uuid);
+create function public.get_ride_driver(p_ride uuid)
+returns table (
+  full_name text, phone text, rating numeric, vehicle_type text, plate_number text,
+  photo_url text, vehicle_photo_url text
+) language sql stable security definer set search_path = public as $$
+  select u.full_name, u.phone, d.rating, d.vehicle_type, d.plate_number, d.photo_url, d.vehicle_photo_url
+  from public.rides r
+  join public.users u on u.id = r.driver_id
+  left join public.drivers d on d.user_id = r.driver_id
+  where r.id = p_ride
+    and (auth.uid() = r.customer_id or auth.uid() = r.driver_id or public.is_admin());
+$$;
+
+-- تقديم تقييم (نسخة محدّثة): يقبل علامتَي عدم التطابق ويسجّلهما كمخالفة/شكوى.
+drop function if exists public.submit_review(uuid, int, text);
+create function public.submit_review(
+  p_ride uuid, p_stars int, p_complaint text default null,
+  p_driver_mismatch boolean default false, p_vehicle_mismatch boolean default false
+) returns void language plpgsql security definer set search_path = public as $$
+declare
+  v_customer uuid; v_driver uuid; v_status ride_status;
+  v_role text; v_ratee uuid; v_avg numeric; v_cnt int; v_complaint text;
+begin
+  if p_stars is null or p_stars < 1 or p_stars > 5 then
+    raise exception 'التقييم يجب أن يكون بين 1 و5';
+  end if;
+  select customer_id, driver_id, status into v_customer, v_driver, v_status
+    from public.rides where id = p_ride;
+  if not found then raise exception 'الرحلة غير موجودة'; end if;
+  if v_status <> 'completed' then raise exception 'لا يمكن التقييم قبل انتهاء الرحلة'; end if;
+
+  if auth.uid() = v_customer then
+    v_role := 'customer'; v_ratee := v_driver;
+  elsif auth.uid() = v_driver then
+    v_role := 'driver'; v_ratee := v_customer;
+  else
+    raise exception 'غير مصرّح — لست طرفاً في هذه الرحلة';
+  end if;
+  if v_ratee is null then raise exception 'لا يوجد طرف آخر لتقييمه'; end if;
+
+  -- بناء نص الشكوى: يضمّ ملاحظة العميل + أي مخالفة تطابق.
+  v_complaint := nullif(btrim(coalesce(p_complaint, '')), '');
+  if p_driver_mismatch then
+    v_complaint := concat_ws(' | ', v_complaint, 'مخالفة: السائق يختلف عن المسجّل (حساب مُعار)');
+  end if;
+  if p_vehicle_mismatch then
+    v_complaint := concat_ws(' | ', v_complaint, 'مخالفة: المركبة تختلف عن المسجّلة');
+  end if;
+
+  insert into public.reviews
+    (ride_id, rater_id, ratee_id, rater_role, stars, complaint, driver_mismatch, vehicle_mismatch, complaint_status)
+  values
+    (p_ride, auth.uid(), v_ratee, v_role, p_stars, v_complaint, p_driver_mismatch, p_vehicle_mismatch,
+     case when v_complaint is not null then 'open' else 'resolved' end)
+  on conflict (ride_id, rater_role) do update
+    set stars            = excluded.stars,
+        complaint        = excluded.complaint,
+        driver_mismatch  = excluded.driver_mismatch,
+        vehicle_mismatch = excluded.vehicle_mismatch,
+        complaint_status = case when excluded.complaint is not null then 'open' else 'resolved' end,
+        created_at       = now();
+
+  select round(avg(stars)::numeric, 1), count(*) into v_avg, v_cnt
+    from public.reviews where ratee_id = v_ratee;
+  update public.users   set rating = v_avg, ratings_count = v_cnt where id = v_ratee;
+  update public.drivers set rating = v_avg                        where user_id = v_ratee;
+end $$;
+grant execute on function public.submit_review(uuid, int, text, boolean, boolean) to authenticated;
+
+-- قائمة رحلات الأدمن بتفاصيل الطرفين والمركبة (للسلطات) + أعلام المخالفة.
+create or replace function public.admin_list_rides(p_limit int default 100)
+returns table (
+  id uuid, status ride_status, service_id text, fare numeric, payment_method payment_method,
+  prepaid boolean, created_at timestamptz,
+  customer_name text, customer_phone text,
+  driver_name text, driver_phone text, plate_number text, vehicle_type text,
+  pickup_address text, dropoff_address text,
+  driver_mismatch boolean, vehicle_mismatch boolean
+) language sql stable security definer set search_path = public as $$
+  select r.id, r.status, r.service_id, r.fare, r.payment_method, r.prepaid, r.created_at,
+         cu.full_name, cu.phone,
+         du.full_name, du.phone, d.plate_number, d.vehicle_type,
+         r.pickup_address, r.dropoff_address,
+         coalesce(rv.driver_mismatch, false), coalesce(rv.vehicle_mismatch, false)
+    from public.rides r
+    left join public.users cu on cu.id = r.customer_id
+    left join public.users du on du.id = r.driver_id
+    left join public.drivers d on d.user_id = r.driver_id
+    left join public.reviews rv on rv.ride_id = r.id and rv.rater_role = 'customer'
+   where public.is_staff_or_admin()
+   order by r.created_at desc
+   limit p_limit;
+$$;
+grant execute on function public.admin_list_rides(int) to authenticated;

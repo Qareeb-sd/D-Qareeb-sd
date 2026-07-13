@@ -387,7 +387,9 @@ export default function SelectLocation() {
       <section className="relative z-[600] -mt-6 animate-sheet-up">
         <div
           className="rounded-t-[28px] bg-white px-5 pt-3 shadow-soft"
-          style={{ paddingBottom: 'max(env(safe-area-inset-bottom), 18px)' }}
+          // حدّ أدنى كافٍ حتى لا يختفي زر التأكيد خلف شريط أزرار النظام
+          // (بعض أجهزة أندرويد لا تُبلّغ env(safe-area-inset-bottom) لشريط الأزرار).
+          style={{ paddingBottom: 'max(env(safe-area-inset-bottom), 2.75rem)' }}
         >
           <div className="mx-auto mb-3 h-1 w-10 rounded-full bg-sand/60" />
 

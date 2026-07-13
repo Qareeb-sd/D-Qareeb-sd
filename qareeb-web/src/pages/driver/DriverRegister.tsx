@@ -10,6 +10,7 @@ import {
   submitDriverApplication,
   getMyDriverApplication,
   uploadDriverDoc,
+  uploadDriverPhoto,
   type DriverDocKind,
 } from '@/lib/api'
 import type { DriverApplication } from '@/lib/types'
@@ -60,6 +61,8 @@ export default function DriverRegister() {
   const [isRented, setIsRented] = useState(false)
   const [residence, setResidence] = useState('')
   const [files, setFiles] = useState<Partial<Record<DriverDocKind, File>>>({})
+  const [photoSelfie, setPhotoSelfie] = useState<File | null>(null)
+  const [photoVehicle, setPhotoVehicle] = useState<File | null>(null)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
 
@@ -89,6 +92,9 @@ export default function DriverRegister() {
     if (!fullName.trim() || !phone.trim() || !plate.trim()) {
       return setError('الاسم ورقم الهاتف ولوحة السيارة مطلوبة.')
     }
+    if (!photoSelfie || !photoVehicle) {
+      return setError('أرفق صورتك الشخصية وصورة مركبتك (تظهران للعميل).')
+    }
     const required: DriverDocKind[] = docFields.map((d) => d.kind)
     if (isRented) required.push('rental_contract')
     const missing = required.filter((k) => !files[k])
@@ -105,6 +111,12 @@ export default function DriverRegister() {
         if (error) throw new Error(`تعذّر رفع «${kind}»: ${error}`)
         if (path) urls[urlKey[kind]] = path
       }
+
+      // صور العرض (عامّة): صورة السائق + صورة المركبة تظهران للعميل.
+      const selfie = await uploadDriverPhoto(userId, 'selfie', photoSelfie)
+      if (selfie.error) throw new Error(`تعذّر رفع صورتك: ${selfie.error}`)
+      const veh = await uploadDriverPhoto(userId, 'vehicle', photoVehicle)
+      if (veh.error) throw new Error(`تعذّر رفع صورة المركبة: ${veh.error}`)
 
       const { error } = await submitDriverApplication({
         user_id: userId,
@@ -123,6 +135,8 @@ export default function DriverRegister() {
         photo_back_url: urls.photo_back_url ?? null,
         photo_side_url: urls.photo_side_url ?? null,
         photo_interior_url: urls.photo_interior_url ?? null,
+        driver_photo_url: selfie.url ?? null,
+        vehicle_photo_url: veh.url ?? null,
       })
       if (error) throw new Error(error)
 
@@ -266,6 +280,23 @@ export default function DriverRegister() {
               <span className="font-medium">السيارة مستأجرة</span>
               <input type="checkbox" checked={isRented} onChange={(e) => setIsRented(e.target.checked)} className="h-5 w-5 accent-green" />
             </label>
+
+            {/* صور العرض للعميل (صورة السائق + المركبة) */}
+            <div className="space-y-3">
+              <p className="label">صورتك وصورة مركبتك — تظهران للعميل عند القبول</p>
+              <FileField
+                label="صورتك الشخصية"
+                photo
+                file={photoSelfie}
+                onChange={setPhotoSelfie}
+              />
+              <FileField
+                label={`صورة ${noun} واضحة`}
+                photo
+                file={photoVehicle}
+                onChange={setPhotoVehicle}
+              />
+            </div>
 
             {/* الوثائق والصور */}
             <div className="space-y-3">
