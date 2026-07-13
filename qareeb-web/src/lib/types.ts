@@ -43,6 +43,7 @@ export interface Driver {
   rating: number | null
   status?: DriverStatus // حالة قديمة (نظام تسجيل مبسّط) — التسجيل الرسمي عبر driver_applications
   vip?: boolean // سائق VIP — بلا عمولة (اشتراك)
+  vip_paid_until?: string | null // اشتراك VIP مدفوع حتى هذا التاريخ
   commission_free_until?: string | null // إعفاء عمولة مؤقّت حتى هذا التاريخ
   photo_url?: string | null
   vehicle_photo_url?: string | null
@@ -108,6 +109,7 @@ export interface Settings {
   bank_name: string | null
   bank_account_name: string | null
   bank_account_number: string | null
+  vip_subscription_fee: number // رسم اشتراك VIP الشهري (يُخصم من محفظة السائق)
   updated_at: string
 }
 

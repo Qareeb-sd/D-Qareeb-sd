@@ -1922,3 +1922,128 @@ insert into public.service_pricing_periods (service_id, period, base_fare, per_k
   ('tow','evening',       14193,14193, 56, 17000),
   ('tow','night',         14838,14838, 56, 17800)
 on conflict (service_id, period) do nothing;
+
+-- ============================================================
+--  اشتراك VIP الشهري: السائق VIP بلا عمولة مقابل رسم شهري يُخصم من محفظته.
+--  الإعفاء من العمولة يسري فقط ما دام الاشتراك مدفوعاً (vip_paid_until > now).
+-- ============================================================
+alter table public.settings add column if not exists vip_subscription_fee numeric(12,2) not null default 0;
+alter table public.drivers  add column if not exists vip_paid_until timestamptz; -- الاشتراك مدفوع حتى
+
+-- تعيين VIP (نسخة محدّثة): يمنح الشهر الأول عند التفعيل إن لم يكن مشتركاً.
+create or replace function public.admin_set_driver_vip(p_user uuid, p_vip boolean)
+returns void language plpgsql security definer set search_path = public as $$
+begin
+  if not public.has_perm('drivers') then raise exception 'غير مصرّح'; end if;
+  if p_vip then
+    update public.drivers
+      set vip = true,
+          vip_paid_until = case
+            when vip_paid_until is null or vip_paid_until < now() then now() + interval '1 month'
+            else vip_paid_until end
+      where user_id = p_user;
+  else
+    update public.drivers set vip = false where user_id = p_user;
+  end if;
+  perform public.log_action(case when p_vip then 'تعيين سائق VIP' else 'إلغاء VIP' end,
+    (select full_name from public.users where id = p_user));
+end $$;
+grant execute on function public.admin_set_driver_vip(uuid, boolean) to authenticated;
+
+-- تسوية الرحلة (نسخة محدّثة): إعفاء العمولة يتطلّب اشتراك VIP مدفوعاً أو إعفاءً مؤقّتاً.
+create or replace function public.settle_ride(p_ride uuid)
+returns void language plpgsql security definer set search_path = public as $$
+declare
+  v_driver_user uuid; v_customer uuid; v_fare numeric; v_status ride_status;
+  v_payment payment_method; v_service text; v_rate numeric; v_commission numeric;
+  v_net numeric; v_dwallet uuid; v_cwallet uuid; v_cbalance numeric; v_prepaid boolean;
+  v_vip boolean; v_free timestamptz; v_paid_until timestamptz;
+begin
+  select driver_id, customer_id, fare, status, payment_method, service_id, prepaid
+    into v_driver_user, v_customer, v_fare, v_status, v_payment, v_service, v_prepaid
+    from public.rides where id = p_ride for update;
+
+  if v_driver_user is null then raise exception 'الرحلة بلا سائق'; end if;
+  if auth.uid() <> v_driver_user and not public.is_admin() then raise exception 'غير مصرّح'; end if;
+  if v_status = 'completed' then raise exception 'الرحلة مسوّاة مسبقاً'; end if;
+  if v_status = 'cancelled' then raise exception 'الرحلة ملغاة'; end if;
+
+  v_rate := coalesce(
+    (select commission_rate from public.service_pricing where service_id = v_service),
+    (select commission_rate from public.settings where id = 1));
+
+  select vip, commission_free_until, vip_paid_until into v_vip, v_free, v_paid_until
+    from public.drivers where user_id = v_driver_user;
+  if (v_free is not null and v_free > now())
+     or (coalesce(v_vip, false) and v_paid_until is not null and v_paid_until > now()) then
+    v_rate := 0;
+  end if;
+
+  v_fare       := coalesce(v_fare, 0);
+  v_commission := round(v_fare * coalesce(v_rate, 0));
+  v_net        := v_fare - v_commission;
+
+  if v_payment = 'wallet' and not v_prepaid then
+    select id, balance into v_cwallet, v_cbalance from public.wallets where user_id = v_customer for update;
+    if v_cwallet is null then raise exception 'محفظة العميل غير موجودة'; end if;
+    if v_cbalance < v_fare then raise exception 'رصيد محفظة العميل غير كافٍ'; end if;
+    update public.wallets set balance = balance - v_fare, updated_at = now() where id = v_cwallet;
+    insert into public.transactions (wallet_id, type, amount, ride_id, note)
+      values (v_cwallet, 'ride_payment', -v_fare, p_ride, 'دفع رحلة');
+  end if;
+
+  update public.rides set status = 'completed' where id = p_ride;
+
+  select id into v_dwallet from public.wallets where user_id = v_driver_user for update;
+  if v_dwallet is not null then
+    if v_payment = 'wallet' then
+      update public.wallets set balance = balance + v_net, updated_at = now() where id = v_dwallet;
+      insert into public.transactions (wallet_id, type, amount, ride_id, note) values
+        (v_dwallet, 'ride_earning', v_fare, p_ride, 'أرباح رحلة (إجمالي)');
+      if v_commission > 0 then
+        insert into public.transactions (wallet_id, type, amount, ride_id, note)
+          values (v_dwallet, 'commission', -v_commission, p_ride, 'عمولة المنصة');
+      end if;
+    else
+      if v_commission > 0 then
+        update public.wallets set balance = balance - v_commission, updated_at = now() where id = v_dwallet;
+        insert into public.transactions (wallet_id, type, amount, ride_id, note)
+          values (v_dwallet, 'commission', -v_commission, p_ride, 'عمولة المنصة (نقدي/تحويل)');
+      end if;
+    end if;
+  end if;
+end $$;
+
+-- تحصيل اشتراكات VIP المستحقّة (أدمن): يخصم الرسم الشهري من محافظ السائقين
+-- المستحقّين ويمدّد الاشتراك شهراً. من لا يكفي رصيده يبقى مستحقّاً (تُطبَّق عليه
+-- العمولة حتى يُسدّد). يعيد عدد المدفوع والمتعذّر.
+create or replace function public.charge_due_vip_subscriptions()
+returns table (charged int, failed int)
+language plpgsql security definer set search_path = public as $$
+declare v_fee numeric; r record; v_wallet uuid; v_bal numeric; v_c int := 0; v_f int := 0;
+begin
+  if not public.is_admin() then raise exception 'غير مصرّح'; end if;
+  select vip_subscription_fee into v_fee from public.settings where id = 1;
+  if coalesce(v_fee, 0) <= 0 then return query select 0, 0; return; end if;
+  for r in
+    select user_id from public.drivers
+     where vip and (vip_paid_until is null or vip_paid_until < now())
+  loop
+    select id, balance into v_wallet, v_bal from public.wallets where user_id = r.user_id for update;
+    if v_wallet is null then v_f := v_f + 1; continue; end if;
+    if v_bal >= v_fee then
+      update public.wallets set balance = balance - v_fee, updated_at = now() where id = v_wallet;
+      insert into public.transactions (wallet_id, type, amount, note)
+        values (v_wallet, 'commission', -v_fee, 'اشتراك VIP شهري');
+      update public.drivers
+        set vip_paid_until = greatest(coalesce(vip_paid_until, now()), now()) + interval '1 month'
+        where user_id = r.user_id;
+      v_c := v_c + 1;
+    else
+      v_f := v_f + 1;
+    end if;
+  end loop;
+  perform public.log_action('تحصيل اشتراكات VIP', v_c::text || ' مدفوع، ' || v_f::text || ' متعذّر');
+  return query select v_c, v_f;
+end $$;
+grant execute on function public.charge_due_vip_subscriptions() to authenticated;

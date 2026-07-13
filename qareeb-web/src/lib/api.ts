@@ -38,6 +38,7 @@ const demoSettings: Settings = {
   bank_name: 'بنك الخرطوم',
   bank_account_name: 'شركة قريب للنقل',
   bank_account_number: '1234567890123',
+  vip_subscription_fee: 15000,
   updated_at: new Date().toISOString(),
 }
 
@@ -1238,6 +1239,19 @@ export async function setDriverCommissionFree(
     p_until: until,
   })
   return error ? { error: error.message } : {}
+}
+
+/** تحصيل اشتراكات VIP المستحقّة الآن (أدمن) — يعيد عدد المدفوع والمتعذّر. */
+export async function chargeVipSubscriptions(): Promise<{
+  charged: number
+  failed: number
+  error?: string
+}> {
+  if (!isSupabaseConfigured) return { charged: 0, failed: 0 }
+  const { data, error } = await supabase.rpc('charge_due_vip_subscriptions')
+  if (error) return { charged: 0, failed: 0, error: error.message }
+  const row = Array.isArray(data) ? data[0] : data
+  return { charged: row?.charged ?? 0, failed: row?.failed ?? 0 }
 }
 
 const demoDriverTransactions: Transaction[] = [

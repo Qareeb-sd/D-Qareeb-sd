@@ -88,6 +88,7 @@ import {
   deletePromo,
   setDriverVip,
   setDriverCommissionFree,
+  chargeVipSubscriptions,
   listServicePeriods,
   upsertServicePeriod,
   type ServicePeriod,
@@ -915,8 +916,21 @@ export default function AdminDashboard() {
       bank_name: settings.bank_name,
       bank_account_name: settings.bank_account_name,
       bank_account_number: settings.bank_account_number,
+      vip_subscription_fee: settings.vip_subscription_fee,
     })
     setSavedMsg(error ? `خطأ: ${error}` : 'تم حفظ الإعدادات ✓')
+  }
+
+  // تحصيل اشتراكات VIP المستحقّة الآن
+  const [vipCharging, setVipCharging] = useState(false)
+  const runVipCharge = async () => {
+    if (!window.confirm('تحصيل رسوم اشتراك VIP الشهري من محافظ السائقين المستحقّين الآن؟')) return
+    setVipCharging(true)
+    const { charged, failed, error } = await chargeVipSubscriptions()
+    setVipCharging(false)
+    if (error) return alert(error)
+    reloadDrivers()
+    alert(`تم التحصيل: ${charged} سائق. متعذّر (رصيد غير كافٍ): ${failed}.`)
   }
 
   const setPrice = (id: string, field: keyof ServicePricing, value: number) =>
@@ -1528,6 +1542,19 @@ export default function AdminDashboard() {
                       <p className="truncate text-xs text-ink-muted" dir="ltr">
                         {d.users?.phone ?? '—'}
                       </p>
+                      {d.vip && (
+                        <p
+                          className={`truncate text-[11px] font-medium ${
+                            d.vip_paid_until && new Date(d.vip_paid_until) > new Date()
+                              ? 'text-green'
+                              : 'text-danger'
+                          }`}
+                        >
+                          {d.vip_paid_until && new Date(d.vip_paid_until) > new Date()
+                            ? `اشتراك ساري حتى ${new Date(d.vip_paid_until).toLocaleDateString('ar-SD')}`
+                            : 'اشتراك مستحقّ — تُطبَّق العمولة حتى السداد'}
+                        </p>
+                      )}
                     </div>
                     <div className="text-left text-xs text-ink-soft">
                       <p>{getService(d.vehicle_type)?.name ?? d.vehicle_type}</p>
@@ -2561,6 +2588,32 @@ export default function AdminDashboard() {
                     value={settings.tier2_max_km}
                     onChange={(v) => setSettings({ ...settings, tier2_max_km: v })}
                   />
+                </div>
+
+                <div className="rounded-2xl border border-sand/40 bg-sand-soft/40 p-3">
+                  <p className="font-bold text-royal">اشتراك VIP الشهري</p>
+                  <p className="mb-2 text-xs text-ink-muted">
+                    السائق VIP بلا عمولة على الرحلات مقابل اشتراك شهري يُخصم من محفظته. اضبط
+                    الرسم ثم استخدم زر التحصيل لخصم المستحقّين.
+                  </p>
+                  <div className="flex items-end gap-2">
+                    <div className="flex-1">
+                      <NumField
+                        label="رسم الاشتراك الشهري (ج.س)"
+                        step={500}
+                        value={settings.vip_subscription_fee}
+                        onChange={(v) => setSettings({ ...settings, vip_subscription_fee: v })}
+                      />
+                    </div>
+                    <button
+                      type="button"
+                      onClick={runVipCharge}
+                      disabled={vipCharging}
+                      className="shrink-0 rounded-xl border border-sand bg-sand px-4 py-2.5 text-sm font-bold text-white hover:bg-sand-ink disabled:opacity-60"
+                    >
+                      {vipCharging ? 'جارٍ التحصيل…' : 'تحصيل المستحقّ الآن'}
+                    </button>
+                  </div>
                 </div>
 
                 <div className="space-y-2">
