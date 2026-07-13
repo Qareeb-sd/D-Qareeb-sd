@@ -135,8 +135,25 @@
   .animate-sheet-up {
     animation: sheet-up 0.35s ease-out both;
   }
+  /* رادار البحث عن الطلبات (شاشة الكابتن) — حلقات متمدّدة + مسح دوّار */
+  @keyframes radar-ping {
+    0%   { transform: scale(0.35); opacity: 0.5; }
+    80%  { opacity: 0; }
+    100% { transform: scale(1.55); opacity: 0; }
+  }
+  .animate-radar-ping {
+    animation: radar-ping 2.6s cubic-bezier(0, 0, 0.2, 1) infinite;
+  }
+  @keyframes radar-sweep {
+    to { transform: rotate(360deg); }
+  }
+  .animate-radar-sweep {
+    animation: radar-sweep 3.2s linear infinite;
+  }
   @media (prefers-reduced-motion: reduce) {
-    .animate-fade-up, .animate-sheet-up { animation: none; }
+    .animate-fade-up, .animate-sheet-up, .animate-radar-ping, .animate-radar-sweep {
+      animation: none;
+    }
   }
 }
 

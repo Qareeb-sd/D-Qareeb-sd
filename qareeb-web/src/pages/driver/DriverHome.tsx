@@ -1,12 +1,20 @@
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Bell, BellOff, LifeBuoy, Eye, Star, ChevronLeft } from 'lucide-react'
+import { useQuery } from '@tanstack/react-query'
+import { Bell, BellOff, LifeBuoy, Eye, Star, ChevronLeft, Car, Route, Coins, Power } from 'lucide-react'
 import Logo from '@/components/Logo'
 import DriverNav from '@/components/DriverNav'
 import VehicleImage from '@/components/VehicleImage'
 import { useAuth } from '@/store/AuthContext'
 import { useDriver } from '@/store/DriverContext'
-import { getDriver, setDriverOnline, listAvailableRides, acceptRide } from '@/lib/api'
+import {
+  getDriver,
+  setDriverOnline,
+  listAvailableRides,
+  acceptRide,
+  getWallet,
+  listDriverTransactions,
+} from '@/lib/api'
 import { subscribeToRides } from '@/lib/realtime'
 import {
   notificationsSupported,
@@ -30,6 +38,23 @@ export default function DriverHome() {
   const [rides, setRides] = useState<Ride[]>([])
   const [busyId, setBusyId] = useState<string | null>(null)
   const [notifOn, setNotifOn] = useState(notificationsGranted())
+
+  // ملخّص اليوم (رحلات + صافي أرباح) — من محفظة السائق ومعاملاتها.
+  const { data: wallet } = useQuery({
+    queryKey: ['driver-wallet', userId],
+    queryFn: () => getWallet(userId),
+  })
+  const { data: txs = [] } = useQuery({
+    queryKey: ['driver-transactions', wallet?.id],
+    queryFn: () => listDriverTransactions(wallet!.id),
+    enabled: Boolean(wallet?.id),
+  })
+  const todayKey = new Date().toDateString()
+  const todayTx = txs.filter((t) => new Date(t.created_at).toDateString() === todayKey)
+  const tripsToday = todayTx.filter((t) => t.type === 'ride_earning').length
+  const earnToday = todayTx
+    .filter((t) => t.type === 'ride_earning' || t.type === 'commission')
+    .reduce((s, t) => s + t.amount, 0)
 
   useEffect(() => {
     void getDriver(userId).then((d) => {
@@ -139,10 +164,17 @@ export default function DriverHome() {
       </header>
 
       <main className="flex-1 px-4 pt-4 pb-24">
+        {/* ملخّص اليوم — رحلات + صافي أرباح + تقييم */}
+        <div className="mb-4 grid grid-cols-3 gap-2.5">
+          <SummaryStat Icon={Route} label="رحلات اليوم" value={String(tripsToday)} />
+          <SummaryStat Icon={Coins} label="أرباح اليوم" value={money(Math.max(0, earnToday))} accent />
+          <SummaryStat Icon={Star} label="تقييمك" value={String(driver?.rating ?? '—')} />
+        </div>
+
         {/* السائق يطلب مشواراً لنفسه أو مساعدة عند التعطّل */}
         <button
           onClick={() => navigate('/home')}
-          className="mb-4 flex w-full items-center gap-3 rounded-2xl border border-royal/15 bg-royal-soft p-3.5 text-right shadow-card"
+          className="mb-3 flex w-full items-center gap-3 rounded-2xl border border-royal/15 bg-royal-soft p-3.5 text-right shadow-card"
         >
           <span className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-royal text-white">
             <LifeBuoy className="h-5 w-5" strokeWidth={2} />
@@ -164,17 +196,49 @@ export default function DriverHome() {
         </button>
 
         {!online ? (
-          <div className="flex flex-col items-center gap-3 py-24 text-center text-ink-soft">
-            <span className="grid h-16 w-16 place-items-center rounded-full bg-royal-soft text-royal">
-              <BellOff className="h-8 w-8" strokeWidth={1.6} />
+          /* غير متصل — دعوة فخمة للانطلاق */
+          <div className="animate-fade-up rounded-3xl bg-gradient-to-br from-royal to-[#0A2C22] p-7 text-center text-white shadow-lift">
+            <span className="mx-auto grid h-20 w-20 place-items-center rounded-full bg-white/10 ring-1 ring-sand/30">
+              <Power className="h-10 w-10 text-sand" strokeWidth={1.8} />
             </span>
-            <p className="font-bold text-royal">أنت غير متصل</p>
-            <p className="text-sm">فعّل الاتصال لاستقبال الطلبات القريبة.</p>
+            <p className="mt-4 text-xl font-extrabold">جاهز للانطلاق؟</p>
+            <p className="mt-1 text-sm text-white/70">
+              فعّل الاتصال لاستقبال الطلبات القريبة منك وابدأ الكسب.
+            </p>
+            <button
+              onClick={toggleOnline}
+              className="press-scale mt-5 w-full rounded-2xl bg-sand py-3 font-extrabold text-royal"
+            >
+              اتصل الآن
+            </button>
           </div>
         ) : rides.length === 0 ? (
-          <div className="flex flex-col items-center gap-3 py-24 text-center text-ink-soft">
-            <div className="h-10 w-10 animate-spin rounded-full border-4 border-royal-soft border-t-royal" />
-            <p className="font-bold text-royal">بانتظار الطلبات…</p>
+          /* متصل بانتظار الطلبات — رادار بحث فخم */
+          <div className="flex animate-fade-up flex-col items-center justify-center py-8 text-center">
+            <div className="relative grid h-56 w-56 place-items-center">
+              {/* حلقات ثابتة خافتة */}
+              <span className="absolute h-full w-full rounded-full border border-royal/10" />
+              <span className="absolute h-2/3 w-2/3 rounded-full border border-royal/10" />
+              <span className="absolute h-1/3 w-1/3 rounded-full border border-royal/10" />
+              {/* حلقات متمدّدة */}
+              <span className="absolute h-full w-full rounded-full bg-royal/10 animate-radar-ping" />
+              <span className="absolute h-full w-full rounded-full bg-royal/10 animate-radar-ping" style={{ animationDelay: '0.85s' }} />
+              <span className="absolute h-full w-full rounded-full bg-royal/10 animate-radar-ping" style={{ animationDelay: '1.7s' }} />
+              {/* مسح دوّار */}
+              <span
+                className="animate-radar-sweep absolute h-full w-full rounded-full"
+                style={{
+                  background:
+                    'conic-gradient(from 0deg, transparent 0deg, rgba(196,162,101,0.35) 55deg, transparent 90deg)',
+                }}
+              />
+              {/* المركبة في المركز */}
+              <span className="relative grid h-16 w-16 place-items-center rounded-full bg-royal text-white shadow-float ring-4 ring-white">
+                <Car className="h-7 w-7" strokeWidth={2} />
+              </span>
+            </div>
+            <p className="mt-6 text-lg font-extrabold text-royal">نبحث لك عن أقرب راكب…</p>
+            <p className="mt-1 text-sm text-ink-soft">ابقَ متصلاً — سننبّهك فور وصول طلب.</p>
           </div>
         ) : (
           <div className="space-y-3">
@@ -208,6 +272,35 @@ export default function DriverHome() {
       </main>
 
       <DriverNav />
+    </div>
+  )
+}
+
+/** بطاقة مؤشّر يومي مصغّرة (رحلات/أرباح/تقييم). */
+function SummaryStat({
+  Icon,
+  label,
+  value,
+  accent,
+}: {
+  Icon: typeof Route
+  label: string
+  value: string
+  accent?: boolean
+}) {
+  return (
+    <div className="rounded-2xl bg-white p-3 text-center shadow-card">
+      <span
+        className={`mx-auto grid h-8 w-8 place-items-center rounded-full ${
+          accent ? 'bg-sand/20 text-sand-ink' : 'bg-royal-soft text-royal'
+        }`}
+      >
+        <Icon className="h-[18px] w-[18px]" strokeWidth={2} />
+      </span>
+      <p className={`mt-1.5 text-base font-extrabold ${accent ? 'text-sand-ink' : 'text-royal'}`}>
+        {value}
+      </p>
+      <p className="text-[10px] text-ink-muted">{label}</p>
     </div>
   )
 }
