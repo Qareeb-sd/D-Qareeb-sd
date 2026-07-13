@@ -1626,7 +1626,7 @@ end $$;
 
 -- بيانات السائق المُسنَد (نسخة محدّثة): تضيف صورتَي السائق والمركبة.
 drop function if exists public.get_ride_driver(uuid);
-create function public.get_ride_driver(p_ride uuid)
+create or replace function public.get_ride_driver(p_ride uuid)
 returns table (
   full_name text, phone text, rating numeric, vehicle_type text, plate_number text,
   photo_url text, vehicle_photo_url text
@@ -1641,7 +1641,7 @@ $$;
 
 -- تقديم تقييم (نسخة محدّثة): يقبل علامتَي عدم التطابق ويسجّلهما كمخالفة/شكوى.
 drop function if exists public.submit_review(uuid, int, text);
-create function public.submit_review(
+create or replace function public.submit_review(
   p_ride uuid, p_stars int, p_complaint text default null,
   p_driver_mismatch boolean default false, p_vehicle_mismatch boolean default false
 ) returns void language plpgsql security definer set search_path = public as $$
