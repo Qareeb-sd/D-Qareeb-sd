@@ -106,15 +106,34 @@ export default function DriverTrip() {
         void updateDriverLocation(rid, here.lat, here.lng)
       }
     })
+    let lastPos: google.maps.LatLngLiteral | null = null
     void watchPos((here) => {
+      lastPos = here
       setPos(here)
       void updateDriverLocation(rid, here.lat, here.lng)
     }).then((s) => {
       if (cancelled) s()
       else stop = s
     })
+    // بثّ دوري مضمون كل 6 ثوانٍ — يضمن أن يرى الراكب موقع السائق حتى لو كان
+    // واقفاً/بطيئاً (watchPosition لا يُطلق تحديثاً بلا حركة GPS كبيرة).
+    const beat = setInterval(() => {
+      if (cancelled) return
+      if (lastPos) {
+        void updateDriverLocation(rid, lastPos.lat, lastPos.lng)
+      } else {
+        void getCurrentPos().then((here) => {
+          if (here && !cancelled) {
+            lastPos = here
+            setPos(here)
+            void updateDriverLocation(rid, here.lat, here.lng)
+          }
+        })
+      }
+    }, 6000)
     return () => {
       cancelled = true
+      clearInterval(beat)
       stop()
     }
   }, [activeRide?.id])
@@ -280,13 +299,13 @@ export default function DriverTrip() {
             )}
           </div>
 
-          {/* ملاحة صوتية خارجية (اختياري) — الخريطة الداخلية تكفي عادةً */}
+          {/* ملاحة خارجية (Google Maps) نحو الهدف الحالي — الراكب ثم الوجهة */}
           <button
             onClick={openNav}
-            className="press-scale absolute bottom-4 left-4 flex items-center gap-1.5 rounded-full bg-white/95 px-3 py-2 text-[12px] font-bold text-royal shadow-float ring-1 ring-hairline"
+            className="press-scale absolute bottom-4 left-4 flex items-center gap-1.5 rounded-full bg-royal px-3.5 py-2 text-[12px] font-bold text-white shadow-float"
           >
             <Navigation className="h-3.5 w-3.5" strokeWidth={2.2} />
-            ملاحة صوتية
+            {heading === 'pickup' ? 'ملاحة إلى الراكب' : 'ملاحة إلى الوجهة'}
           </button>
         </div>
 

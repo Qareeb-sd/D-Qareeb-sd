@@ -121,7 +121,7 @@ export default function Trip() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [rideId, navigate])
 
-  // استطلاع احتياطي كل 5 ثوانٍ — يحدّث موقع السائق والحالة حتى لو تعطّل Realtime.
+  // استطلاع احتياطي كل 3 ثوانٍ — يحدّث موقع السائق والحالة حتى لو تعطّل Realtime.
   useEffect(() => {
     if (!isSupabaseConfigured || !rideId) return
     const iv = setInterval(async () => {
@@ -135,7 +135,7 @@ export default function Trip() {
         reset()
         navigate('/home')
       }
-    }, 5000)
+    }, 3000)
     return () => clearInterval(iv)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [rideId, navigate])
