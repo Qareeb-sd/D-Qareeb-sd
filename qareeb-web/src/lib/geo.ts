@@ -33,31 +33,28 @@ export async function getCurrentPos(): Promise<GeoPos | null> {
         perm = await Geolocation.requestPermissions()
       }
       if (perm.location !== 'granted' && perm.coarseLocation !== 'granted') return null
-      // ١) محاولة سريعة (قد تُرجع موقعاً مُخزَّناً فوراً).
-      try {
-        const p = await Geolocation.getCurrentPosition({
-          enableHighAccuracy: false,
-          timeout: 8000,
-          maximumAge: 60000,
-        })
-        return { lat: p.coords.latitude, lng: p.coords.longitude }
-      } catch {
-        /* نكمل إلى المراقبة الأوثق */
-      }
-      // ٢) watchPosition — أوثق على أندرويد لجلب أوّل إصلاح GPS (بمهلة قصوى 20 ثانية).
+      // الدقّة أولاً: نراقب بدقّة عالية ونحتفظ بأفضل قراءة (أدقّها)، ونتوقّف مبكراً
+      // متى بلغت دقّة جيّدة (≤ 40م) وإلا نُعيد الأفضل بعد مهلة قصوى. هذا يتجنّب
+      // موقع الشبكة/المُخزَّن الخاطئ الذي قد يبعد كيلومترات.
       return await new Promise<GeoPos | null>((resolve) => {
+        let best: { lat: number; lng: number; acc: number } | null = null
         let done = false
         let watchId = ''
-        const finish = (v: GeoPos | null) => {
+        const finish = () => {
           if (done) return
           done = true
           clearTimeout(timer)
           if (watchId) void Geolocation.clearWatch({ id: watchId })
-          resolve(v)
+          resolve(best ? { lat: best.lat, lng: best.lng } : null)
         }
-        const timer = setTimeout(() => finish(null), 20000)
-        void Geolocation.watchPosition({ enableHighAccuracy: true, timeout: 20000 }, (p) => {
-          if (p) finish({ lat: p.coords.latitude, lng: p.coords.longitude })
+        const timer = setTimeout(finish, 15000)
+        void Geolocation.watchPosition({ enableHighAccuracy: true, timeout: 15000 }, (p) => {
+          if (!p) return
+          const acc = p.coords.accuracy ?? 9999
+          if (!best || acc < best.acc) {
+            best = { lat: p.coords.latitude, lng: p.coords.longitude, acc }
+          }
+          if (acc <= 40) finish() // دقّة جيّدة كفاية — توقّف مبكراً
         }).then((id) => {
           watchId = id
           if (done) void Geolocation.clearWatch({ id })
@@ -69,16 +66,11 @@ export async function getCurrentPos(): Promise<GeoPos | null> {
   }
   return new Promise((resolve) => {
     if (!('geolocation' in navigator)) return resolve(null)
-    // محاولة سريعة أولاً (منخفضة الدقّة/مُخزَّنة)، ثم دقّة عالية عند الفشل.
+    // دقّة عالية لموقع صحيح (بلا موقع مُخزَّن قديم).
     navigator.geolocation.getCurrentPosition(
       (p) => resolve({ lat: p.coords.latitude, lng: p.coords.longitude }),
-      () =>
-        navigator.geolocation.getCurrentPosition(
-          (p) => resolve({ lat: p.coords.latitude, lng: p.coords.longitude }),
-          () => resolve(null),
-          { enableHighAccuracy: true, timeout: 12000, maximumAge: 30000 },
-        ),
-      { enableHighAccuracy: false, timeout: 6000, maximumAge: 60000 },
+      () => resolve(null),
+      { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 },
     )
   })
 }
