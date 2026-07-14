@@ -28,10 +28,28 @@ export async function getCurrentPos(): Promise<GeoPos | null> {
   if (isNative) {
     try {
       const { Geolocation } = await import('@capacitor/geolocation')
-      const perm = await Geolocation.requestPermissions()
-      if (perm.location === 'denied' && perm.coarseLocation === 'denied') return null
-      const p = await Geolocation.getCurrentPosition({ enableHighAccuracy: true, timeout: 10000 })
-      return { lat: p.coords.latitude, lng: p.coords.longitude }
+      let perm = await Geolocation.checkPermissions()
+      if (perm.location !== 'granted' && perm.coarseLocation !== 'granted') {
+        perm = await Geolocation.requestPermissions()
+      }
+      if (perm.location !== 'granted' && perm.coarseLocation !== 'granted') return null
+      // دقّة عالية أولاً؛ فإن تأخّرت/فشلت (داخل مبنى) نجرّب دقّة منخفضة أسرع،
+      // ونقبل موقعاً مُخزَّناً حديثاً (maximumAge) لتفادي «تعذّر تحديد الموقع».
+      try {
+        const p = await Geolocation.getCurrentPosition({
+          enableHighAccuracy: true,
+          timeout: 8000,
+          maximumAge: 30000,
+        })
+        return { lat: p.coords.latitude, lng: p.coords.longitude }
+      } catch {
+        const p = await Geolocation.getCurrentPosition({
+          enableHighAccuracy: false,
+          timeout: 15000,
+          maximumAge: 120000,
+        })
+        return { lat: p.coords.latitude, lng: p.coords.longitude }
+      }
     } catch {
       return null
     }
@@ -40,8 +58,14 @@ export async function getCurrentPos(): Promise<GeoPos | null> {
     if (!('geolocation' in navigator)) return resolve(null)
     navigator.geolocation.getCurrentPosition(
       (p) => resolve({ lat: p.coords.latitude, lng: p.coords.longitude }),
-      () => resolve(null),
-      { enableHighAccuracy: true, timeout: 8000 },
+      () =>
+        // بديل منخفض الدقّة عند فشل الدقّة العالية.
+        navigator.geolocation.getCurrentPosition(
+          (p) => resolve({ lat: p.coords.latitude, lng: p.coords.longitude }),
+          () => resolve(null),
+          { enableHighAccuracy: false, timeout: 15000, maximumAge: 120000 },
+        ),
+      { enableHighAccuracy: true, timeout: 8000, maximumAge: 30000 },
     )
   })
 }

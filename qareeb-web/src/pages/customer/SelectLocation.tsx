@@ -234,6 +234,24 @@ export default function SelectLocation() {
     }
   }
 
+  // حفظ سريع للوجهة الحالية في خانة (منزل/عمل/مفضّل) — لجعل الحفظ سهلاً.
+  const [savedFlash, setSavedFlash] = useState('')
+  const saveCurrentAs = (key: string, label: string) => {
+    if (!dropoffSet && !dropoffAddr.trim()) return
+    const next = {
+      ...places,
+      [key]: { lat: dropoffPos.lat, lng: dropoffPos.lng, address: dropoffAddr.trim() || label },
+    }
+    setPlaces(next)
+    try {
+      localStorage.setItem(placesKey, JSON.stringify(next))
+    } catch {
+      /* الحفظ المحلي غير متاح */
+    }
+    setSavedFlash(key)
+    setTimeout(() => setSavedFlash(''), 1800)
+  }
+
   useEffect(() => {
     void Promise.all([getServicePricing(sid), getSettings(), listServicePeriods()]).then(
       ([p, s, periods]) => {
@@ -296,8 +314,15 @@ export default function SelectLocation() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activePos.lat, activePos.lng, active, pickupMode, activeSet])
 
-  const otherMarker =
+  // علامة النقطة الأخرى — تُخفى إن تطابقت تقريباً مع مركز الدبوس الحالي (تفادي
+  // دبوس أحمر تائه في المركز عندما تكون النقطتان على الموضع الافتراضي نفسه).
+  const otherRaw =
     active === 'pickup' ? (dropoffSet ? dropoffPos : null) : pickupSet ? pickupPos : null
+  const otherMarker =
+    otherRaw &&
+    (Math.abs(otherRaw.lat - activePos.lat) > 3e-4 || Math.abs(otherRaw.lng - activePos.lng) > 3e-4)
+      ? otherRaw
+      : null
 
   const confirm = async () => {
     setBusy(true)
@@ -552,6 +577,31 @@ export default function SelectLocation() {
                       </span>
                     </span>
                     <ChevronRight className="h-4 w-4 rotate-180 text-ink-muted/50" />
+                  </button>
+                )
+              })}
+            </div>
+          )}
+
+          {/* حفظ سريع للوجهة — بعد اختيارها (يجعل تسجيل الأماكن المفضّلة سهلاً) */}
+          {destChosen && (
+            <div className="mt-2 flex items-center gap-2 overflow-x-auto pb-1">
+              <span className="shrink-0 text-[11px] font-bold text-ink-muted">احفظ الوجهة:</span>
+              {SAVED.map((p) => {
+                const Icon = p.icon
+                const isSaved = savedFlash === p.key
+                return (
+                  <button
+                    key={p.key}
+                    onClick={() => saveCurrentAs(p.key, p.label)}
+                    className={`press-scale flex shrink-0 items-center gap-1 rounded-full border px-3 py-1.5 text-[12px] font-bold transition ${
+                      isSaved
+                        ? 'border-green bg-green-soft text-green'
+                        : 'border-sand/40 bg-ivory/70 text-sand-ink'
+                    }`}
+                  >
+                    <Icon className="h-3.5 w-3.5" strokeWidth={2} />
+                    {isSaved ? 'حُفظ ✓' : p.label}
                   </button>
                 )
               })}
