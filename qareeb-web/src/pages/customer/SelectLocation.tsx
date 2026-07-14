@@ -37,8 +37,9 @@ import {
   type PromoResult,
 } from '@/lib/api'
 import { estimateFare, estimateRoute, computeFare, currentPeriod, type PeriodRate } from '@/lib/pricing'
-import { fetchRoute } from '@/lib/maps'
+import { fetchRoute, GOOGLE_MAPS_API_KEY } from '@/lib/maps'
 import { getCurrentPos } from '@/lib/geo'
+import { reverseGeocode } from '@/lib/geocode'
 import { km, mins, money } from '@/lib/format'
 import { KHARTOUM } from '@/theme'
 import type { Settings, ServicePricing, PaymentMethod } from '@/lib/types'
@@ -145,6 +146,8 @@ export default function SelectLocation() {
     setPickupSet(true)
     setActive('dropoff')
     setGpsBusy(false)
+    // عنوان حقيقي لموقع العميل الحالي (يستبدل «موقعي الحالي»).
+    if (GOOGLE_MAPS_API_KEY) void reverseGeocode(pos).then((a) => a && setPickupAddr(a))
   }
 
   // أول دخول: حاول تحديد الموقع تلقائياً.
@@ -274,6 +277,24 @@ export default function SelectLocation() {
 
   const activePos = active === 'pickup' ? pickupPos : dropoffPos
   const setActivePos = active === 'pickup' ? setPickupPos : setDropoffPos
+
+  // عنوان حقيقي للنقطة النشطة عبر Google (بعد استقرار الدبوس) — يستبدل
+  // «موقع محدّد من الخريطة». يعمل فقط بعد أن يُختار الحقل فعلاً (تجنّباً لتعيين
+  // وجهة قبل اختيارها)، ولا يعمل أثناء الكتابة اليدوية للانطلاق. يحدّث النصّ فقط.
+  const activeSet = active === 'pickup' ? pickupSet : dropoffSet
+  useEffect(() => {
+    if (!GOOGLE_MAPS_API_KEY || !activeSet) return
+    if (active === 'pickup' && pickupMode === 'type') return
+    const t = setTimeout(() => {
+      void reverseGeocode(activePos).then((addr) => {
+        if (!addr) return
+        if (active === 'pickup') setPickupAddr(addr)
+        else setDropoffAddr(addr)
+      })
+    }, 700)
+    return () => clearTimeout(t)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activePos.lat, activePos.lng, active, pickupMode, activeSet])
 
   const otherMarker =
     active === 'pickup' ? (dropoffSet ? dropoffPos : null) : pickupSet ? pickupPos : null
