@@ -96,6 +96,8 @@ export default function SelectLocation() {
   const [dropoffSet, setDropoffSet] = useState(false)
   const [gpsBusy, setGpsBusy] = useState(false)
   const [gpsErr, setGpsErr] = useState('')
+  // وضع «تكبير الخريطة» أثناء وضع الدبوس — تكبر الخريطة وتصغر البطاقة السفلية.
+  const [picking, setPicking] = useState(false)
 
   const destOptional = Boolean(service?.destinationOptional)
   const destChosen = dropoffSet || dropoffAddr.trim() !== ''
@@ -170,6 +172,7 @@ export default function SelectLocation() {
     // الخريطة
     setPickupMode('map')
     setActive('pickup')
+    setPicking(true)
   }
 
   // الأماكن المحفوظة بصيغة شاشة البحث.
@@ -396,6 +399,7 @@ export default function SelectLocation() {
           center={activePos}
           onCenterChanged={setActivePos}
           onUserDrag={() => {
+            setPicking(true)
             if (active === 'pickup') {
               setPickupSet(true)
               setPickupMode('map')
@@ -457,6 +461,7 @@ export default function SelectLocation() {
               onClick={() => {
                 setActive('pickup')
                 setPickupMode('map')
+                setPicking(true)
               }}
               className={`rounded-full px-3.5 py-1.5 text-[12px] font-bold transition ${
                 active === 'pickup' ? 'bg-royal text-white' : 'text-ink-soft'
@@ -465,7 +470,10 @@ export default function SelectLocation() {
               الانطلاق
             </button>
             <button
-              onClick={() => setActive('dropoff')}
+              onClick={() => {
+                setActive('dropoff')
+                setPicking(true)
+              }}
               className={`rounded-full px-3.5 py-1.5 text-[12px] font-bold transition ${
                 active === 'dropoff' ? 'bg-sand text-white' : 'text-ink-soft'
               }`}
@@ -482,7 +490,36 @@ export default function SelectLocation() {
         </div>
       </div>
 
+      {/* شريط تأكيد مُصغّر أثناء وضع الدبوس — يترك الخريطة كبيرة لسهولة التحديد */}
+      {picking && (
+        <section className="relative z-[600] animate-sheet-up">
+          <div
+            className="rounded-t-[24px] bg-white px-5 pt-3 shadow-soft"
+            style={{ paddingBottom: 'max(env(safe-area-inset-bottom), 2.75rem)' }}
+          >
+            <div className="mx-auto mb-3 h-1 w-10 rounded-full bg-sand/60" />
+            <p className="text-[11px] font-bold text-sand-ink">
+              {active === 'pickup' ? 'نقطة الانطلاق' : 'الوجهة'}
+            </p>
+            <p className="mb-3 truncate text-[15px] font-semibold text-royal">
+              {(active === 'pickup' ? pickupAddr : dropoffAddr) || 'حرّك الخريطة لتحديد الموقع'}
+            </p>
+            <button
+              onClick={() => {
+                if (active === 'pickup') setPickupSet(true)
+                else setDropoffSet(true)
+                setPicking(false)
+              }}
+              className="press-scale w-full rounded-2xl bg-royal py-3.5 text-[15px] font-bold text-white"
+            >
+              تأكيد الموقع
+            </button>
+          </div>
+        </section>
+      )}
+
       {/* البطاقة السفلية */}
+      {!picking && (
       <section className="relative z-[600] -mt-6 animate-sheet-up">
         <div
           className="rounded-t-[28px] bg-white px-5 pt-3 shadow-soft"
@@ -714,6 +751,7 @@ export default function SelectLocation() {
           </button>
         </div>
       </section>
+      )}
 
       {/* شاشة البحث الكاملة — تُخفي الخريطة وتستغلّ المساحة (مثل أوبر) */}
       {searching && (
@@ -739,6 +777,7 @@ export default function SelectLocation() {
             } else {
               setActive('dropoff')
             }
+            setPicking(true)
             setSearching(null)
           }}
           onClose={() => setSearching(null)}
