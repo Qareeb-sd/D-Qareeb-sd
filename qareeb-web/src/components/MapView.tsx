@@ -4,6 +4,7 @@ import { KHARTOUM } from '@/theme'
 import { GOOGLE_MAPS_API_KEY } from '@/lib/maps'
 import { acquireMapTransparency, releaseMapTransparency } from '@/lib/nativeMapHost'
 import LeafletMap from './LeafletMap'
+import GoogleJsMap from './GoogleJsMap'
 
 /**
  * خريطة التطبيق — مسارَان:
@@ -35,11 +36,13 @@ interface MapViewProps {
 }
 
 const isNative = Capacitor.isNativePlatform()
-// افتراضياً: خريطة CARTO (Leaflet) — تعرض الشوارع فعلاً على الجهاز داخل السودان.
-// خرائط قوقل الأصلية تظهر فارغة/رمادية على بعض الأجهزة (مشكلة SurfaceView) رغم
-// نجاح المصادقة، لذا تُفعَّل فقط عند الطلب الصريح: VITE_USE_NATIVE_MAPS=1.
+// خرائط قوقل عبر JavaScript API (GoogleJsMap) هي الافتراضية متى توفّر المفتاح —
+// تُرسم داخل الـWebView فتعرض بلاطات قوقل الحقيقية بلا مشكلة الطبقة الأصلية.
+// بلا مفتاح → Leaflet/CARTO. الطبقة الأصلية تبقى خياراً صريحاً (VITE_USE_NATIVE_MAPS=1).
+const hasGoogleKey = Boolean(GOOGLE_MAPS_API_KEY)
 const nativeEnabled = import.meta.env.VITE_USE_NATIVE_MAPS === '1'
-const useNative = isNative && nativeEnabled && Boolean(GOOGLE_MAPS_API_KEY)
+const useNative = isNative && nativeEnabled && hasGoogleKey
+const useGoogleJs = !useNative && hasGoogleKey
 
 /** شارة تشخيص مؤقتة — تُظهر سبب عدم ظهور الخريطة الأصلية من لقطة واحدة. */
 function DiagBadge({ text, tone }: { text: string; tone: 'ok' | 'warn' | 'err' }) {
@@ -56,10 +59,10 @@ function DiagBadge({ text, tone }: { text: string; tone: 'ok' | 'warn' | 'err' }
 }
 
 export default function MapView(props: MapViewProps) {
-  // خريطة CARTO (Leaflet) هي الافتراضية على الويب والجهاز — تعمل دائماً.
-  // الأصلية تُستخدم فقط عند تفعيلها ونجاح مفتاح قوقل.
-  if (!useNative) return <LeafletMap {...props} />
-  return <NativeGoogleMap {...props} />
+  // الأولوية: قوقل JS (متى وُجد المفتاح) ← ثم Leaflet ← والأصلية عند الطلب الصريح.
+  if (useNative) return <NativeGoogleMap {...props} />
+  if (useGoogleJs) return <GoogleJsMap {...props} />
+  return <LeafletMap {...props} />
 }
 
 /* ------------------------------ الخريطة الأصلية ------------------------------ */
