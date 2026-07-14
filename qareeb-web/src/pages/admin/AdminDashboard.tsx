@@ -207,6 +207,7 @@ export default function AdminDashboard() {
   const [finance, setFinance] = useState<FinancialSummary | null>(null)
   const [topups, setTopups] = useState<Topup[]>([])
   const [vipReqs, setVipReqs] = useState<VipRequest[]>([])
+  const [loadErr, setLoadErr] = useState('')
   const [settings, setSettings] = useState<Settings | null>(null)
   const [pricing, setPricing] = useState<ServicePricing[]>([])
   const [driverApps, setDriverApps] = useState<DriverApplication[]>([])
@@ -288,8 +289,10 @@ export default function AdminDashboard() {
   })
 
   useEffect(() => {
-    void (async () => {
-      const [s, fin, t, cfg, pr, apps, rd, drd] = await Promise.all([
+    let alive = true
+    const load = async () => {
+      // allSettled: فشل نداء واحد لا يُفرّغ اللوحة بأكملها.
+      const r = await Promise.allSettled([
         getAdminStats(),
         getFinancialSummary(),
         listPendingTopups(),
@@ -299,15 +302,35 @@ export default function AdminDashboard() {
         listAllRides(500),
         adminListRides(500),
       ])
-      setStats(s)
-      setFinance(fin)
-      setTopups(t)
-      setSettings(cfg)
-      setPricing(pr)
-      setDriverApps(apps)
-      setRides(rd)
-      setDetailRides(drd)
-    })()
+      if (!alive) return
+      if (r[0].status === 'fulfilled') setStats(r[0].value)
+      if (r[1].status === 'fulfilled') setFinance(r[1].value)
+      if (r[2].status === 'fulfilled') setTopups(r[2].value)
+      if (r[3].status === 'fulfilled') setSettings(r[3].value)
+      if (r[4].status === 'fulfilled') setPricing(r[4].value)
+      if (r[5].status === 'fulfilled') setDriverApps(r[5].value)
+      if (r[6].status === 'fulfilled') setRides(r[6].value)
+      if (r[7].status === 'fulfilled') setDetailRides(r[7].value)
+      setLoadErr(
+        r.some((x) => x.status === 'rejected')
+          ? 'تعذّر تحميل بعض البيانات — تحقّق من الاتصال ثم حدّث الصفحة.'
+          : '',
+      )
+    }
+    void load()
+    // تحديث دوري خفيف للإحصاءات والملخّص المالي (يتجنّب تجمّد الأرقام).
+    const iv = setInterval(() => {
+      void getAdminStats()
+        .then((x) => alive && setStats(x))
+        .catch(() => {})
+      void getFinancialSummary()
+        .then((x) => alive && setFinance(x))
+        .catch(() => {})
+    }, 30000)
+    return () => {
+      alive = false
+      clearInterval(iv)
+    }
   }, [])
 
   // تحميل كسول لقوائم السائقين/العملاء/الشكاوى عند فتح تبويبها أول مرة.
@@ -1274,6 +1297,11 @@ export default function AdminDashboard() {
         </header>
 
       <main className="flex-1 space-y-4 p-4">
+        {loadErr && (
+          <div className="card border border-danger/40 bg-danger/5 p-3 text-center text-sm font-medium text-danger">
+            {loadErr}
+          </div>
+        )}
         {/* تنبيهات الطوارئ — دائمة الظهور فوق كل التبويبات */}
         {sos.length > 0 && (
           <div className="card border border-danger/40 bg-danger/5 p-4">
@@ -1390,21 +1418,24 @@ export default function AdminDashboard() {
               </p>
             </div>
 
-            <div className="card p-4">
-              <p className="mb-3 font-bold">الملخّص المالي</p>
-              {!finance ? (
-                <p className="py-4 text-center text-sm text-ink-muted">…</p>
-              ) : (
-                <div className="grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-6">
-                  <Metric label="عمولة المنصة" value={money(finance.platform_commission)} accent />
-                  <Metric label="أرباح السائقين" value={money(finance.driver_earnings)} />
-                  <Metric label="إجمالي التعبئات" value={money(finance.total_topups)} />
-                  <Metric label="مدفوعات المحفظة" value={money(finance.ride_payments)} />
-                  <Metric label="رحلات مكتملة" value={String(finance.completed_rides)} />
-                  <Metric label="أرصدة المحافظ" value={money(finance.wallet_liability)} />
-                </div>
-              )}
-            </div>
+            {/* الملخّص المالي — للمالك فقط (مطابق لتبويب المالية) */}
+            {access.is_admin && (
+              <div className="card p-4">
+                <p className="mb-3 font-bold">الملخّص المالي</p>
+                {!finance ? (
+                  <p className="py-4 text-center text-sm text-ink-muted">…</p>
+                ) : (
+                  <div className="grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-6">
+                    <Metric label="عمولة المنصة" value={money(finance.platform_commission)} accent />
+                    <Metric label="أرباح السائقين" value={money(finance.driver_earnings)} />
+                    <Metric label="إجمالي التعبئات" value={money(finance.total_topups)} />
+                    <Metric label="مدفوعات المحفظة" value={money(finance.ride_payments)} />
+                    <Metric label="رحلات مكتملة" value={String(finance.completed_rides)} />
+                    <Metric label="أرصدة المحافظ" value={money(finance.wallet_liability)} />
+                  </div>
+                )}
+              </div>
+            )}
           </>
         )}
 
@@ -2223,6 +2254,7 @@ export default function AdminDashboard() {
                         <div className="mb-1 flex items-center gap-2 text-sm">
                           <span className="w-20 font-bold">{expenseCatLabels[b.category] ?? b.category}</span>
                           <input
+                            key={`${b.category}-${b.percent}`}
                             type="number"
                             min={0}
                             max={100}
