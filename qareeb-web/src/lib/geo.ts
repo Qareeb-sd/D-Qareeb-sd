@@ -33,23 +33,36 @@ export async function getCurrentPos(): Promise<GeoPos | null> {
         perm = await Geolocation.requestPermissions()
       }
       if (perm.location !== 'granted' && perm.coarseLocation !== 'granted') return null
-      // للسرعة: محاولة سريعة (شبكة/موقع مُخزَّن) أولاً — تُرجع فوراً تقريباً —
-      // ثم دقّة عالية إن فشلت المحاولة السريعة. الدبوس قابل للضبط فالتقريب يكفي.
+      // ١) محاولة سريعة (قد تُرجع موقعاً مُخزَّناً فوراً).
       try {
         const p = await Geolocation.getCurrentPosition({
           enableHighAccuracy: false,
-          timeout: 6000,
+          timeout: 8000,
           maximumAge: 60000,
         })
         return { lat: p.coords.latitude, lng: p.coords.longitude }
       } catch {
-        const p = await Geolocation.getCurrentPosition({
-          enableHighAccuracy: true,
-          timeout: 12000,
-          maximumAge: 30000,
-        })
-        return { lat: p.coords.latitude, lng: p.coords.longitude }
+        /* نكمل إلى المراقبة الأوثق */
       }
+      // ٢) watchPosition — أوثق على أندرويد لجلب أوّل إصلاح GPS (بمهلة قصوى 20 ثانية).
+      return await new Promise<GeoPos | null>((resolve) => {
+        let done = false
+        let watchId = ''
+        const finish = (v: GeoPos | null) => {
+          if (done) return
+          done = true
+          clearTimeout(timer)
+          if (watchId) void Geolocation.clearWatch({ id: watchId })
+          resolve(v)
+        }
+        const timer = setTimeout(() => finish(null), 20000)
+        void Geolocation.watchPosition({ enableHighAccuracy: true, timeout: 20000 }, (p) => {
+          if (p) finish({ lat: p.coords.latitude, lng: p.coords.longitude })
+        }).then((id) => {
+          watchId = id
+          if (done) void Geolocation.clearWatch({ id })
+        })
+      })
     } catch {
       return null
     }
