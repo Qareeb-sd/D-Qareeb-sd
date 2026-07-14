@@ -37,4 +37,3 @@ pnpm-debug.log*
 # supabase local
 supabase/.branches
 supabase/.temp
-android/app/google-services.json
