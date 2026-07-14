@@ -458,6 +458,38 @@ export async function deletePushSubscription(endpoint: string): Promise<void> {
   await supabase.from('push_subscriptions').delete().eq('endpoint', endpoint)
 }
 
+// ---------- رموز أجهزة FCM (إشعارات أصلية) ----------
+/** يحفظ/يحدّث رمز جهاز FCM للمستخدم الحالي. */
+export async function saveDeviceToken(
+  userId: string,
+  token: string,
+  platform = 'android',
+): Promise<void> {
+  if (!isSupabaseConfigured) return
+  await supabase
+    .from('device_tokens')
+    .upsert(
+      { token, user_id: userId, platform, updated_at: new Date().toISOString() },
+      { onConflict: 'token' },
+    )
+}
+
+/** يحذف رمز جهاز (عند تسجيل الخروج أو إلغاء التسجيل). */
+export async function deleteDeviceToken(token: string): Promise<void> {
+  if (!isSupabaseConfigured) return
+  await supabase.from('device_tokens').delete().eq('token', token)
+}
+
+/** يستدعي دالة FCM لإشعار السائقين المتصلين بطلب جديد (بعد إنشاء الرحلة). */
+export async function notifyDriversOfRide(rideId: string): Promise<void> {
+  if (!isSupabaseConfigured) return
+  try {
+    await supabase.functions.invoke('notify-ride-fcm', { body: { ride_id: rideId } })
+  } catch {
+    // إشعار أفضل جهد — لا يوقف تدفّق الطلب إن فشل.
+  }
+}
+
 // ---------- الطوارئ (SOS) ----------
 /** يُطلق تنبيه طوارئ (يُخزَّن ويظهر للأدمن لحظياً). يتحمّل غياب الموقع. */
 export async function raiseSos(alert: {

@@ -26,6 +26,7 @@ import { useAuth } from '@/store/AuthContext'
 import { DEFAULT_SERVICE_ID, getService } from '@/data/services'
 import {
   createRide,
+  notifyDriversOfRide,
   prepayRide,
   cancelRide,
   getActiveCustomerRide,
@@ -330,6 +331,8 @@ export default function SelectLocation() {
           : pay.error)
       }
     }
+    // إشعار السائقين المتصلين بالطلب الجديد (أفضل جهد — لا يعطّل التدفّق).
+    void notifyDriversOfRide(id)
     setRideId(id)
     setBusy(false)
     navigate('/find-driver')

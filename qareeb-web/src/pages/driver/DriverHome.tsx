@@ -24,6 +24,7 @@ import {
   alertNewRide,
 } from '@/lib/notifications'
 import { startCaptainBg, stopCaptainBg } from '@/lib/captainBg'
+import { registerPushForDriver, unregisterPush } from '@/lib/pushNative'
 import { ensureGeoPermission } from '@/lib/geo'
 import { getService } from '@/data/services'
 import { money } from '@/lib/format'
@@ -65,8 +66,11 @@ export default function DriverHome() {
       setDriver(d)
       const isOn = d?.is_online ?? false
       setOnline(isOn)
-      // إن كان متصلاً مسبقاً (فتح التطبيق من جديد) شغّل الخدمة الأمامية.
-      if (isOn) void startCaptainBg()
+      // إن كان متصلاً مسبقاً (فتح التطبيق من جديد) شغّل الخدمة الأمامية + سجّل FCM.
+      if (isOn) {
+        void startCaptainBg()
+        void registerPushForDriver(userId)
+      }
     })
     // اطلب إذن الإشعارات والموقع مبكراً (يُبثّ موقع السائق للراكب فور القبول).
     void enableNotifications().then(setNotifOn)
@@ -128,9 +132,14 @@ export default function DriverHome() {
   const toggleOnline = async () => {
     const next = !online
     setOnline(next)
-    // خدمة الخلفية: تعمل أثناء «متصل» فقط، وتتوقف عند «غير متصل».
-    if (next) void startCaptainBg()
-    else void stopCaptainBg()
+    // خدمة الخلفية + إشعارات FCM: تعمل أثناء «متصل» فقط، وتتوقف عند «غير متصل».
+    if (next) {
+      void startCaptainBg()
+      void registerPushForDriver(userId)
+    } else {
+      void stopCaptainBg()
+      void unregisterPush()
+    }
     if (driver) await setDriverOnline(driver.id, next)
   }
 

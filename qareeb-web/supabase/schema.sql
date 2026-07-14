@@ -2268,3 +2268,20 @@ language sql stable security definer set search_path = public as $$
     and (auth.uid() = r.driver_id or public.is_admin());
 $$;
 grant execute on function public.get_ride_customer(uuid) to authenticated;
+
+-- ============================================================
+--  رموز أجهزة FCM (إشعارات أصلية للكابتن في الخلفية/الشاشة مقفلة).
+--  منفصل عن push_subscriptions (Web Push) لأن FCM يستخدم رمز جهاز واحد.
+-- ============================================================
+create table if not exists public.device_tokens (
+  token      text primary key,
+  user_id    uuid not null references public.users(id) on delete cascade,
+  platform   text not null default 'android',
+  updated_at timestamptz not null default now()
+);
+create index if not exists device_tokens_user_idx on public.device_tokens(user_id);
+alter table public.device_tokens enable row level security;
+
+drop policy if exists "own device tokens" on public.device_tokens;
+create policy "own device tokens" on public.device_tokens
+  for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
