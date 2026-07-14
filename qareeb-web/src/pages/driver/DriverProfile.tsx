@@ -1,6 +1,6 @@
 import { useState, type ReactNode } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { User, Star, LifeBuoy } from 'lucide-react'
+import { User, Star, LifeBuoy, Crown, BadgePercent } from 'lucide-react'
 import { useQuery } from '@tanstack/react-query'
 import DriverNav from '@/components/DriverNav'
 import NotificationToggle from '@/components/NotificationToggle'
@@ -77,6 +77,9 @@ export default function DriverProfile() {
           </div>
         )}
 
+        {/* حالة العمولة / اشتراك VIP */}
+        {driver && <CommissionStatus driver={driver} />}
+
         {/* جهات الطوارئ (مثل العميل) */}
         <div className="card mt-4 p-4">
           <div className="mb-1 flex items-center gap-2">
@@ -118,6 +121,68 @@ export default function DriverProfile() {
       <DriverNav />
     </div>
   )
+}
+
+/** بطاقة حالة العمولة/الاشتراك للسائق (تُدار من الأدمن). */
+function CommissionStatus({ driver }: { driver: import('@/lib/types').Driver }) {
+  const now = Date.now()
+  const fmt = (s: string) => new Date(s).toLocaleDateString('ar-SD')
+  const vipActive =
+    Boolean(driver.vip) &&
+    Boolean(driver.vip_paid_until) &&
+    new Date(driver.vip_paid_until as string).getTime() > now
+  const freeActive =
+    Boolean(driver.commission_free_until) &&
+    new Date(driver.commission_free_until as string).getTime() > now
+
+  if (vipActive) {
+    return (
+      <div className="mt-4 rounded-2xl border border-sand bg-sand-soft/50 p-4">
+        <div className="flex items-center gap-2">
+          <Crown className="h-5 w-5 text-sand-ink" strokeWidth={2} />
+          <p className="font-bold text-royal">سائق VIP</p>
+          <span className="ms-auto chip bg-green-soft text-xs font-bold text-green">فعّال</span>
+        </div>
+        <p className="mt-1 text-sm text-ink-soft">
+          بلا عمولة على رحلاتك. الاشتراك ساري حتى{' '}
+          <span className="font-bold text-royal">{fmt(driver.vip_paid_until as string)}</span>.
+        </p>
+      </div>
+    )
+  }
+  if (driver.vip) {
+    // VIP لكن الاشتراك مستحقّ (غير مدفوع) → العمولة تُطبَّق مؤقّتاً.
+    return (
+      <div className="mt-4 rounded-2xl border border-danger/40 bg-danger/5 p-4">
+        <div className="flex items-center gap-2">
+          <Crown className="h-5 w-5 text-danger" strokeWidth={2} />
+          <p className="font-bold text-royal">اشتراك VIP مستحقّ</p>
+        </div>
+        <p className="mt-1 text-sm text-ink-soft">
+          اشتراكك الشهري غير مدفوع حالياً، لذا تُطبَّق العمولة حتى السداد. يُخصم تلقائياً من محفظتك
+          عند توفّر الرصيد.
+        </p>
+      </div>
+    )
+  }
+  if (freeActive) {
+    return (
+      <div className="mt-4 rounded-2xl border border-green/30 bg-green-soft/40 p-4">
+        <div className="flex items-center gap-2">
+          <BadgePercent className="h-5 w-5 text-green" strokeWidth={2} />
+          <p className="font-bold text-royal">إعفاء من العمولة</p>
+        </div>
+        <p className="mt-1 text-sm text-ink-soft">
+          معفى من العمولة حتى{' '}
+          <span className="font-bold text-royal">
+            {fmt(driver.commission_free_until as string)}
+          </span>{' '}
+          — تحصل على كامل الأجرة.
+        </p>
+      </div>
+    )
+  }
+  return null
 }
 
 function Row({ label, value }: { label: string; value: ReactNode }) {

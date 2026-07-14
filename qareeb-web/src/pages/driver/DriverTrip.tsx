@@ -12,9 +12,11 @@ import {
   setRideStatus,
   cancelRide,
   getSettings,
+  getDriver,
   getActiveDriverRide,
   updateDriverLocation,
 } from '@/lib/api'
+import type { Driver } from '@/lib/types'
 import { subscribeToRide } from '@/lib/realtime'
 import { getService } from '@/data/services'
 import { money } from '@/lib/format'
@@ -47,6 +49,7 @@ export default function DriverTrip() {
   const { profile } = useAuth()
   const { activeRide, setActiveRide } = useDriver()
   const [rate, setRate] = useState(0.15)
+  const [driver, setDriver] = useState<Driver | null>(null)
   const [busy, setBusy] = useState(false)
   const [recovering, setRecovering] = useState(!activeRide)
   // موقع السائق الحيّ + خطّ الملاحة إلى الهدف الحالي.
@@ -56,7 +59,8 @@ export default function DriverTrip() {
 
   useEffect(() => {
     void getSettings().then((s) => setRate(s.commission_rate))
-  }, [])
+    if (profile?.id) void getDriver(profile.id).then(setDriver)
+  }, [profile?.id])
 
   // استرجاع الرحلة الجارية بعد تحديث الصفحة (تُفقد من الذاكرة).
   useEffect(() => {
@@ -170,7 +174,18 @@ export default function DriverTrip() {
 
   const service = getService(activeRide.service_id)
   const fare = activeRide.fare ?? 0
-  const commission = Math.round(fare * rate)
+  // إعفاء العمولة يطابق settle_ride: إعفاء مؤقّت ساري، أو VIP باشتراك مدفوع.
+  const now = Date.now()
+  const exemptFree =
+    Boolean(driver?.commission_free_until) &&
+    new Date(driver!.commission_free_until as string).getTime() > now
+  const exemptVip =
+    Boolean(driver?.vip) &&
+    Boolean(driver?.vip_paid_until) &&
+    new Date(driver!.vip_paid_until as string).getTime() > now
+  const exempt = exemptFree || exemptVip
+  const effectiveRate = exempt ? 0 : rate
+  const commission = Math.round(fare * effectiveRate)
   const net = fare - commission
   const isCash = activeRide.payment_method !== 'wallet'
 
@@ -313,17 +328,35 @@ export default function DriverTrip() {
             <div className="mt-3 rounded-2xl border border-hairline bg-ivory/60">
               <Row label="طريقة الدفع" value={paymentLabels[activeRide.payment_method]} />
               <Row label="الأجرة" value={money(fare)} />
-              <Row
-                label={`عمولة المنصة (${Math.round(rate * 100)}%)`}
-                value={`− ${money(commission)}`}
-                danger
-              />
+              {exempt ? (
+                <Row
+                  label={exemptVip ? 'عمولة المنصة (VIP)' : 'عمولة المنصة (إعفاء)'}
+                  value="معفاة"
+                  strong
+                />
+              ) : (
+                <Row
+                  label={`عمولة المنصة (${Math.round(effectiveRate * 100)}%)`}
+                  value={`− ${money(commission)}`}
+                  danger
+                />
+              )}
               <Row label="صافي أرباحك" value={money(net)} strong />
             </div>
 
+            {exempt && (
+              <p className="mt-2 text-center text-xs font-medium text-green">
+                {exemptVip
+                  ? 'أنت سائق VIP — بلا عمولة على هذه الرحلة.'
+                  : 'معفى من العمولة حالياً — تحصل على كامل الأجرة.'}
+              </p>
+            )}
+
             {isCash && (
               <p className="mt-2 text-center text-xs text-ink-muted">
-                تستلم الأجرة من الراكب مباشرة، وتُخصم العمولة ({money(commission)}) من محفظتك.
+                {exempt
+                  ? 'تستلم كامل الأجرة من الراكب مباشرة — لا عمولة.'
+                  : `تستلم الأجرة من الراكب مباشرة، وتُخصم العمولة (${money(commission)}) من محفظتك.`}
               </p>
             )}
           </div>
