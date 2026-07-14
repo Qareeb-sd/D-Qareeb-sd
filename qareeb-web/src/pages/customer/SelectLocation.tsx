@@ -139,7 +139,7 @@ export default function SelectLocation() {
     const pos = await getCurrentPos()
     if (!pos) {
       setGpsBusy(false)
-      setGpsErr('تعذّر تحديد الموقع — فعّل صلاحية الموقع')
+      setGpsErr('تعذّر تحديد الموقع — فعّل خدمة الموقع (GPS) من إعدادات الهاتف، أو حدّد على الخريطة')
       return
     }
     setPickupPos(pos)
