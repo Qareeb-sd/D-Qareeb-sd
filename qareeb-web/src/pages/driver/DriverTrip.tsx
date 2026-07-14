@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useNavigate, Navigate } from 'react-router-dom'
-import { Navigation, MapPin } from 'lucide-react'
+import { Navigation, MapPin, User, Phone, Star } from 'lucide-react'
 import Screen from '@/components/Screen'
 import MapView from '@/components/MapView'
 import SosButton from '@/components/SosButton'
@@ -14,6 +14,7 @@ import {
   getSettings,
   getDriver,
   getActiveDriverRide,
+  getRideCustomer,
   updateDriverLocation,
 } from '@/lib/api'
 import type { Driver } from '@/lib/types'
@@ -50,6 +51,11 @@ export default function DriverTrip() {
   const { activeRide, setActiveRide } = useDriver()
   const [rate, setRate] = useState(0.15)
   const [driver, setDriver] = useState<Driver | null>(null)
+  const [customer, setCustomer] = useState<{
+    full_name: string | null
+    phone: string | null
+    rating: number | null
+  } | null>(null)
   const [busy, setBusy] = useState(false)
   const [recovering, setRecovering] = useState(!activeRide)
   // موقع السائق الحيّ + خطّ الملاحة إلى الهدف الحالي.
@@ -61,6 +67,13 @@ export default function DriverTrip() {
     void getSettings().then((s) => setRate(s.commission_rate))
     if (profile?.id) void getDriver(profile.id).then(setDriver)
   }, [profile?.id])
+
+  // معلومات الراكب (اسم/هاتف/تقييم) للاتصال والتحقّق.
+  useEffect(() => {
+    const rid = activeRide?.id
+    if (!rid) return
+    void getRideCustomer(rid).then(setCustomer)
+  }, [activeRide?.id])
 
   // استرجاع الرحلة الجارية بعد تحديث الصفحة (تُفقد من الذاكرة).
   useEffect(() => {
@@ -323,6 +336,31 @@ export default function DriverTrip() {
             <p className="mt-1 text-sm text-ink-soft">
               {activeRide.pickup_address} ← {activeRide.dropoff_address}
             </p>
+
+            {/* الراكب — اسم/تقييم + زر اتصال */}
+            <div className="mt-3 flex items-center gap-3 rounded-2xl border border-hairline bg-ivory/60 p-3">
+              <span className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-sand/20">
+                <User className="h-5 w-5 text-royal" strokeWidth={2} />
+              </span>
+              <div className="min-w-0 flex-1">
+                <p className="truncate font-bold text-royal">{customer?.full_name ?? 'الراكب'}</p>
+                {customer?.rating != null && (
+                  <p className="flex items-center gap-1 text-xs text-ink-soft">
+                    <Star className="h-3.5 w-3.5 text-sand" fill="currentColor" strokeWidth={2} />
+                    {customer.rating}
+                  </p>
+                )}
+              </div>
+              {customer?.phone && (
+                <a
+                  href={`tel:${customer.phone}`}
+                  className="flex items-center gap-1.5 rounded-xl bg-royal px-3 py-2 text-sm font-bold text-white"
+                >
+                  <Phone className="h-4 w-4" strokeWidth={2} />
+                  اتصال
+                </a>
+              )}
+            </div>
 
             {/* تفصيل الأرباح */}
             <div className="mt-3 rounded-2xl border border-hairline bg-ivory/60">

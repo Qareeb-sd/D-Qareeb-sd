@@ -2231,3 +2231,40 @@ begin
   return v;
 end $$;
 grant execute on function public.admin_analytics() to authenticated;
+
+-- ============================================================
+--  معلومات الراكب للسائق: على بطاقة الطلب (اسم/تقييم) وفي الرحلة (هاتف للاتصال).
+-- ============================================================
+-- الطلبات المتاحة مع اسم الراكب وتقييمه (للسائقين فقط).
+create or replace function public.list_available_rides()
+returns table (
+  id uuid, customer_id uuid, driver_id uuid, service_id text, status ride_status,
+  pickup_lat double precision, pickup_lng double precision, pickup_address text,
+  dropoff_lat double precision, dropoff_lng double precision, dropoff_address text,
+  fare numeric, payment_method payment_method, created_at timestamptz,
+  customer_name text, customer_rating numeric
+) language sql stable security definer set search_path = public as $$
+  select r.id, r.customer_id, r.driver_id, r.service_id, r.status,
+         r.pickup_lat, r.pickup_lng, r.pickup_address,
+         r.dropoff_lat, r.dropoff_lng, r.dropoff_address,
+         r.fare, r.payment_method, r.created_at,
+         cu.full_name, cu.rating
+  from public.rides r
+  join public.users cu on cu.id = r.customer_id
+  where r.status = 'searching' and r.driver_id is null
+    and exists (select 1 from public.drivers d where d.user_id = auth.uid())
+  order by r.created_at asc;
+$$;
+grant execute on function public.list_available_rides() to authenticated;
+
+-- معلومات الراكب لرحلة السائق الجارية (اسم/هاتف/تقييم) — للسائق المسنَد أو الأدمن.
+create or replace function public.get_ride_customer(p_ride uuid)
+returns table (full_name text, phone text, rating numeric)
+language sql stable security definer set search_path = public as $$
+  select cu.full_name, cu.phone, cu.rating
+  from public.rides r
+  join public.users cu on cu.id = r.customer_id
+  where r.id = p_ride
+    and (auth.uid() = r.driver_id or public.is_admin());
+$$;
+grant execute on function public.get_ride_customer(uuid) to authenticated;

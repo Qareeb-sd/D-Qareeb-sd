@@ -71,6 +71,9 @@ export interface Ride {
   promo_code?: string | null
   discount?: number
   created_at: string
+  // تظهر فقط في قائمة الطلبات المتاحة للسائق (من list_available_rides).
+  customer_name?: string | null
+  customer_rating?: number | null
 }
 
 export interface Wallet {

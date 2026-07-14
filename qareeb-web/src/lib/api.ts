@@ -1127,13 +1127,19 @@ const demoAvailableRide: Ride = {
 
 export async function listAvailableRides(): Promise<Ride[]> {
   if (!isSupabaseConfigured) return [demoAvailableRide]
-  const { data } = await supabase
-    .from('rides')
-    .select('*')
-    .eq('status', 'searching')
-    .is('driver_id', null)
-    .order('created_at', { ascending: true })
-  return data ?? []
+  // RPC آمنة تُرفق اسم الراكب وتقييمه (للسائقين فقط).
+  const { data } = await supabase.rpc('list_available_rides')
+  return (data as Ride[]) ?? []
+}
+
+/** معلومات الراكب لرحلة السائق الجارية (اسم/هاتف/تقييم) — للاتصال والتحقّق. */
+export async function getRideCustomer(
+  rideId: string,
+): Promise<{ full_name: string | null; phone: string | null; rating: number | null } | null> {
+  if (!isSupabaseConfigured) return null
+  const { data } = await supabase.rpc('get_ride_customer', { p_ride: rideId })
+  const row = Array.isArray(data) ? data[0] : data
+  return row ?? null
 }
 
 /**

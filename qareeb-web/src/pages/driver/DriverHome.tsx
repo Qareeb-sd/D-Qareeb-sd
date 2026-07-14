@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
-import { Bell, BellOff, LifeBuoy, Eye, Star, ChevronLeft, Car, Route, Coins, Power } from 'lucide-react'
+import { Bell, BellOff, LifeBuoy, Eye, Star, ChevronLeft, Car, Route, Coins, Power, User } from 'lucide-react'
+import { haversineKm } from '@/lib/pricing'
 import Logo from '@/components/Logo'
 import DriverNav from '@/components/DriverNav'
 import VehicleImage from '@/components/VehicleImage'
@@ -282,6 +283,14 @@ export default function DriverHome() {
             <h2 className="font-bold text-royal">طلبات واردة</h2>
             {rides.map((r) => {
               const service = getService(r.service_id)
+              // مسافة الرحلة التقديرية (خط مستقيم × معامل الطريق) — تُحسب محلياً بلا خادم.
+              const tripKm =
+                r.dropoff_lat != null && r.dropoff_lng != null
+                  ? haversineKm(
+                      { lat: r.pickup_lat, lng: r.pickup_lng },
+                      { lat: r.dropoff_lat, lng: r.dropoff_lng },
+                    ) * 1.3
+                  : null
               return (
                 <div key={r.id} className="rounded-2xl bg-white p-4 shadow-card">
                   <div className="flex items-center gap-3">
@@ -294,6 +303,27 @@ export default function DriverHome() {
                     </div>
                     <p className="font-extrabold text-sand-ink">{money(r.fare ?? 0)}</p>
                   </div>
+
+                  {/* الراكب + تقييمه + مسافة الرحلة */}
+                  <div className="mt-2 flex items-center gap-3 border-t border-hairline pt-2 text-sm">
+                    <span className="flex items-center gap-1.5 font-medium text-ink">
+                      <User className="h-4 w-4 text-sand-ink" strokeWidth={2} />
+                      {r.customer_name ?? 'راكب'}
+                    </span>
+                    {r.customer_rating != null && (
+                      <span className="flex items-center gap-1 text-ink-soft">
+                        <Star className="h-3.5 w-3.5 text-sand" fill="currentColor" strokeWidth={2} />
+                        {r.customer_rating}
+                      </span>
+                    )}
+                    {tripKm != null && (
+                      <span className="mr-auto flex items-center gap-1 text-ink-soft">
+                        <Route className="h-3.5 w-3.5 text-sand-ink" strokeWidth={2} />~
+                        {tripKm.toFixed(1)} كم
+                      </span>
+                    )}
+                  </div>
+
                   <button
                     onClick={() => accept(r)}
                     disabled={busyId === r.id}
