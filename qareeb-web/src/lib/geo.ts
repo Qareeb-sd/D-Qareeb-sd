@@ -33,20 +33,20 @@ export async function getCurrentPos(): Promise<GeoPos | null> {
         perm = await Geolocation.requestPermissions()
       }
       if (perm.location !== 'granted' && perm.coarseLocation !== 'granted') return null
-      // دقّة عالية أولاً؛ فإن تأخّرت/فشلت (داخل مبنى) نجرّب دقّة منخفضة أسرع،
-      // ونقبل موقعاً مُخزَّناً حديثاً (maximumAge) لتفادي «تعذّر تحديد الموقع».
+      // للسرعة: محاولة سريعة (شبكة/موقع مُخزَّن) أولاً — تُرجع فوراً تقريباً —
+      // ثم دقّة عالية إن فشلت المحاولة السريعة. الدبوس قابل للضبط فالتقريب يكفي.
       try {
         const p = await Geolocation.getCurrentPosition({
-          enableHighAccuracy: true,
-          timeout: 8000,
-          maximumAge: 30000,
+          enableHighAccuracy: false,
+          timeout: 6000,
+          maximumAge: 60000,
         })
         return { lat: p.coords.latitude, lng: p.coords.longitude }
       } catch {
         const p = await Geolocation.getCurrentPosition({
-          enableHighAccuracy: false,
-          timeout: 15000,
-          maximumAge: 120000,
+          enableHighAccuracy: true,
+          timeout: 12000,
+          maximumAge: 30000,
         })
         return { lat: p.coords.latitude, lng: p.coords.longitude }
       }
@@ -56,16 +56,16 @@ export async function getCurrentPos(): Promise<GeoPos | null> {
   }
   return new Promise((resolve) => {
     if (!('geolocation' in navigator)) return resolve(null)
+    // محاولة سريعة أولاً (منخفضة الدقّة/مُخزَّنة)، ثم دقّة عالية عند الفشل.
     navigator.geolocation.getCurrentPosition(
       (p) => resolve({ lat: p.coords.latitude, lng: p.coords.longitude }),
       () =>
-        // بديل منخفض الدقّة عند فشل الدقّة العالية.
         navigator.geolocation.getCurrentPosition(
           (p) => resolve({ lat: p.coords.latitude, lng: p.coords.longitude }),
           () => resolve(null),
-          { enableHighAccuracy: false, timeout: 15000, maximumAge: 120000 },
+          { enableHighAccuracy: true, timeout: 12000, maximumAge: 30000 },
         ),
-      { enableHighAccuracy: true, timeout: 8000, maximumAge: 30000 },
+      { enableHighAccuracy: false, timeout: 6000, maximumAge: 60000 },
     )
   })
 }
