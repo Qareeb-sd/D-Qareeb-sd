@@ -60,6 +60,8 @@ import {
   listActiveRides,
   deleteDriver,
   getFinancialSummary,
+  getAdminAnalytics,
+  type AdminAnalytics,
   listSosAlerts,
   resolveSos,
   getMyAdminAccess,
@@ -216,6 +218,7 @@ export default function AdminDashboard() {
   const [complaints, setComplaints] = useState<Complaint[] | null>(null)
   const [rides, setRides] = useState<Ride[] | null>(null)
   const [detailRides, setDetailRides] = useState<AdminRideRow[] | null>(null)
+  const [analyticsRaw, setAnalyticsRaw] = useState<AdminAnalytics | null>(null)
   const [activeRides, setActiveRides] = useState<Ride[]>([])
   const [sos, setSos] = useState<SosAlert[]>([])
 
@@ -301,6 +304,7 @@ export default function AdminDashboard() {
         listDriverApplications('pending'),
         listAllRides(500),
         adminListRides(500),
+        getAdminAnalytics(),
       ])
       if (!alive) return
       if (r[0].status === 'fulfilled') setStats(r[0].value)
@@ -311,6 +315,7 @@ export default function AdminDashboard() {
       if (r[5].status === 'fulfilled') setDriverApps(r[5].value)
       if (r[6].status === 'fulfilled') setRides(r[6].value)
       if (r[7].status === 'fulfilled') setDetailRides(r[7].value)
+      if (r[8].status === 'fulfilled') setAnalyticsRaw(r[8].value)
       setLoadErr(
         r.some((x) => x.status === 'rejected')
           ? 'تعذّر تحميل بعض البيانات — تحقّق من الاتصال ثم حدّث الصفحة.'
@@ -325,6 +330,9 @@ export default function AdminDashboard() {
         .catch(() => {})
       void getFinancialSummary()
         .then((x) => alive && setFinance(x))
+        .catch(() => {})
+      void getAdminAnalytics()
+        .then((x) => alive && x && setAnalyticsRaw(x))
         .catch(() => {})
     }, 30000)
     return () => {
@@ -678,6 +686,34 @@ export default function AdminDashboard() {
   const analytics = useMemo(() => {
     const rs = rides ?? []
     const dayNames = ['الأحد', 'الاثنين', 'الثلاثاء', 'الأربعاء', 'الخميس', 'الجمعة', 'السبت']
+    const tint = (s: (typeof services)[number]) => (s.tint === '#EDEFEC' ? '#1B6B3F' : s.tint)
+    // أحدث ١٢ رحلة مكتملة — دقيقة حتى مع السقف (الأحدث ضمن الصفوف الأولى).
+    const recentCompleted = rs.filter((r) => r.status === 'completed').slice(0, 12)
+
+    // المسار المفضّل: تجميعات الخادم (بلا سقف صفوف).
+    if (analyticsRaw) {
+      const dayLabel = (d: string) => dayNames[new Date(`${d}T00:00:00`).getDay()]
+      const vMap = new Map(analyticsRaw.vehicle.map((v) => [v.service_id, v.value]))
+      const rMap = new Map(analyticsRaw.vehicleRevenue.map((v) => [v.service_id, v.value]))
+      return {
+        weekly: analyticsRaw.weekly.map((x) => ({ label: dayLabel(x.d), value: x.value })),
+        vehicle: services
+          .map((s) => ({ label: s.name, value: vMap.get(s.id) ?? 0, color: tint(s) }))
+          .filter((v) => v.value > 0),
+        completedCount: analyticsRaw.completedCount,
+        revenue: analyticsRaw.revenue,
+        weeklyRevenue: analyticsRaw.weeklyRevenue.map((x) => ({
+          label: dayLabel(x.d),
+          value: x.value,
+        })),
+        vehicleRevenue: services
+          .map((s) => ({ label: s.name, value: rMap.get(s.id) ?? 0, color: tint(s) }))
+          .filter((v) => v.value > 0),
+        recentCompleted,
+      }
+    }
+
+    // بديل احتياطي (معاينة/تعذّر التجميع): يحسب من العيّنة المحمّلة.
     // رحلات آخر 7 أيام حسب اليوم
     const weekly: { label: string; value: number }[] = []
     for (let i = 6; i >= 0; i--) {
@@ -721,9 +757,8 @@ export default function AdminDashboard() {
         color: s.tint === '#EDEFEC' ? '#1B6B3F' : s.tint,
       }))
       .filter((v) => v.value > 0)
-    const recentCompleted = completed.slice(0, 12)
     return { weekly, vehicle, completedCount: completed.length, revenue, weeklyRevenue, vehicleRevenue, recentCompleted }
-  }, [rides])
+  }, [rides, analyticsRaw])
 
   // تنبيهات الطوارئ — تُحمَّل وتُتابَع لحظياً (تظهر فوق كل التبويبات).
   useEffect(() => {

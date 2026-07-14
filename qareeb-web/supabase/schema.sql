@@ -2182,3 +2182,52 @@ begin
   perform public.log_action('رفض اشتراك VIP', p_note);
 end $$;
 grant execute on function public.reject_vip_request(uuid, text) to authenticated;
+
+-- ============================================================
+--  تجميعات لوحة الأدمن (بلا سقف صفوف): أعداد وإيرادات دقيقة مهما كبرت البيانات.
+--  الأيام محسوبة بتوقيت الخرطوم (Africa/Khartoum). يعيد jsonb للعرض في اللوحة.
+-- ============================================================
+create or replace function public.admin_analytics()
+returns jsonb language plpgsql security definer set search_path = public as $$
+declare v jsonb; tz text := 'Africa/Khartoum';
+begin
+  if not public.is_staff_or_admin() then raise exception 'غير مصرّح'; end if;
+  select jsonb_build_object(
+    'completedCount', (select count(*) from public.rides where status = 'completed'),
+    'revenue', (select coalesce(round(sum(fare)), 0) from public.rides where status = 'completed'),
+    'weekly', (
+      select coalesce(jsonb_agg(x order by x->>'d'), '[]'::jsonb) from (
+        select jsonb_build_object(
+          'd', to_char(g::date, 'YYYY-MM-DD'),
+          'value', (select count(*) from public.rides r
+                     where (r.created_at at time zone tz)::date = g::date)
+        ) x
+        from generate_series(((now() at time zone tz)::date - 6),
+                             ((now() at time zone tz)::date), interval '1 day') g
+      ) s
+    ),
+    'weeklyRevenue', (
+      select coalesce(jsonb_agg(x order by x->>'d'), '[]'::jsonb) from (
+        select jsonb_build_object(
+          'd', to_char(g::date, 'YYYY-MM-DD'),
+          'value', (select coalesce(round(sum(fare)), 0) from public.rides r
+                     where r.status = 'completed'
+                       and (r.created_at at time zone tz)::date = g::date)
+        ) x
+        from generate_series(((now() at time zone tz)::date - 6),
+                             ((now() at time zone tz)::date), interval '1 day') g
+      ) s
+    ),
+    'vehicle', (
+      select coalesce(jsonb_agg(jsonb_build_object('service_id', service_id, 'value', c)), '[]'::jsonb)
+      from (select service_id, count(*) c from public.rides group by service_id) t
+    ),
+    'vehicleRevenue', (
+      select coalesce(jsonb_agg(jsonb_build_object('service_id', service_id, 'value', round(s))), '[]'::jsonb)
+      from (select service_id, sum(fare) s from public.rides
+             where status = 'completed' group by service_id) t
+    )
+  ) into v;
+  return v;
+end $$;
+grant execute on function public.admin_analytics() to authenticated;

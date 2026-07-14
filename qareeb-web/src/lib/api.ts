@@ -927,6 +927,23 @@ export async function getFinancialSummary(): Promise<FinancialSummary | null> {
   return (Array.isArray(data) ? data[0] : data) ?? null
 }
 
+/** تجميعات لوحة الأدمن (بلا سقف صفوف). null → المعاينة/تعذّر (اللوحة تحسبها من العيّنة). */
+export interface AdminAnalytics {
+  completedCount: number
+  revenue: number
+  weekly: { d: string; value: number }[]
+  weeklyRevenue: { d: string; value: number }[]
+  vehicle: { service_id: string; value: number }[]
+  vehicleRevenue: { service_id: string; value: number }[]
+}
+
+export async function getAdminAnalytics(): Promise<AdminAnalytics | null> {
+  if (!isSupabaseConfigured) return null
+  const { data, error } = await supabase.rpc('admin_analytics')
+  if (error || !data) return null
+  return data as AdminAnalytics
+}
+
 export async function updateSettings(
   patch: Partial<Settings>,
 ): Promise<{ error?: string }> {
