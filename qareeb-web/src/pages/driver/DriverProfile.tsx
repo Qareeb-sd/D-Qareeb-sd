@@ -4,6 +4,7 @@ import { User, Star, LifeBuoy, Crown, BadgePercent } from 'lucide-react'
 import { useQuery } from '@tanstack/react-query'
 import DriverNav from '@/components/DriverNav'
 import NotificationToggle from '@/components/NotificationToggle'
+import VipSubscribe from '@/components/VipSubscribe'
 import { useAuth } from '@/store/AuthContext'
 import { getDriver, updateEmergencyContacts } from '@/lib/api'
 import { getService } from '@/data/services'
@@ -12,7 +13,7 @@ export default function DriverProfile() {
   const navigate = useNavigate()
   const { profile, signOut, refreshProfile } = useAuth()
   const userId = profile?.id ?? 'demo-user'
-  const { data: driver } = useQuery({
+  const { data: driver, refetch: refetchDriver } = useQuery({
     queryKey: ['driver', userId],
     queryFn: () => getDriver(userId),
   })
@@ -79,6 +80,9 @@ export default function DriverProfile() {
 
         {/* حالة العمولة / اشتراك VIP */}
         {driver && <CommissionStatus driver={driver} />}
+        {driver && (
+          <VipSubscribe driver={driver} userId={userId} onChanged={() => void refetchDriver()} />
+        )}
 
         {/* جهات الطوارئ (مثل العميل) */}
         <div className="card mt-4 p-4">

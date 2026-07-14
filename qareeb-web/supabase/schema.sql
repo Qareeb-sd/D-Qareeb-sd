@@ -2080,3 +2080,105 @@ begin
   return true;
 end $$;
 grant execute on function public.accept_ride(uuid) to authenticated;
+
+-- ============================================================
+--  طلبات اشتراك VIP من السائق: يدفع من محفظته أو يحوّل بنكياً بإيصال،
+--  والأدمن يعتمد التحويل. الإيصال يُرفع في bucket topup-proofs (مجلّد السائق).
+-- ============================================================
+create table if not exists public.vip_requests (
+  id          uuid primary key default gen_random_uuid(),
+  driver_id   uuid not null references public.users(id) on delete cascade, -- user_id للسائق
+  amount      numeric(12,2) not null,
+  method      text not null check (method in ('wallet', 'bank_transfer')),
+  proof_url   text,                                   -- مسار الإيصال (تحويل بنكي)
+  status      topup_status not null default 'pending',
+  note        text,
+  reviewed_by uuid references public.users(id) on delete set null,
+  created_at  timestamptz not null default now()
+);
+create index if not exists vip_requests_status_idx on public.vip_requests(status);
+alter table public.vip_requests enable row level security;
+
+-- السائق يقرأ طلباته، والطاقم/الأدمن يقرؤون الكل.
+drop policy if exists "own vip requests" on public.vip_requests;
+create policy "own vip requests" on public.vip_requests
+  for select using (auth.uid() = driver_id or public.is_staff_or_admin());
+-- الإدخال يتم حصراً عبر دالة request_vip (SECURITY DEFINER) — لا سياسة إدخال مباشرة.
+drop policy if exists "admin update vip request" on public.vip_requests;
+create policy "admin update vip request" on public.vip_requests
+  for update using (public.is_staff_or_admin()) with check (public.is_staff_or_admin());
+
+-- طلب اشتراك VIP: wallet → خصم فوري وتفعيل؛ bank_transfer → طلب معلّق للاعتماد.
+create or replace function public.request_vip(p_method text, p_proof_url text default null)
+returns jsonb language plpgsql security definer set search_path = public as $$
+declare v_fee numeric; v_wallet uuid; v_bal numeric; v_uid uuid := auth.uid();
+begin
+  if v_uid is null then raise exception 'غير مصرّح'; end if;
+  if p_method not in ('wallet', 'bank_transfer') then raise exception 'طريقة دفع غير صالحة'; end if;
+  if not exists (select 1 from public.drivers where user_id = v_uid) then
+    raise exception 'الحساب ليس سائقاً';
+  end if;
+  select vip_subscription_fee into v_fee from public.settings where id = 1;
+  if coalesce(v_fee, 0) <= 0 then raise exception 'اشتراك VIP غير مفعّل حالياً'; end if;
+  if exists (select 1 from public.vip_requests where driver_id = v_uid and status = 'pending') then
+    raise exception 'لديك طلب قيد المراجعة بالفعل';
+  end if;
+
+  if p_method = 'wallet' then
+    select id, balance into v_wallet, v_bal from public.wallets where user_id = v_uid for update;
+    if v_wallet is null then raise exception 'المحفظة غير موجودة'; end if;
+    if v_bal < v_fee then raise exception 'رصيد المحفظة غير كافٍ'; end if;
+    update public.wallets set balance = balance - v_fee, updated_at = now() where id = v_wallet;
+    insert into public.transactions (wallet_id, type, amount, note)
+      values (v_wallet, 'commission', -v_fee, 'اشتراك VIP شهري');
+    update public.drivers
+      set vip = true,
+          vip_paid_until = greatest(coalesce(vip_paid_until, now()), now()) + interval '1 month'
+      where user_id = v_uid;
+    insert into public.vip_requests (driver_id, amount, method, status, reviewed_by, note)
+      values (v_uid, v_fee, 'wallet', 'approved', v_uid, 'دفع من المحفظة');
+    return jsonb_build_object('status', 'approved');
+  else
+    insert into public.vip_requests (driver_id, amount, method, proof_url, status)
+      values (v_uid, v_fee, 'bank_transfer', p_proof_url, 'pending');
+    perform public.log_action('طلب اشتراك VIP (تحويل)', v_fee::text || ' ج.س');
+    return jsonb_build_object('status', 'pending');
+  end if;
+end $$;
+grant execute on function public.request_vip(text, text) to authenticated;
+
+-- اعتماد طلب VIP (أدمن): يفعّل VIP ويمدّد شهراً.
+create or replace function public.approve_vip_request(p_id uuid)
+returns void language plpgsql security definer set search_path = public as $$
+declare v_driver uuid; v_status topup_status;
+begin
+  if not public.has_perm('requests') and not public.has_perm('drivers') then
+    raise exception 'غير مصرّح';
+  end if;
+  select driver_id, status into v_driver, v_status
+    from public.vip_requests where id = p_id for update;
+  if v_driver is null then raise exception 'الطلب غير موجود'; end if;
+  if v_status <> 'pending' then raise exception 'الطلب روجع مسبقاً'; end if;
+  update public.vip_requests set status = 'approved', reviewed_by = auth.uid() where id = p_id;
+  update public.drivers
+    set vip = true,
+        vip_paid_until = greatest(coalesce(vip_paid_until, now()), now()) + interval '1 month'
+    where user_id = v_driver;
+  perform public.log_action('اعتماد اشتراك VIP',
+    (select full_name from public.users where id = v_driver));
+end $$;
+grant execute on function public.approve_vip_request(uuid) to authenticated;
+
+-- رفض طلب VIP (أدمن).
+create or replace function public.reject_vip_request(p_id uuid, p_note text default null)
+returns void language plpgsql security definer set search_path = public as $$
+begin
+  if not public.has_perm('requests') and not public.has_perm('drivers') then
+    raise exception 'غير مصرّح';
+  end if;
+  update public.vip_requests
+    set status = 'rejected', reviewed_by = auth.uid(), note = coalesce(p_note, note)
+    where id = p_id and status = 'pending';
+  perform public.log_action('رفض اشتراك VIP', p_note);
+end $$;
+grant execute on function public.reject_vip_request(uuid, text) to authenticated;

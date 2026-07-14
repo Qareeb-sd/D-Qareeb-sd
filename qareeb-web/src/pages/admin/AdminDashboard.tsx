@@ -39,6 +39,9 @@ import {
   listPendingTopups,
   approveTopup,
   rejectTopup,
+  listPendingVipRequests,
+  approveVipRequest,
+  rejectVipRequest,
   updateSettings,
   getProofUrl,
   listServicePricing,
@@ -104,6 +107,7 @@ import { getService } from '@/data/services'
 import type {
   Settings,
   Topup,
+  VipRequest,
   ServicePricing,
   DriverApplication,
   Ride,
@@ -202,6 +206,7 @@ export default function AdminDashboard() {
   const [stats, setStats] = useState<AdminStats | null>(null)
   const [finance, setFinance] = useState<FinancialSummary | null>(null)
   const [topups, setTopups] = useState<Topup[]>([])
+  const [vipReqs, setVipReqs] = useState<VipRequest[]>([])
   const [settings, setSettings] = useState<Settings | null>(null)
   const [pricing, setPricing] = useState<ServicePricing[]>([])
   const [driverApps, setDriverApps] = useState<DriverApplication[]>([])
@@ -307,6 +312,7 @@ export default function AdminDashboard() {
 
   // تحميل كسول لقوائم السائقين/العملاء/الشكاوى عند فتح تبويبها أول مرة.
   useEffect(() => {
+    if (tab === 'requests') void listPendingVipRequests().then(setVipReqs)
     if (tab === 'drivers' && drivers === null) void listAllDrivers().then(setDrivers)
     if (tab === 'customers' && customers === null)
       void listAdminCustomers().then((c) => setCustomers(c as AdminCustomer[]))
@@ -1001,6 +1007,19 @@ export default function AdminDashboard() {
     setStats((s) => (s ? { ...s, pendingTopups: Math.max(0, s.pendingTopups - 1) } : s))
   }
 
+  // اعتماد/رفض طلب اشتراك VIP (تحويل بنكي).
+  const reviewVip = async (id: string, approve: boolean) => {
+    let note: string | null = null
+    if (!approve) {
+      note = window.prompt('سبب الرفض (اختياري):', '') || null
+    }
+    setBusyId(id)
+    const { error } = approve ? await approveVipRequest(id) : await rejectVipRequest(id, note)
+    setBusyId(null)
+    if (error) return alert(error)
+    setVipReqs((cur) => cur.filter((r) => r.id !== id))
+  }
+
   const saveSettings = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!settings) return
@@ -1470,6 +1489,57 @@ export default function AdminDashboard() {
                       <button
                         onClick={() => review(t.id, false)}
                         disabled={busyId === t.id}
+                        className="btn-outline px-3 py-1.5 text-sm text-danger"
+                      >
+                        رفض
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* طلبات اشتراك VIP (تحويل بنكي) */}
+            <div className="card p-4">
+              <p className="mb-3 font-bold">
+                طلبات اشتراك VIP
+                {vipReqs.length > 0 && (
+                  <span className="mr-2 chip bg-sand-soft text-sand-ink">{vipReqs.length}</span>
+                )}
+              </p>
+              {vipReqs.length === 0 ? (
+                <p className="py-4 text-center text-sm text-ink-muted">لا توجد طلبات معلّقة</p>
+              ) : (
+                <div className="divide-y divide-hairline">
+                  {vipReqs.map((v) => (
+                    <div key={v.id} className="flex items-center gap-3 py-3">
+                      <div className="flex-1">
+                        <p className="font-bold text-royal">
+                          {v.users?.full_name ?? 'سائق'} · {money(v.amount)}
+                        </p>
+                        <p className="text-xs text-ink-muted" dir="ltr">
+                          {v.users?.phone ?? '—'} ·{' '}
+                          {new Date(v.created_at).toLocaleDateString('ar-SD')}
+                        </p>
+                      </div>
+                      {v.proof_url && (
+                        <button
+                          onClick={() => viewProof(v.proof_url!)}
+                          className="text-sm text-info underline"
+                        >
+                          الإثبات
+                        </button>
+                      )}
+                      <button
+                        onClick={() => reviewVip(v.id, true)}
+                        disabled={busyId === v.id}
+                        className="btn-primary px-3 py-1.5 text-sm"
+                      >
+                        اعتماد
+                      </button>
+                      <button
+                        onClick={() => reviewVip(v.id, false)}
+                        disabled={busyId === v.id}
                         className="btn-outline px-3 py-1.5 text-sm text-danger"
                       >
                         رفض

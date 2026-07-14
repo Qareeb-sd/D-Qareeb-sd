@@ -19,6 +19,7 @@ import type {
   RideStatus,
   PaymentMethod,
   PromoCode,
+  VipRequest,
 } from './types'
 import { services as seedServices, type Service, type VehicleArt } from '@/data/services'
 
@@ -1253,6 +1254,60 @@ export async function chargeVipSubscriptions(): Promise<{
   if (error) return { charged: 0, failed: 0, error: error.message }
   const row = Array.isArray(data) ? data[0] : data
   return { charged: row?.charged ?? 0, failed: row?.failed ?? 0 }
+}
+
+// ---------- طلبات اشتراك VIP من السائق ----------
+/** السائق يطلب VIP: دفع من المحفظة (فوري) أو تحويل بنكي بإيصال (اعتماد أدمن). */
+export async function requestVip(
+  method: 'wallet' | 'bank_transfer',
+  proofPath: string | null = null,
+): Promise<{ status?: 'approved' | 'pending'; error?: string }> {
+  if (!isSupabaseConfigured) return { status: method === 'wallet' ? 'approved' : 'pending' }
+  const { data, error } = await supabase.rpc('request_vip', {
+    p_method: method,
+    p_proof_url: proofPath,
+  })
+  if (error) return { error: error.message }
+  return { status: (data as { status?: 'approved' | 'pending' })?.status }
+}
+
+/** أحدث طلب VIP للسائق (لعرض حالته: معلّق/معتمد/مرفوض). */
+export async function getMyVipRequest(driverUserId: string): Promise<VipRequest | null> {
+  if (!isSupabaseConfigured) return null
+  const { data } = await supabase
+    .from('vip_requests')
+    .select('*')
+    .eq('driver_id', driverUserId)
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle()
+  return (data as VipRequest) ?? null
+}
+
+/** طلبات VIP المعلّقة (أدمن) مع اسم/هاتف السائق. */
+export async function listPendingVipRequests(): Promise<VipRequest[]> {
+  if (!isSupabaseConfigured) return []
+  const { data } = await supabase
+    .from('vip_requests')
+    .select('*, users:driver_id(full_name, phone)')
+    .eq('status', 'pending')
+    .order('created_at', { ascending: true })
+  return (data as VipRequest[]) ?? []
+}
+
+export async function approveVipRequest(id: string): Promise<{ error?: string }> {
+  if (!isSupabaseConfigured) return {}
+  const { error } = await supabase.rpc('approve_vip_request', { p_id: id })
+  return error ? { error: error.message } : {}
+}
+
+export async function rejectVipRequest(
+  id: string,
+  note: string | null = null,
+): Promise<{ error?: string }> {
+  if (!isSupabaseConfigured) return {}
+  const { error } = await supabase.rpc('reject_vip_request', { p_id: id, p_note: note })
+  return error ? { error: error.message } : {}
 }
 
 const demoDriverTransactions: Transaction[] = [

@@ -116,6 +116,20 @@ export interface Settings {
 /** تسعيرة نوع مركبة واحد — تُدار من لوحة الأدمن. */
 export type ServiceState = 'available' | 'maintenance' | 'coming_soon' | 'hidden'
 
+/** طلب اشتراك VIP من السائق (دفع من المحفظة أو تحويل بنكي بإيصال). */
+export interface VipRequest {
+  id: string
+  driver_id: string
+  amount: number
+  method: 'wallet' | 'bank_transfer'
+  proof_url: string | null
+  status: 'pending' | 'approved' | 'rejected'
+  note: string | null
+  reviewed_by: string | null
+  created_at: string
+  users?: { full_name: string | null; phone: string } | null
+}
+
 /** كود خصم للعملاء (يُدار من لوحة الأدمن). */
 export interface PromoCode {
   code: string
