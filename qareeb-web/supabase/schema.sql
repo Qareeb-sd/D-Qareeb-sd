@@ -2047,3 +2047,36 @@ begin
   return query select v_c, v_f;
 end $$;
 grant execute on function public.charge_due_vip_subscriptions() to authenticated;
+
+-- ============================================================
+--  قبول الرحلة بشكل ذرّي: يمنع ازدواج الإرسال بين سائقَين.
+--  يقفل الصفّ، يرفض إن كانت مأخوذة/غير متاحة (يعيد false بلا خطأ)،
+--  ويمنع القبول إن كان لدى السائق رحلة جارية. driver_id = auth.uid().
+-- ============================================================
+create or replace function public.accept_ride(p_ride uuid)
+returns boolean language plpgsql security definer set search_path = public as $$
+declare v_status ride_status; v_driver uuid;
+begin
+  select status, driver_id into v_status, v_driver
+    from public.rides where id = p_ride for update;
+  if v_status is null then raise exception 'الرحلة غير موجودة'; end if;
+
+  if exists (
+    select 1 from public.rides
+     where driver_id = auth.uid()
+       and status in ('accepted', 'arrived', 'in_progress')
+  ) then
+    raise exception 'لديك رحلة جارية بالفعل';
+  end if;
+
+  -- أُخذت من سائق آخر أو لم تعد قابلة للقبول.
+  if v_driver is not null or v_status not in ('searching', 'requested') then
+    return false;
+  end if;
+
+  update public.rides
+     set driver_id = auth.uid(), status = 'accepted'
+   where id = p_ride;
+  return true;
+end $$;
+grant execute on function public.accept_ride(uuid) to authenticated;

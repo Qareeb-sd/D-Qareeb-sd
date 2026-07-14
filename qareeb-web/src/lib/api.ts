@@ -1118,16 +1118,17 @@ export async function listAvailableRides(): Promise<Ride[]> {
   return data ?? []
 }
 
-export async function acceptRide(
-  rideId: string,
-  driverUserId: string,
-): Promise<{ error?: string }> {
+/**
+ * قبول الرحلة ذرّياً عبر RPC آمنة.
+ *   • error → فشل حقيقي (شبكة/رحلة جارية).
+ *   • taken → أُخذت من سائق آخر أو لم تعد متاحة (بلا خطأ).
+ */
+export async function acceptRide(rideId: string): Promise<{ error?: string; taken?: boolean }> {
   if (!isSupabaseConfigured) return {}
-  const { error } = await supabase
-    .from('rides')
-    .update({ driver_id: driverUserId, status: 'accepted' })
-    .eq('id', rideId)
-  return error ? { error: error.message } : {}
+  const { data, error } = await supabase.rpc('accept_ride', { p_ride: rideId })
+  if (error) return { error: error.message }
+  if (data === false) return { taken: true }
+  return {}
 }
 
 /** رحلة السائق الجارية (لاسترجاع شاشة الرحلة بعد تحديث الصفحة). */

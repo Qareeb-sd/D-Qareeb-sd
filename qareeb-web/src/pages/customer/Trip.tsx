@@ -60,6 +60,8 @@ export default function Trip() {
   const [routePts, setRoutePts] = useState<google.maps.LatLngLiteral[]>([])
   const [eta, setEta] = useState<{ km: number; min: number } | null>(null)
   const [busy, setBusy] = useState(false)
+  const [confirmCancel, setConfirmCancel] = useState(false)
+  const [cancelErr, setCancelErr] = useState('')
   const notified = useRef(false)
 
   // استرجاع الرحلة الجارية بعد تحديث الصفحة (تُفقد الحالة من الذاكرة).
@@ -166,11 +168,14 @@ export default function Trip() {
 
   const cancel = async () => {
     setBusy(true)
+    setCancelErr('')
     if (rideId) {
       const { error } = await cancelRide(rideId)
       if (error) {
         setBusy(false)
-        return alert(error)
+        setConfirmCancel(false)
+        setCancelErr(error)
+        return
       }
     }
     reset()
@@ -291,11 +296,40 @@ export default function Trip() {
                 إنهاء الرحلة (معاينة)
               </button>
             )}
-            {cancellable && (
-              <button className="w-full text-center text-sm text-danger" onClick={cancel} disabled={busy}>
-                {busy ? '…' : 'إلغاء الرحلة'}
-              </button>
+            {cancelErr && (
+              <p className="text-center text-sm text-danger">{cancelErr}</p>
             )}
+            {cancellable &&
+              (confirmCancel ? (
+                <div className="space-y-2">
+                  <p className="text-center text-sm font-medium text-ink">
+                    هل تريد إلغاء الرحلة فعلاً؟
+                  </p>
+                  <div className="flex gap-2">
+                    <button
+                      className="flex-1 rounded-2xl bg-danger px-4 py-3 text-sm font-bold text-white disabled:opacity-60"
+                      onClick={cancel}
+                      disabled={busy}
+                    >
+                      {busy ? '…' : 'نعم، إلغاء'}
+                    </button>
+                    <button
+                      className="flex-1 rounded-2xl border border-hairline bg-white px-4 py-3 text-sm font-bold text-royal"
+                      onClick={() => setConfirmCancel(false)}
+                      disabled={busy}
+                    >
+                      تراجع
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <button
+                  className="w-full text-center text-sm text-danger"
+                  onClick={() => setConfirmCancel(true)}
+                >
+                  إلغاء الرحلة
+                </button>
+              ))}
           </div>
         </section>
       </div>

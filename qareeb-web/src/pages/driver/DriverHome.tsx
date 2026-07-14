@@ -40,6 +40,7 @@ export default function DriverHome() {
   const [rides, setRides] = useState<Ride[]>([])
   const [busyId, setBusyId] = useState<string | null>(null)
   const [notifOn, setNotifOn] = useState(notificationsGranted())
+  const [acceptMsg, setAcceptMsg] = useState('')
 
   // ملخّص اليوم (رحلات + صافي أرباح) — من محفظة السائق ومعاملاتها.
   const { data: wallet } = useQuery({
@@ -134,9 +135,19 @@ export default function DriverHome() {
 
   const accept = async (ride: Ride) => {
     setBusyId(ride.id)
-    const { error } = await acceptRide(ride.id, userId)
+    setAcceptMsg('')
+    const { error, taken } = await acceptRide(ride.id)
     setBusyId(null)
-    if (error) return alert(error)
+    if (error) {
+      setAcceptMsg(error)
+      return
+    }
+    if (taken) {
+      // أُخذت من سائق آخر — أزِلها من القائمة وأبلغ السائق.
+      setRides((cur) => cur.filter((r) => r.id !== ride.id))
+      setAcceptMsg('اعتُذر — أُخذ هذا الطلب من سائق آخر.')
+      return
+    }
     setActiveRide({ ...ride, driver_id: userId, status: 'accepted' })
     navigate('/driver/trip')
   }
@@ -214,6 +225,12 @@ export default function DriverHome() {
           <span className="flex-1 text-right">تتبّع رحلة (بالرمز)</span>
           <ChevronLeft className="h-5 w-5 text-ink-muted" />
         </button>
+
+        {acceptMsg && (
+          <div className="mb-4 rounded-2xl border border-sand/50 bg-sand-soft/60 px-4 py-3 text-center text-sm font-medium text-sand-ink">
+            {acceptMsg}
+          </div>
+        )}
 
         {!online ? (
           /* غير متصل — دعوة فخمة للانطلاق */
