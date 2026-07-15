@@ -1215,9 +1215,15 @@ export async function setRideStatus(
  * إلغاء الرحلة عبر دالة آمنة:
  *   • العميل → cancelled، • السائق → تعود searching بلا سائق.
  */
-export async function cancelRide(rideId: string): Promise<{ error?: string }> {
+export async function cancelRide(
+  rideId: string,
+  reason?: string | null,
+): Promise<{ error?: string }> {
   if (!isSupabaseConfigured) return {}
-  const { error } = await supabase.rpc('cancel_ride', { p_ride: rideId })
+  const { error } = await supabase.rpc('cancel_ride', {
+    p_ride: rideId,
+    p_reason: reason?.trim() || null,
+  })
   return error ? { error: error.message } : {}
 }
 

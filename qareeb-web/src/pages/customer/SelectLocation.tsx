@@ -9,9 +9,6 @@ import {
   Navigation,
   Keyboard,
   Map as MapIcon,
-  House,
-  Briefcase,
-  Star,
   Route as RouteIcon,
   Clock4,
   Banknote,
@@ -48,6 +45,13 @@ import FareReceipt from '@/components/FareReceipt'
 import { fetchRoute, GOOGLE_MAPS_API_KEY } from '@/lib/maps'
 import { getCurrentPos, loadLastPos } from '@/lib/geo'
 import { reverseGeocode } from '@/lib/geocode'
+import {
+  SAVED_SLOTS,
+  type SavedPlace,
+  type SavedKey,
+  loadPlaces,
+  savePlace,
+} from '@/lib/savedPlaces'
 import { km, mins, money } from '@/lib/format'
 import { KHARTOUM } from '@/theme'
 import type { Settings, ServicePricing, PaymentMethod } from '@/lib/types'
@@ -67,18 +71,6 @@ interface Quote {
   fare: number
   real: boolean
 }
-interface SavedPlace {
-  lat: number
-  lng: number
-  address: string
-}
-
-const SAVED = [
-  { key: 'home', label: 'المنزل', icon: House },
-  { key: 'work', label: 'العمل', icon: Briefcase },
-  { key: 'favorite', label: 'المفضلة', icon: Star },
-]
-
 /**
  * تحديد الرحلة — أسلوب «الواحة الملكية»: خريطة + دبوس مركزي + بطاقة سفلية بمسار
  * عمودي منقّط (انطلاق ← وجهة). نقطة الانطلاق قابلة للتعديل بثلاث طرق، والوجهة
@@ -144,14 +136,7 @@ export default function SelectLocation() {
     setPromo(res)
   }
 
-  const placesKey = `qareeb_places_${profile?.id ?? 'guest'}`
-  const [places, setPlaces] = useState<Record<string, SavedPlace>>(() => {
-    try {
-      return JSON.parse(localStorage.getItem(placesKey) || '{}')
-    } catch {
-      return {}
-    }
-  })
+  const [places, setPlaces] = useState<Record<string, SavedPlace>>(() => loadPlaces(profile?.id))
 
   // معرّف الطلب — يمنع نتيجة محاولة قديمة/بطيئة من الكتابة فوق محاولة أحدث ناجحة
   // (تفادي رسالة خطأ حمراء عالقة رغم نجاح التحديد).
@@ -206,7 +191,7 @@ export default function SelectLocation() {
   }
 
   // الأماكن المحفوظة بصيغة شاشة البحث.
-  const savedEntries: SavedEntry[] = SAVED.map((s) => {
+  const savedEntries: SavedEntry[] = SAVED_SLOTS.map((s) => {
     const p = places[s.key]
     return {
       key: s.key,
@@ -242,7 +227,7 @@ export default function SelectLocation() {
     setPickupMode('type')
   }
 
-  const useSaved = (key: string, label: string) => {
+  const useSaved = (key: SavedKey, label: string) => {
     const p = places[key]
     if (p) {
       setDropoffPos({ lat: p.lat, lng: p.lng })
@@ -252,16 +237,13 @@ export default function SelectLocation() {
       return
     }
     if (dropoffSet || dropoffAddr.trim()) {
-      const next = {
-        ...places,
-        [key]: { lat: dropoffPos.lat, lng: dropoffPos.lng, address: dropoffAddr.trim() || label },
-      }
-      setPlaces(next)
-      try {
-        localStorage.setItem(placesKey, JSON.stringify(next))
-      } catch {
-        /* الحفظ المحلي غير متاح */
-      }
+      setPlaces(
+        savePlace(profile?.id, places, key, {
+          lat: dropoffPos.lat,
+          lng: dropoffPos.lng,
+          address: dropoffAddr.trim() || label,
+        }),
+      )
     } else {
       alert(`اختر وجهة أولاً ثم اضغط «${label}» لحفظها هنا.`)
     }
@@ -269,18 +251,15 @@ export default function SelectLocation() {
 
   // حفظ سريع للوجهة الحالية في خانة (منزل/عمل/مفضّل) — لجعل الحفظ سهلاً.
   const [savedFlash, setSavedFlash] = useState('')
-  const saveCurrentAs = (key: string, label: string) => {
+  const saveCurrentAs = (key: SavedKey, label: string) => {
     if (!dropoffSet && !dropoffAddr.trim()) return
-    const next = {
-      ...places,
-      [key]: { lat: dropoffPos.lat, lng: dropoffPos.lng, address: dropoffAddr.trim() || label },
-    }
-    setPlaces(next)
-    try {
-      localStorage.setItem(placesKey, JSON.stringify(next))
-    } catch {
-      /* الحفظ المحلي غير متاح */
-    }
+    setPlaces(
+      savePlace(profile?.id, places, key, {
+        lat: dropoffPos.lat,
+        lng: dropoffPos.lng,
+        address: dropoffAddr.trim() || label,
+      }),
+    )
     setSavedFlash(key)
     setTimeout(() => setSavedFlash(''), 1800)
   }
@@ -624,7 +603,7 @@ export default function SelectLocation() {
           {/* الأماكن المحفوظة — قبل اختيار الوجهة */}
           {!destChosen && (
             <div className="mt-2 animate-fade-up">
-              {SAVED.map((p, i) => {
+              {SAVED_SLOTS.map((p, i) => {
                 const Icon = p.icon
                 const saved = places[p.key]
                 return (
@@ -654,7 +633,7 @@ export default function SelectLocation() {
           {destChosen && (
             <div className="mt-2 flex items-center gap-2 overflow-x-auto pb-1">
               <span className="shrink-0 text-[11px] font-bold text-ink-muted">احفظ الوجهة:</span>
-              {SAVED.map((p) => {
+              {SAVED_SLOTS.map((p) => {
                 const Icon = p.icon
                 const isSaved = savedFlash === p.key
                 return (
@@ -849,7 +828,7 @@ function PickChip({
   onClick,
 }: {
   on: boolean
-  icon: typeof House
+  icon: LucideIcon
   label: string
   onClick: () => void
 }) {

@@ -17,6 +17,9 @@ import CommuteOrder from '@/pages/customer/CommuteOrder'
 import CommuteJoin from '@/pages/customer/CommuteJoin'
 import Rides from '@/pages/customer/Rides'
 import Profile from '@/pages/customer/Profile'
+import Addresses from '@/pages/customer/Addresses'
+import Help from '@/pages/customer/Help'
+import About from '@/pages/customer/About'
 import TrackRide from '@/pages/shared/TrackRide'
 
 const guard = (el: React.ReactNode) => <ProtectedRoute>{el}</ProtectedRoute>
@@ -47,6 +50,9 @@ export default function CustomerRoutes() {
       <Route path="/commute/:id" element={guard(<CommuteOrder />)} />
       <Route path="/rides" element={guard(<Rides />)} />
       <Route path="/profile" element={guard(<Profile />)} />
+      <Route path="/addresses" element={guard(<Addresses />)} />
+      <Route path="/help" element={guard(<Help />)} />
+      <Route path="/about" element={guard(<About />)} />
 
       <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>

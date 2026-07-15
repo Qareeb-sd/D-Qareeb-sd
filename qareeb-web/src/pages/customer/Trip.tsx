@@ -29,6 +29,7 @@ import {
   type RideDriverInfo,
 } from '@/lib/api'
 import { fetchRoutePath } from '@/lib/maps'
+import CancelReasonSheet from '@/components/CancelReasonSheet'
 import { notify } from '@/lib/notifications'
 import { isSupabaseConfigured } from '@/lib/supabase'
 import { money } from '@/lib/format'
@@ -166,14 +167,13 @@ export default function Trip() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [origin?.lat, origin?.lng, dest?.lat, dest?.lng])
 
-  const cancel = async () => {
+  const cancel = async (reason: string) => {
     setBusy(true)
     setCancelErr('')
     if (rideId) {
-      const { error } = await cancelRide(rideId)
+      const { error } = await cancelRide(rideId, reason)
       if (error) {
         setBusy(false)
-        setConfirmCancel(false)
         setCancelErr(error)
         return
       }
@@ -296,39 +296,29 @@ export default function Trip() {
                 إنهاء الرحلة (معاينة)
               </button>
             )}
-            {cancelErr && (
-              <p className="text-center text-sm text-danger">{cancelErr}</p>
-            )}
             {cancellable &&
               (confirmCancel ? (
-                <div className="space-y-2">
-                  <p className="text-center text-sm font-medium text-ink">
-                    هل تريد إلغاء الرحلة فعلاً؟
-                  </p>
-                  <div className="flex gap-2">
-                    <button
-                      className="flex-1 rounded-2xl bg-danger px-4 py-3 text-sm font-bold text-white disabled:opacity-60"
-                      onClick={cancel}
-                      disabled={busy}
-                    >
-                      {busy ? '…' : 'نعم، إلغاء'}
-                    </button>
-                    <button
-                      className="flex-1 rounded-2xl border border-hairline bg-white px-4 py-3 text-sm font-bold text-royal"
-                      onClick={() => setConfirmCancel(false)}
-                      disabled={busy}
-                    >
-                      تراجع
-                    </button>
-                  </div>
-                </div>
+                <CancelReasonSheet
+                  busy={busy}
+                  error={cancelErr}
+                  onConfirm={cancel}
+                  onDismiss={() => {
+                    setConfirmCancel(false)
+                    setCancelErr('')
+                  }}
+                />
               ) : (
-                <button
-                  className="w-full text-center text-sm text-danger"
-                  onClick={() => setConfirmCancel(true)}
-                >
-                  إلغاء الرحلة
-                </button>
+                <>
+                  {cancelErr && (
+                    <p className="text-center text-sm text-danger">{cancelErr}</p>
+                  )}
+                  <button
+                    className="w-full text-center text-sm text-danger"
+                    onClick={() => setConfirmCancel(true)}
+                  >
+                    إلغاء الرحلة
+                  </button>
+                </>
               ))}
           </div>
         </section>

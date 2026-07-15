@@ -5,6 +5,7 @@ import Logo from '@/components/Logo'
 import { useRide } from '@/store/RideContext'
 import { subscribeToRide } from '@/lib/realtime'
 import { cancelRide, getRide } from '@/lib/api'
+import CancelReasonSheet from '@/components/CancelReasonSheet'
 import { notify } from '@/lib/notifications'
 import { isSupabaseConfigured } from '@/lib/supabase'
 
@@ -26,9 +27,9 @@ export default function FindDriver() {
   const [phase, setPhase] = useState<'searching' | 'timeout' | 'cancelled'>('searching')
   const done = useRef(false)
 
-  const cancel = async () => {
+  const cancel = async (reason: string) => {
     setBusy(true)
-    if (rideId) await cancelRide(rideId)
+    if (rideId) await cancelRide(rideId, reason)
     reset()
     navigate('/home')
   }
@@ -137,24 +138,12 @@ export default function FindDriver() {
         )}
 
         {confirmCancel ? (
-          <div className="w-full max-w-xs space-y-2">
-            <p className="text-sm font-medium text-ink">هل تريد إلغاء الطلب فعلاً؟</p>
-            <div className="flex gap-2">
-              <button
-                className="press-scale flex-1 rounded-2xl bg-danger px-4 py-3 font-bold text-white disabled:opacity-60"
-                onClick={cancel}
-                disabled={busy}
-              >
-                {busy ? '…' : 'نعم، إلغاء'}
-              </button>
-              <button
-                className="press-scale flex-1 rounded-2xl border border-hairline bg-white px-4 py-3 font-bold text-royal"
-                onClick={() => setConfirmCancel(false)}
-                disabled={busy}
-              >
-                متابعة البحث
-              </button>
-            </div>
+          <div className="w-full max-w-xs">
+            <CancelReasonSheet
+              busy={busy}
+              onConfirm={cancel}
+              onDismiss={() => setConfirmCancel(false)}
+            />
           </div>
         ) : (
           <button

@@ -2285,3 +2285,54 @@ alter table public.device_tokens enable row level security;
 drop policy if exists "own device tokens" on public.device_tokens;
 create policy "own device tokens" on public.device_tokens
   for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
+
+-- ============================================================
+--  سبب الإلغاء (اختياري) — يختاره العميل عند إلغاء الرحلة، ويُحفظ للتحليل
+--  (لماذا يُلغي العملاء؟) ويظهر للأدمن في تفاصيل الرحلة.
+-- ============================================================
+alter table public.rides add column if not exists cancel_reason text;
+
+-- نعيد تعريف cancel_ride ليقبل سبباً اختيارياً. نُسقط التوقيع القديم أولاً
+-- (إضافة معامل بقيمة افتراضية تُحدث تعارضاً في الاستدعاء).
+drop function if exists public.cancel_ride(uuid);
+create or replace function public.cancel_ride(p_ride uuid, p_reason text default null)
+returns void language plpgsql security definer set search_path = public as $$
+declare
+  v_customer uuid; v_driver uuid; v_status ride_status;
+  v_fare numeric; v_prepaid boolean; v_cwallet uuid;
+begin
+  select customer_id, driver_id, status, fare, prepaid
+    into v_customer, v_driver, v_status, v_fare, v_prepaid
+    from public.rides where id = p_ride for update;
+
+  if v_customer is null then raise exception 'الرحلة غير موجودة'; end if;
+  if v_status in ('completed', 'cancelled') then raise exception 'لا يمكن إلغاء هذه الرحلة'; end if;
+
+  if auth.uid() = v_customer then
+    if v_status not in ('requested', 'searching', 'accepted', 'arrived') then
+      raise exception 'لا يمكن الإلغاء بعد بدء الرحلة';
+    end if;
+    update public.rides
+       set status = 'cancelled',
+           cancel_reason = nullif(btrim(coalesce(p_reason, '')), '')
+     where id = p_ride;
+    -- استرجاع الدفع المسبق (إن وُجد).
+    if v_prepaid then
+      select id into v_cwallet from public.wallets where user_id = v_customer for update;
+      if v_cwallet is not null then
+        update public.wallets set balance = balance + coalesce(v_fare,0), updated_at = now() where id = v_cwallet;
+        insert into public.transactions (wallet_id, type, amount, ride_id, note)
+          values (v_cwallet, 'topup', coalesce(v_fare,0), p_ride, 'استرجاع دفع رحلة ملغاة');
+      end if;
+      update public.rides set prepaid = false where id = p_ride;
+    end if;
+  elsif auth.uid() = v_driver then
+    if v_status not in ('accepted', 'arrived') then
+      raise exception 'لا يمكن التخلّي عن الرحلة الآن';
+    end if;
+    update public.rides set status = 'searching', driver_id = null where id = p_ride;
+  else
+    raise exception 'غير مصرّح';
+  end if;
+end $$;
+grant execute on function public.cancel_ride(uuid, text) to authenticated;
