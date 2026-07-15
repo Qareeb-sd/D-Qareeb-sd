@@ -1,6 +1,7 @@
-import { Suspense, lazy } from 'react'
+import { Suspense, lazy, useEffect } from 'react'
 import { QueryClientProvider } from '@tanstack/react-query'
 import { queryClient } from '@/lib/queryClient'
+import { ensurePushPermission } from '@/lib/pushNative'
 import { AuthProvider } from '@/store/AuthContext'
 import { RideProvider } from '@/store/RideContext'
 import { DriverProvider } from '@/store/DriverContext'
@@ -32,6 +33,11 @@ function Splash() {
 }
 
 export default function App() {
+  // طلب إذن الإشعارات فور فتح التطبيق (أندرويد) — مضمون بلا انتظار تسجيل الدخول.
+  useEffect(() => {
+    void ensurePushPermission()
+  }, [])
+
   return (
     <ErrorBoundary>
       <QueryClientProvider client={queryClient}>

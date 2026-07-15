@@ -26,6 +26,23 @@ export async function registerPush(userId: string): Promise<boolean> {
   return registerPushForDriver(userId)
 }
 
+/**
+ * يطلب إذن الإشعارات مبكراً عند فتح التطبيق (بلا حاجة لتسجيل الدخول)، فيظهر طلب
+ * السماح على أندرويد 13+ فوراً. حفظ الرمز يتم لاحقاً في registerPush بعد الدخول.
+ */
+export async function ensurePushPermission(): Promise<void> {
+  if (!isNative) return
+  try {
+    const PushNotifications = await plugin()
+    const perm = await PushNotifications.checkPermissions()
+    if (perm.receive === 'prompt' || perm.receive === 'prompt-with-rationale') {
+      await PushNotifications.requestPermissions()
+    }
+  } catch {
+    /* يتحمّل غياب الدعم بهدوء */
+  }
+}
+
 export async function registerPushForDriver(userId: string): Promise<boolean> {
   if (!isNative || !userId) return false
   try {
