@@ -59,7 +59,7 @@ export async function getCurrentPos(): Promise<GeoPos | null> {
       // حاجز الدقّة: نقبل قراءات GPS الحقيقية فقط (≤ 150م) ونرفض موقع الشبكة
       // التقريبي (قد يبعد كيلومترات/بلداناً مع شريحة أجنبية). إن لم نحصل على قراءة
       // دقيقة خلال المهلة → null (فيحدّد المستخدم يدوياً على الخريطة).
-      const ACCEPT_M = 500
+      const ACCEPT_M = 2000
       return await new Promise<GeoPos | null>((resolve) => {
         let best: { lat: number; lng: number; acc: number } | null = null
         let done = false
