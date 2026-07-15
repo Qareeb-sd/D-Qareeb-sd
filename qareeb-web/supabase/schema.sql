@@ -2336,3 +2336,114 @@ begin
   end if;
 end $$;
 grant execute on function public.cancel_ride(uuid, text) to authenticated;
+
+-- ============================================================
+--  سحب أرباح السائق: يطلب السائق تحويل رصيده (نقداً أو تحويلاً بنكياً)،
+--  فيُخصم فوراً من محفظته (حجز) ويُنشأ طلب معلّق، والأدمن يعتمد الدفع أو
+--  يرفض فيُعاد الرصيد. يمنع طلبين معلّقين معاً.
+-- ============================================================
+
+-- قيمة سحب في نوع المعاملة (خصم من المحفظة عند الطلب).
+alter type transaction_type add value if not exists 'withdrawal';
+
+create table if not exists public.withdrawals (
+  id          uuid primary key default gen_random_uuid(),
+  driver_id   uuid not null references public.users(id) on delete cascade,
+  wallet_id   uuid not null references public.wallets(id) on delete cascade,
+  amount      numeric(12,2) not null check (amount > 0),
+  method      text not null default 'cash' check (method in ('cash', 'bank_transfer')),
+  destination text,                                  -- رقم حساب/محفظة/ملاحظة الاستلام
+  status      topup_status not null default 'pending',
+  note        text,
+  reviewed_by uuid references public.users(id) on delete set null,
+  created_at  timestamptz not null default now()
+);
+create index if not exists withdrawals_status_idx on public.withdrawals(status);
+create index if not exists withdrawals_driver_idx on public.withdrawals(driver_id);
+alter table public.withdrawals enable row level security;
+
+-- السائق يقرأ طلباته، والطاقم/الأدمن يقرؤون الكل.
+drop policy if exists "own withdrawals" on public.withdrawals;
+create policy "own withdrawals" on public.withdrawals
+  for select using (auth.uid() = driver_id or public.is_staff_or_admin());
+-- الإدخال حصراً عبر request_withdrawal (SECURITY DEFINER) — لا سياسة إدخال مباشرة.
+drop policy if exists "admin update withdrawal" on public.withdrawals;
+create policy "admin update withdrawal" on public.withdrawals
+  for update using (public.is_staff_or_admin()) with check (public.is_staff_or_admin());
+
+-- طلب سحب: يتحقّق من الرصيد ويخصمه فوراً (حجز) ثم ينشئ طلباً معلّقاً.
+create or replace function public.request_withdrawal(
+  p_amount numeric,
+  p_method text default 'cash',
+  p_destination text default null
+)
+returns jsonb language plpgsql security definer set search_path = public as $$
+declare v_wallet uuid; v_bal numeric; v_uid uuid := auth.uid();
+begin
+  if v_uid is null then raise exception 'غير مصرّح'; end if;
+  if p_method not in ('cash', 'bank_transfer') then raise exception 'طريقة استلام غير صالحة'; end if;
+  if coalesce(p_amount, 0) <= 0 then raise exception 'المبلغ غير صالح'; end if;
+  if not exists (select 1 from public.drivers where user_id = v_uid) then
+    raise exception 'الحساب ليس سائقاً';
+  end if;
+  if exists (select 1 from public.withdrawals where driver_id = v_uid and status = 'pending') then
+    raise exception 'لديك طلب سحب قيد المراجعة بالفعل';
+  end if;
+
+  select id, balance into v_wallet, v_bal from public.wallets where user_id = v_uid for update;
+  if v_wallet is null then raise exception 'المحفظة غير موجودة'; end if;
+  if v_bal < p_amount then raise exception 'رصيد المحفظة غير كافٍ'; end if;
+
+  -- خصم فوري (حجز) — يُعاد عند الرفض.
+  update public.wallets set balance = balance - p_amount, updated_at = now() where id = v_wallet;
+  insert into public.transactions (wallet_id, type, amount, note)
+    values (v_wallet, 'withdrawal', -p_amount, 'طلب سحب أرباح');
+  insert into public.withdrawals (driver_id, wallet_id, amount, method, destination, status)
+    values (v_uid, v_wallet, p_amount, p_method, p_destination, 'pending');
+  perform public.log_action('طلب سحب أرباح', p_amount::text || ' ج.س');
+  return jsonb_build_object('status', 'pending');
+end $$;
+grant execute on function public.request_withdrawal(numeric, text, text) to authenticated;
+
+-- اعتماد سحب (أدمن): المبلغ مخصوم مسبقاً — نُعلّم الطلب مدفوعاً فقط.
+create or replace function public.approve_withdrawal(p_id uuid)
+returns void language plpgsql security definer set search_path = public as $$
+declare v_driver uuid; v_status topup_status;
+begin
+  if not public.has_perm('requests') and not public.has_perm('drivers') then
+    raise exception 'غير مصرّح';
+  end if;
+  select driver_id, status into v_driver, v_status
+    from public.withdrawals where id = p_id for update;
+  if v_driver is null then raise exception 'الطلب غير موجود'; end if;
+  if v_status <> 'pending' then raise exception 'الطلب روجع مسبقاً'; end if;
+  update public.withdrawals set status = 'approved', reviewed_by = auth.uid() where id = p_id;
+  perform public.log_action('اعتماد سحب أرباح',
+    (select full_name from public.users where id = v_driver));
+end $$;
+grant execute on function public.approve_withdrawal(uuid) to authenticated;
+
+-- رفض سحب (أدمن): يعيد المبلغ المحجوز إلى محفظة السائق.
+create or replace function public.reject_withdrawal(p_id uuid, p_note text default null)
+returns void language plpgsql security definer set search_path = public as $$
+declare v_driver uuid; v_wallet uuid; v_amount numeric; v_status topup_status;
+begin
+  if not public.has_perm('requests') and not public.has_perm('drivers') then
+    raise exception 'غير مصرّح';
+  end if;
+  select driver_id, wallet_id, amount, status
+    into v_driver, v_wallet, v_amount, v_status
+    from public.withdrawals where id = p_id for update;
+  if v_driver is null then raise exception 'الطلب غير موجود'; end if;
+  if v_status <> 'pending' then raise exception 'الطلب روجع مسبقاً'; end if;
+
+  update public.withdrawals
+    set status = 'rejected', reviewed_by = auth.uid(), note = coalesce(p_note, note)
+    where id = p_id;
+  -- إعادة المبلغ المحجوز.
+  update public.wallets set balance = balance + v_amount, updated_at = now() where id = v_wallet;
+  insert into public.transactions (wallet_id, type, amount, note)
+    values (v_wallet, 'topup', v_amount, 'استرجاع طلب سحب مرفوض');
+  perform public.log_action('رفض سحب أرباح', p_note);
+end $$;
+grant execute on function public.reject_withdrawal(uuid, text) to authenticated;

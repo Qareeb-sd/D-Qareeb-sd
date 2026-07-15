@@ -42,6 +42,9 @@ import {
   listPendingVipRequests,
   approveVipRequest,
   rejectVipRequest,
+  listPendingWithdrawals,
+  approveWithdrawal,
+  rejectWithdrawal,
   updateSettings,
   getProofUrl,
   listServicePricing,
@@ -110,6 +113,7 @@ import type {
   Settings,
   Topup,
   VipRequest,
+  Withdrawal,
   ServicePricing,
   DriverApplication,
   Ride,
@@ -209,6 +213,7 @@ export default function AdminDashboard() {
   const [finance, setFinance] = useState<FinancialSummary | null>(null)
   const [topups, setTopups] = useState<Topup[]>([])
   const [vipReqs, setVipReqs] = useState<VipRequest[]>([])
+  const [withdrawReqs, setWithdrawReqs] = useState<Withdrawal[]>([])
   const [loadErr, setLoadErr] = useState('')
   const [settings, setSettings] = useState<Settings | null>(null)
   const [pricing, setPricing] = useState<ServicePricing[]>([])
@@ -343,7 +348,10 @@ export default function AdminDashboard() {
 
   // تحميل كسول لقوائم السائقين/العملاء/الشكاوى عند فتح تبويبها أول مرة.
   useEffect(() => {
-    if (tab === 'requests') void listPendingVipRequests().then(setVipReqs)
+    if (tab === 'requests') {
+      void listPendingVipRequests().then(setVipReqs)
+      void listPendingWithdrawals().then(setWithdrawReqs)
+    }
     if (tab === 'drivers' && drivers === null) void listAllDrivers().then(setDrivers)
     if (tab === 'customers' && customers === null)
       void listAdminCustomers().then((c) => setCustomers(c as AdminCustomer[]))
@@ -1078,6 +1086,17 @@ export default function AdminDashboard() {
     setVipReqs((cur) => cur.filter((r) => r.id !== id))
   }
 
+  // اعتماد/رفض طلب سحب أرباح (الرفض يعيد المبلغ لمحفظة السائق).
+  const reviewWithdraw = async (id: string, approve: boolean) => {
+    let note: string | null = null
+    if (!approve) note = window.prompt('سبب الرفض (اختياري):', '') || null
+    setBusyId(id)
+    const { error } = approve ? await approveWithdrawal(id) : await rejectWithdrawal(id, note)
+    setBusyId(null)
+    if (error) return alert(error)
+    setWithdrawReqs((cur) => cur.filter((w) => w.id !== id))
+  }
+
   const saveSettings = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!settings) return
@@ -1606,6 +1625,50 @@ export default function AdminDashboard() {
                       <button
                         onClick={() => reviewVip(v.id, false)}
                         disabled={busyId === v.id}
+                        className="btn-outline px-3 py-1.5 text-sm text-danger"
+                      >
+                        رفض
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* طلبات سحب أرباح السائقين */}
+            <div className="card p-4">
+              <p className="mb-3 font-bold">
+                طلبات سحب الأرباح
+                {withdrawReqs.length > 0 && (
+                  <span className="mr-2 chip bg-sand-soft text-sand-ink">{withdrawReqs.length}</span>
+                )}
+              </p>
+              {withdrawReqs.length === 0 ? (
+                <p className="py-4 text-center text-sm text-ink-muted">لا توجد طلبات معلّقة</p>
+              ) : (
+                <div className="divide-y divide-hairline">
+                  {withdrawReqs.map((w) => (
+                    <div key={w.id} className="flex items-center gap-3 py-3">
+                      <div className="min-w-0 flex-1">
+                        <p className="font-bold text-royal">
+                          {w.users?.full_name ?? 'سائق'} · {money(w.amount)}
+                        </p>
+                        <p className="text-xs text-ink-muted" dir="ltr">
+                          {w.users?.phone ?? '—'} ·{' '}
+                          {w.method === 'cash' ? 'نقدي' : 'تحويل بنكي'}
+                          {w.destination ? ` · ${w.destination}` : ''}
+                        </p>
+                      </div>
+                      <button
+                        onClick={() => reviewWithdraw(w.id, true)}
+                        disabled={busyId === w.id}
+                        className="btn-primary px-3 py-1.5 text-sm"
+                      >
+                        اعتماد الدفع
+                      </button>
+                      <button
+                        onClick={() => reviewWithdraw(w.id, false)}
+                        disabled={busyId === w.id}
                         className="btn-outline px-3 py-1.5 text-sm text-danger"
                       >
                         رفض

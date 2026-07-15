@@ -15,7 +15,12 @@ export type RideStatus =
   | 'completed'
   | 'cancelled'
 
-export type TransactionType = 'topup' | 'ride_payment' | 'ride_earning' | 'commission'
+export type TransactionType =
+  | 'topup'
+  | 'ride_payment'
+  | 'ride_earning'
+  | 'commission'
+  | 'withdrawal'
 
 export type TopupStatus = 'pending' | 'approved' | 'rejected'
 
@@ -126,6 +131,21 @@ export interface VipRequest {
   amount: number
   method: 'wallet' | 'bank_transfer'
   proof_url: string | null
+  status: 'pending' | 'approved' | 'rejected'
+  note: string | null
+  reviewed_by: string | null
+  created_at: string
+  users?: { full_name: string | null; phone: string } | null
+}
+
+/** طلب سحب أرباح من السائق (يُخصم المبلغ فوراً ويُعتمد/يُرفض من الأدمن). */
+export interface Withdrawal {
+  id: string
+  driver_id: string
+  wallet_id: string
+  amount: number
+  method: 'cash' | 'bank_transfer'
+  destination: string | null
   status: 'pending' | 'approved' | 'rejected'
   note: string | null
   reviewed_by: string | null

@@ -20,6 +20,7 @@ import type {
   PaymentMethod,
   PromoCode,
   VipRequest,
+  Withdrawal,
 } from './types'
 import { services as seedServices, type Service, type VehicleArt } from '@/data/services'
 
@@ -1368,6 +1369,60 @@ export async function rejectVipRequest(
 ): Promise<{ error?: string }> {
   if (!isSupabaseConfigured) return {}
   const { error } = await supabase.rpc('reject_vip_request', { p_id: id, p_note: note })
+  return error ? { error: error.message } : {}
+}
+
+// ---------- سحب أرباح السائق ----------
+/** السائق يطلب سحب مبلغ من رصيده — يُخصم فوراً ويُنشأ طلب معلّق للاعتماد. */
+export async function requestWithdrawal(
+  amount: number,
+  method: 'cash' | 'bank_transfer',
+  destination: string | null = null,
+): Promise<{ status?: 'pending'; error?: string }> {
+  if (!isSupabaseConfigured) return { status: 'pending' }
+  const { data, error } = await supabase.rpc('request_withdrawal', {
+    p_amount: amount,
+    p_method: method,
+    p_destination: destination,
+  })
+  if (error) return { error: error.message }
+  return { status: (data as { status?: 'pending' })?.status }
+}
+
+/** طلبات السحب الخاصّة بالسائق (لعرض حالتها). */
+export async function getMyWithdrawals(driverUserId: string): Promise<Withdrawal[]> {
+  if (!isSupabaseConfigured) return []
+  const { data } = await supabase
+    .from('withdrawals')
+    .select('*')
+    .eq('driver_id', driverUserId)
+    .order('created_at', { ascending: false })
+  return (data as Withdrawal[]) ?? []
+}
+
+/** طلبات السحب المعلّقة (أدمن) مع اسم/هاتف السائق. */
+export async function listPendingWithdrawals(): Promise<Withdrawal[]> {
+  if (!isSupabaseConfigured) return []
+  const { data } = await supabase
+    .from('withdrawals')
+    .select('*, users:driver_id(full_name, phone)')
+    .eq('status', 'pending')
+    .order('created_at', { ascending: true })
+  return (data as Withdrawal[]) ?? []
+}
+
+export async function approveWithdrawal(id: string): Promise<{ error?: string }> {
+  if (!isSupabaseConfigured) return {}
+  const { error } = await supabase.rpc('approve_withdrawal', { p_id: id })
+  return error ? { error: error.message } : {}
+}
+
+export async function rejectWithdrawal(
+  id: string,
+  note: string | null = null,
+): Promise<{ error?: string }> {
+  if (!isSupabaseConfigured) return {}
+  const { error } = await supabase.rpc('reject_withdrawal', { p_id: id, p_note: note })
   return error ? { error: error.message } : {}
 }
 
