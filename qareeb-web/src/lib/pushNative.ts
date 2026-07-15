@@ -54,13 +54,14 @@ export async function registerPushForDriver(userId: string): Promise<boolean> {
     }
     if (status !== 'granted') return false
 
-    // مستمعو الأحداث — مرّة واحدة (idempotent عبر removeAllListeners).
+    // مستمعو الأحداث — نُنتظرهم قبل register() حتى لا يُطلق الرمز قبل جهوز
+    // المستمع فيضيع (سبب بقاء device_tokens فارغاً).
     await PushNotifications.removeAllListeners()
-    PushNotifications.addListener('registration', (t: { value: string }) => {
+    await PushNotifications.addListener('registration', (t: { value: string }) => {
       currentToken = t.value
       void saveDeviceToken(userId, t.value)
     })
-    PushNotifications.addListener('registrationError', () => {
+    await PushNotifications.addListener('registrationError', () => {
       /* تجاهل — الاستطلاع الاحتياطي يبقى يعمل */
     })
 

@@ -13,6 +13,7 @@ import { KHARTOUM } from '@/theme'
 import { useRide } from '@/store/RideContext'
 import { useAuth } from '@/store/AuthContext'
 import { useServices } from '@/store/ServicesContext'
+import { registerPush } from '@/lib/pushNative'
 import type { Ride } from '@/lib/types'
 
 /**
@@ -36,6 +37,11 @@ export default function Home() {
   const [prices, setPrices] = useState<Record<string, number>>({})
   const [selected, setSelected] = useState('standard')
   const [activeRide, setActiveRide] = useState<Ride | null>(null)
+
+  // تسجيل رمز الإشعارات عند فتح الرئيسية (محاولة موثوقة بعد جهوز التطبيق).
+  useEffect(() => {
+    if (profile?.id) void registerPush(profile.id)
+  }, [profile?.id])
 
   useEffect(() => {
     // السعر المعروض = الحدّ الأدنى للفترة الحالية (وإلا فتح العداد القديم).

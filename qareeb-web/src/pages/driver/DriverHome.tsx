@@ -24,6 +24,7 @@ import {
   alertNewRide,
 } from '@/lib/notifications'
 import { startCaptainBg, stopCaptainBg } from '@/lib/captainBg'
+import { registerPush } from '@/lib/pushNative'
 import { ensureGeoPermission } from '@/lib/geo'
 import { getService } from '@/data/services'
 import { money } from '@/lib/format'
@@ -72,6 +73,8 @@ export default function DriverHome() {
     // اطلب إذن الإشعارات والموقع مبكراً (يُبثّ موقع السائق للراكب فور القبول).
     void enableNotifications().then(setNotifOn)
     void ensureGeoPermission()
+    // تسجيل رمز FCM (محاولة موثوقة بعد جهوز التطبيق) — لإشعارات الاعتماد والطلبات.
+    if (userId) void registerPush(userId)
   }, [userId])
 
   // أوقف الخدمة الأمامية عند مغادرة الشاشة إن لم يعد متصلاً (احتياط).
