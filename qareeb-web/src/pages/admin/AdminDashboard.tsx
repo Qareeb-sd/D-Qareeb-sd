@@ -45,6 +45,8 @@ import {
   listPendingWithdrawals,
   approveWithdrawal,
   rejectWithdrawal,
+  notifyTopupApproved,
+  notifyWithdrawalApproved,
   updateSettings,
   getProofUrl,
   listServicePricing,
@@ -1079,6 +1081,7 @@ export default function AdminDashboard() {
   const review = async (id: string, approve: boolean) => {
     setBusyId(id)
     const { error } = approve ? await approveTopup(id) : await rejectTopup(id)
+    if (approve && !error) void notifyTopupApproved(id) // إشعار صاحب التعبئة
     setBusyId(null)
     if (error) return alert(error)
     setTopups((cur) => cur.filter((t) => t.id !== id))
@@ -1106,6 +1109,7 @@ export default function AdminDashboard() {
     const { error } = approve ? await approveWithdrawal(id) : await rejectWithdrawal(id, note)
     setBusyId(null)
     if (error) return alert(error)
+    if (approve) void notifyWithdrawalApproved(id) // إشعار السائق باعتماد سحبه
     setWithdrawReqs((cur) => cur.filter((w) => w.id !== id))
   }
 

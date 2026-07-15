@@ -503,6 +503,26 @@ export async function notifyDriversOfRide(rideId: string): Promise<void> {
   }
 }
 
+/** يُشعر صاحب التعبئة باعتمادها (أفضل جهد — يتحمّل غياب الدالة/الرمز). */
+export async function notifyTopupApproved(topupId: string): Promise<void> {
+  if (!isSupabaseConfigured) return
+  try {
+    await supabase.functions.invoke('notify-user-fcm', { body: { topup_id: topupId } })
+  } catch {
+    /* أفضل جهد */
+  }
+}
+
+/** يُشعر السائق باعتماد سحبه (أفضل جهد). */
+export async function notifyWithdrawalApproved(withdrawalId: string): Promise<void> {
+  if (!isSupabaseConfigured) return
+  try {
+    await supabase.functions.invoke('notify-user-fcm', { body: { withdrawal_id: withdrawalId } })
+  } catch {
+    /* أفضل جهد */
+  }
+}
+
 // ---------- الطوارئ (SOS) ----------
 /** يُطلق تنبيه طوارئ (يُخزَّن ويظهر للأدمن لحظياً). يتحمّل غياب الموقع. */
 export async function raiseSos(alert: {

@@ -18,9 +18,14 @@ async function plugin() {
 }
 
 /**
- * يطلب الإذن، يسجّل الجهاز في FCM، ويحفظ الرمز لهذا المستخدم.
- * يُستدعى عند اتصال الكابتن (online) ليصله إشعار الطلبات.
+ * يطلب الإذن، يسجّل الجهاز في FCM، ويحفظ الرمز لهذا المستخدم. يُستدعى عند فتح
+ * التطبيق (عميل/سائق) ليبقى الرمز محفوظاً فتصله إشعارات الاعتماد وغيرها، وعند
+ * اتصال الكابتن ليصله إشعار الطلبات. آمن للاستدعاء المتكرّر (idempotent).
  */
+export async function registerPush(userId: string): Promise<boolean> {
+  return registerPushForDriver(userId)
+}
+
 export async function registerPushForDriver(userId: string): Promise<boolean> {
   if (!isNative || !userId) return false
   try {

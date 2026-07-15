@@ -24,7 +24,6 @@ import {
   alertNewRide,
 } from '@/lib/notifications'
 import { startCaptainBg, stopCaptainBg } from '@/lib/captainBg'
-import { registerPushForDriver, unregisterPush } from '@/lib/pushNative'
 import { ensureGeoPermission } from '@/lib/geo'
 import { getService } from '@/data/services'
 import { money } from '@/lib/format'
@@ -66,11 +65,9 @@ export default function DriverHome() {
       setDriver(d)
       const isOn = d?.is_online ?? false
       setOnline(isOn)
-      // إن كان متصلاً مسبقاً (فتح التطبيق من جديد) شغّل الخدمة الأمامية + سجّل FCM.
-      if (isOn) {
-        void startCaptainBg()
-        void registerPushForDriver(userId)
-      }
+      // إن كان متصلاً مسبقاً (فتح التطبيق من جديد) شغّل الخدمة الأمامية.
+      // (تسجيل FCM يتم عند فتح التطبيق في AuthContext ويبقى محفوظاً.)
+      if (isOn) void startCaptainBg()
     })
     // اطلب إذن الإشعارات والموقع مبكراً (يُبثّ موقع السائق للراكب فور القبول).
     void enableNotifications().then(setNotifOn)
@@ -143,14 +140,10 @@ export default function DriverHome() {
         return
       }
     }
-    // خدمة الخلفية + إشعارات FCM: تعمل أثناء «متصل» فقط، وتتوقف عند «غير متصل».
-    if (next) {
-      void startCaptainBg()
-      void registerPushForDriver(userId)
-    } else {
-      void stopCaptainBg()
-      void unregisterPush()
-    }
+    // الخدمة الأمامية أثناء «متصل» فقط. رمز FCM يبقى محفوظاً (إشعارات الطلبات
+    // تُرسَل للمتصلين فقط عبر الخادم، فلا يصل غير المتصل طلباً رغم بقاء رمزه).
+    if (next) void startCaptainBg()
+    else void stopCaptainBg()
   }
 
   const accept = async (ride: Ride) => {

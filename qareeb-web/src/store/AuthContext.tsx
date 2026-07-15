@@ -7,6 +7,7 @@ import {
 } from 'react'
 import type { Session } from '@supabase/supabase-js'
 import { supabase, isSupabaseConfigured } from '@/lib/supabase'
+import { registerPush, unregisterPush } from '@/lib/pushNative'
 import type { AppUser } from '@/lib/types'
 
 interface AuthValue {
@@ -95,6 +96,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return () => sub.subscription.unsubscribe()
   }, [])
 
+  // تسجيل رمز FCM عند توفّر المستخدم (عميل/سائق) ليبقى محفوظاً فتصله إشعارات
+  // الاعتماد وغيرها حتى والتطبيق مغلق. لا أثر على الويب/الأدمن (يتحمّله بهدوء).
+  useEffect(() => {
+    if (profile?.id) void registerPush(profile.id)
+  }, [profile?.id])
+
   const value: AuthValue = {
     session,
     profile,
@@ -178,6 +185,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     },
 
     async signOut() {
+      await unregisterPush() // أزِل رمز هذا الجهاز حتى لا تصل إشعارات لمستخدم آخر
       if (isSupabaseConfigured) await supabase.auth.signOut()
       setSession(null)
       setProfile(null)

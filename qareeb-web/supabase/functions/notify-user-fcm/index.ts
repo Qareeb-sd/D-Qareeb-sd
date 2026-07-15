@@ -1,0 +1,179 @@
+// إشعار مستخدم محدّد عبر FCM (HTTP v1) — Supabase Edge Function (Deno).
+// يُرسل إشعاراً أصلياً لكل أجهزة مستخدم واحد (device_tokens). يُستخدم لإعلام
+// العميل/السائق عند اعتماد التعبئة أو السحب.
+//
+// الجسم المقبول (أحدها):
+//   { user_id, title, body, data? }   — إرسال مباشر
+//   { topup_id }                      — يستنتج المستخدم والمبلغ ويصيغ الرسالة
+//   { withdrawal_id }                 — كذلك للسحب
+//
+// أسرار مطلوبة (نفس notify-ride-fcm):
+//   FCM_SERVICE_ACCOUNT  — محتوى ملف حساب خدمة Firebase (JSON كاملاً كسلسلة)
+// (SUPABASE_URL و SUPABASE_SERVICE_ROLE_KEY يحقنهما Supabase تلقائياً.)
+
+import { createClient } from 'jsr:@supabase/supabase-js@2'
+
+const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!
+const SERVICE_ROLE = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
+const SERVICE_ACCOUNT_RAW = Deno.env.get('FCM_SERVICE_ACCOUNT') ?? ''
+
+const json = (body: unknown, status = 200) =>
+  new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } })
+
+interface ServiceAccount {
+  client_email: string
+  private_key: string
+  project_id: string
+}
+
+function b64url(bytes: Uint8Array): string {
+  let s = ''
+  for (let i = 0; i < bytes.length; i++) s += String.fromCharCode(bytes[i])
+  return btoa(s).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')
+}
+const strB64url = (s: string) => b64url(new TextEncoder().encode(s))
+
+function pemToDer(pem: string): Uint8Array {
+  const body = pem
+    .replace(/-----BEGIN [^-]+-----/, '')
+    .replace(/-----END [^-]+-----/, '')
+    .replace(/\s+/g, '')
+  const raw = atob(body)
+  const out = new Uint8Array(raw.length)
+  for (let i = 0; i < raw.length; i++) out[i] = raw.charCodeAt(i)
+  return out
+}
+
+async function accessToken(sa: ServiceAccount): Promise<string> {
+  const now = Math.floor(Date.now() / 1000)
+  const header = strB64url(JSON.stringify({ alg: 'RS256', typ: 'JWT' }))
+  const claims = strB64url(
+    JSON.stringify({
+      iss: sa.client_email,
+      scope: 'https://www.googleapis.com/auth/firebase.messaging',
+      aud: 'https://oauth2.googleapis.com/token',
+      iat: now,
+      exp: now + 3600,
+    }),
+  )
+  const input = `${header}.${claims}`
+  const key = await crypto.subtle.importKey(
+    'pkcs8',
+    pemToDer(sa.private_key) as BufferSource,
+    { name: 'RSASSA-PKCS1-v1_5', hash: 'SHA-256' },
+    false,
+    ['sign'],
+  )
+  const sig = new Uint8Array(
+    await crypto.subtle.sign('RSASSA-PKCS1-v1_5', key, new TextEncoder().encode(input)),
+  )
+  const jwt = `${input}.${b64url(sig)}`
+
+  const res = await fetch('https://oauth2.googleapis.com/token', {
+    method: 'POST',
+    headers: { 'content-type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({
+      grant_type: 'urn:ietf:params:oauth:grant-type:jwt-bearer',
+      assertion: jwt,
+    }),
+  })
+  const data = await res.json()
+  if (!data.access_token) throw new Error(`token error: ${JSON.stringify(data)}`)
+  return data.access_token as string
+}
+
+const fmt = (n: number) => `${Math.round(n).toLocaleString('en-US')} ج.س`
+
+Deno.serve(async (req) => {
+  if (req.method !== 'POST') return json({ error: 'method not allowed' }, 405)
+  if (!SERVICE_ACCOUNT_RAW) return json({ error: 'FCM not configured' }, 500)
+
+  let payload: {
+    user_id?: string
+    title?: string
+    body?: string
+    data?: Record<string, string>
+    topup_id?: string
+    withdrawal_id?: string
+  }
+  try {
+    payload = await req.json()
+  } catch {
+    return json({ error: 'bad body' }, 400)
+  }
+
+  const sa = JSON.parse(SERVICE_ACCOUNT_RAW) as ServiceAccount
+  const supabase = createClient(SUPABASE_URL, SERVICE_ROLE)
+
+  let userId = payload.user_id
+  let title = payload.title
+  let body = payload.body
+  const data = payload.data ?? {}
+
+  // اشتقاق المستخدم والرسالة من معرّف التعبئة/السحب.
+  if (payload.topup_id) {
+    const { data: t } = await supabase
+      .from('topups')
+      .select('amount, wallet_id, wallets:wallet_id(user_id)')
+      .eq('id', payload.topup_id)
+      .maybeSingle()
+    const w = t?.wallets as { user_id?: string } | null
+    userId = w?.user_id
+    title = 'تمت الموافقة على التعبئة'
+    body = t ? `أُضيف ${fmt(Number(t.amount))} إلى رصيدك` : 'تمت إضافة رصيدك'
+    data.type = 'topup_approved'
+  } else if (payload.withdrawal_id) {
+    const { data: wd } = await supabase
+      .from('withdrawals')
+      .select('amount, driver_id')
+      .eq('id', payload.withdrawal_id)
+      .maybeSingle()
+    userId = wd?.driver_id
+    title = 'تمت الموافقة على السحب'
+    body = wd ? `تم تحويل ${fmt(Number(wd.amount))} إلى حسابك` : 'تمت الموافقة على طلب سحبك'
+    data.type = 'withdrawal_approved'
+  }
+
+  if (!userId || !title || !body) return json({ error: 'missing user/title/body' }, 400)
+
+  const { data: tokens } = await supabase
+    .from('device_tokens')
+    .select('token')
+    .eq('user_id', userId)
+  const list = (tokens ?? []).map((t) => t.token)
+  if (list.length === 0) return json({ ok: true, sent: 0 })
+
+  const token = await accessToken(sa)
+  const url = `https://fcm.googleapis.com/v1/projects/${sa.project_id}/messages:send`
+
+  let sent = 0
+  const stale: string[] = []
+  await Promise.all(
+    list.map(async (t) => {
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
+        body: JSON.stringify({
+          message: {
+            token: t,
+            notification: { title, body },
+            data,
+            android: {
+              priority: 'HIGH',
+              notification: {
+                sound: 'default',
+                channel_id: 'qareeb_rides',
+                default_vibrate_timings: true,
+              },
+            },
+          },
+        }),
+      })
+      if (res.ok) sent++
+      else if (res.status === 404 || res.status === 400) stale.push(t)
+    }),
+  )
+  if (stale.length) await supabase.from('device_tokens').delete().in('token', stale)
+
+  return json({ ok: true, sent, cleaned: stale.length })
+})
