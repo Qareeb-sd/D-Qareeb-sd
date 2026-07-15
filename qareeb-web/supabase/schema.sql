@@ -2946,3 +2946,59 @@ returns table (
    order by r.created_at desc
    limit p_limit;
 $$;
+
+-- ============================================================
+--  تقرير رحلات الأدمن الكامل (للسلطات): زمن الرحلة + التقييم + الشكوى.
+--  نطبع أزمنة البدء/الاكتمال عبر trigger (دون تعديل دوال الحالة الكبيرة).
+-- ============================================================
+alter table public.rides add column if not exists started_at   timestamptz;
+alter table public.rides add column if not exists completed_at timestamptz;
+
+create or replace function public.stamp_ride_times()
+returns trigger language plpgsql as $$
+begin
+  if new.status = 'in_progress' and old.status is distinct from 'in_progress'
+     and new.started_at is null then
+    new.started_at := now();
+  end if;
+  if new.status = 'completed' and old.status is distinct from 'completed'
+     and new.completed_at is null then
+    new.completed_at := now();
+  end if;
+  return new;
+end $$;
+drop trigger if exists trg_stamp_ride_times on public.rides;
+create trigger trg_stamp_ride_times before update on public.rides
+  for each row execute function public.stamp_ride_times();
+
+-- إعادة تعريف قائمة رحلات الأدمن بأعمدة الزمن والتقييم والشكوى.
+drop function if exists public.admin_list_rides(int);
+create or replace function public.admin_list_rides(p_limit int default 100)
+returns table (
+  id uuid, status ride_status, service_id text, fare numeric, payment_method payment_method,
+  prepaid boolean, created_at timestamptz, started_at timestamptz, completed_at timestamptz,
+  customer_name text, customer_phone text,
+  driver_name text, driver_phone text, plate_number text, vehicle_type text,
+  pickup_address text, dropoff_address text,
+  pickup_lat double precision, pickup_lng double precision,
+  dropoff_lat double precision, dropoff_lng double precision,
+  rating int, complaint text,
+  driver_mismatch boolean, vehicle_mismatch boolean
+) language sql stable security definer set search_path = public as $$
+  select r.id, r.status, r.service_id, r.fare, r.payment_method, r.prepaid,
+         r.created_at, r.started_at, r.completed_at,
+         cu.full_name, cu.phone,
+         du.full_name, du.phone, d.plate_number, d.vehicle_type,
+         r.pickup_address, r.dropoff_address,
+         r.pickup_lat, r.pickup_lng, r.dropoff_lat, r.dropoff_lng,
+         rv.stars, rv.complaint,
+         coalesce(rv.driver_mismatch, false), coalesce(rv.vehicle_mismatch, false)
+    from public.rides r
+    left join public.users cu on cu.id = r.customer_id
+    left join public.users du on du.id = r.driver_id
+    left join public.drivers d on d.user_id = r.driver_id
+    left join public.reviews rv on rv.ride_id = r.id and rv.rater_role = 'customer'
+   where public.is_staff_or_admin()
+   order by r.created_at desc
+   limit p_limit;
+$$;

@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
-import { Bell, BellOff, LifeBuoy, Eye, Star, ChevronLeft, Car, Route, Coins, Power, User } from 'lucide-react'
+import { Bell, BellOff, LifeBuoy, Eye, Star, ChevronLeft, Route, Coins, Power, User } from 'lucide-react'
 import { haversineKm } from '@/lib/pricing'
 import Logo from '@/components/Logo'
 import DriverNav from '@/components/DriverNav'
@@ -270,32 +270,30 @@ export default function DriverHome() {
             </button>
           </div>
         ) : rides.length === 0 ? (
-          /* متصل بانتظار الطلبات — رادار بحث فخم */
-          <div className="flex animate-fade-up flex-col items-center justify-center py-8 text-center">
-            <div className="relative grid h-56 w-56 place-items-center">
-              {/* حلقات ثابتة خافتة */}
-              <span className="absolute h-full w-full rounded-full border border-royal/10" />
-              <span className="absolute h-2/3 w-2/3 rounded-full border border-royal/10" />
-              <span className="absolute h-1/3 w-1/3 rounded-full border border-royal/10" />
-              {/* حلقات متمدّدة */}
-              <span className="absolute h-full w-full rounded-full bg-royal/10 animate-radar-ping" />
-              <span className="absolute h-full w-full rounded-full bg-royal/10 animate-radar-ping" style={{ animationDelay: '0.85s' }} />
-              <span className="absolute h-full w-full rounded-full bg-royal/10 animate-radar-ping" style={{ animationDelay: '1.7s' }} />
-              {/* مسح دوّار */}
+          /* متصل بانتظار الطلبات — حالة هادئة بهوية قريب */
+          <div className="flex animate-fade-up flex-col items-center justify-center py-12 text-center">
+            <div className="relative grid h-44 w-44 place-items-center">
+              <span className="absolute h-full w-full rounded-full bg-green/5" />
               <span
-                className="animate-radar-sweep absolute h-full w-full rounded-full"
-                style={{
-                  background:
-                    'conic-gradient(from 0deg, transparent 0deg, rgba(196,162,101,0.35) 55deg, transparent 90deg)',
-                }}
+                className="absolute h-full w-full rounded-full bg-green/10"
+                style={{ animation: 'ping 2.8s cubic-bezier(0,0,0.2,1) infinite' }}
               />
-              {/* المركبة في المركز */}
-              <span className="relative grid h-16 w-16 place-items-center rounded-full bg-royal text-white shadow-float ring-4 ring-white">
-                <Car className="h-7 w-7" strokeWidth={2} />
+              <span
+                className="absolute h-2/3 w-2/3 rounded-full bg-green/10"
+                style={{ animation: 'ping 2.8s cubic-bezier(0,0,0.2,1) infinite', animationDelay: '1.4s' }}
+              />
+              <span className="relative grid h-24 w-24 place-items-center rounded-3xl bg-white shadow-float ring-1 ring-green/15">
+                <Logo variant="driver" size={56} rounded={16} />
               </span>
             </div>
-            <p className="mt-6 text-lg font-extrabold text-royal">نبحث لك عن أقرب راكب…</p>
-            <p className="mt-1 text-sm text-ink-soft">ابقَ متصلاً — سننبّهك فور وصول طلب.</p>
+            <span className="mt-7 inline-flex items-center gap-2 rounded-full bg-green-soft px-4 py-1.5 text-sm font-extrabold text-green">
+              <span className="h-2 w-2 animate-pulse rounded-full bg-green" />
+              أنت متصل الآن
+            </span>
+            <p className="mt-3 text-base font-bold text-royal">في انتظار طلبات الركّاب</p>
+            <p className="mt-1 text-sm text-ink-soft">
+              اترك التطبيق يعمل — سيصلك إشعار فور وصول طلب قريب.
+            </p>
           </div>
         ) : (
           <div className="space-y-3">

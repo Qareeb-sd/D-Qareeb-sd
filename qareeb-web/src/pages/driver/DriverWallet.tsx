@@ -240,6 +240,7 @@ function WithdrawStatus({ status }: { status: 'pending' | 'approved' | 'rejected
 /** سحب بنكي: مبلغ + رقم حساب/محفظة — طلب يعتمده الأدمن. */
 function BankWithdrawForm({ max, onDone }: { max: number; onDone: () => void }) {
   const [amount, setAmount] = useState('')
+  const [bankName, setBankName] = useState('')
   const [accountName, setAccountName] = useState('')
   const [accountNumber, setAccountNumber] = useState('')
   const [busy, setBusy] = useState(false)
@@ -250,11 +251,12 @@ function BankWithdrawForm({ max, onDone }: { max: number; onDone: () => void }) 
     setErr('')
     if (!value || value <= 0) return setErr('أدخل مبلغاً صحيحاً')
     if (value > max) return setErr('المبلغ أكبر من المتاح')
+    if (!bankName.trim()) return setErr('أدخل اسم البنك')
     if (!accountName.trim()) return setErr('أدخل اسم صاحب الحساب')
     if (!accountNumber.trim()) return setErr('أدخل رقم الحساب/المحفظة')
     setBusy(true)
-    // نضمّن اسم صاحب الحساب مع الرقم ليراهما الأدمن عند التحويل.
-    const destination = `${accountName.trim()} — ${accountNumber.trim()}`
+    // نضمّن البنك واسم صاحب الحساب مع الرقم ليراها الأدمن عند التحويل.
+    const destination = `${bankName.trim()} — ${accountName.trim()} — ${accountNumber.trim()}`
     const { error } = await requestWithdrawal(value, destination)
     setBusy(false)
     if (error) return setErr(error)
@@ -275,6 +277,12 @@ function BankWithdrawForm({ max, onDone }: { max: number; onDone: () => void }) 
           onChange={(e) => setAmount(e.target.value.replace(/[^\d]/g, ''))}
         />
       </div>
+      <input
+        className="field"
+        placeholder="اسم البنك"
+        value={bankName}
+        onChange={(e) => setBankName(e.target.value)}
+      />
       <input
         className="field"
         placeholder="اسم صاحب الحساب"

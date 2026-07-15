@@ -200,6 +200,18 @@ const permLabels: { id: StaffPerm; label: string; desc: string }[] = [
   { id: 'settings', label: 'الإعدادات', desc: 'التسعير والعمولة والحساب البنكي' },
 ]
 
+/** مدّة الرحلة من بدئها (أو إنشائها) حتى اكتمالها — للتقرير. */
+function rideDuration(r: AdminRideRow): string | null {
+  if (!r.completed_at) return null
+  const end = new Date(r.completed_at).getTime()
+  const start = new Date(r.started_at ?? r.created_at).getTime()
+  const mins = Math.max(0, Math.round((end - start) / 60000))
+  if (mins < 60) return `${mins} دقيقة`
+  const h = Math.floor(mins / 60)
+  const m = mins % 60
+  return m ? `${h} س ${m} د` : `${h} س`
+}
+
 /**
  * لوحة الأدمن — أقسام مستقلة (تبويبات): نظرة عامة + الطلبات (تعبئات/سائقون)
  * + السائقون + الرحلات + الإعدادات والتسعير. الأمان مفروض عبر RLS ودوال Postgres.
@@ -2165,7 +2177,7 @@ export default function AdminDashboard() {
                         )}
                       </div>
 
-                      {/* الدفع + التاريخ */}
+                      {/* الدفع + التاريخ + الزمن + التقييم */}
                       <div className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-ink-muted">
                         <span className="font-bold text-ink-soft">
                           {payAr[r.payment_method] ?? r.payment_method}
@@ -2173,7 +2185,27 @@ export default function AdminDashboard() {
                         </span>
                         <span>·</span>
                         <span>{new Date(r.created_at).toLocaleString('ar-SD')}</span>
+                        {rideDuration(r) && (
+                          <>
+                            <span>·</span>
+                            <span>مدّة الرحلة: {rideDuration(r)}</span>
+                          </>
+                        )}
+                        {r.rating != null && (
+                          <>
+                            <span>·</span>
+                            <span className="font-bold text-sand-ink">
+                              {'★'.repeat(r.rating)}
+                              {'☆'.repeat(5 - r.rating)}
+                            </span>
+                          </>
+                        )}
                       </div>
+                      {r.complaint && (
+                        <p className="mt-1.5 rounded-xl bg-danger/10 px-2.5 py-1.5 text-xs font-medium text-danger">
+                          شكوى العميل: {r.complaint}
+                        </p>
+                      )}
                     </div>
                   )
                 })}

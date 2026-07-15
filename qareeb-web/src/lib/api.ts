@@ -331,6 +331,10 @@ export interface AdminRideRow {
   payment_method: PaymentMethod
   prepaid: boolean
   created_at: string
+  started_at: string | null
+  completed_at: string | null
+  rating: number | null
+  complaint: string | null
   customer_name: string | null
   customer_phone: string | null
   driver_name: string | null
