@@ -15,6 +15,7 @@ import {
   createTopup,
   uploadTopupProof,
 } from '@/lib/api'
+import ReceiptUpload from '@/components/ReceiptUpload'
 import { money } from '@/lib/format'
 import type { Settings } from '@/lib/types'
 
@@ -239,7 +240,8 @@ function WithdrawStatus({ status }: { status: 'pending' | 'approved' | 'rejected
 /** سحب بنكي: مبلغ + رقم حساب/محفظة — طلب يعتمده الأدمن. */
 function BankWithdrawForm({ max, onDone }: { max: number; onDone: () => void }) {
   const [amount, setAmount] = useState('')
-  const [destination, setDestination] = useState('')
+  const [accountName, setAccountName] = useState('')
+  const [accountNumber, setAccountNumber] = useState('')
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState('')
 
@@ -248,9 +250,12 @@ function BankWithdrawForm({ max, onDone }: { max: number; onDone: () => void }) 
     setErr('')
     if (!value || value <= 0) return setErr('أدخل مبلغاً صحيحاً')
     if (value > max) return setErr('المبلغ أكبر من المتاح')
-    if (!destination.trim()) return setErr('أدخل رقم الحساب/المحفظة لاستلام التحويل')
+    if (!accountName.trim()) return setErr('أدخل اسم صاحب الحساب')
+    if (!accountNumber.trim()) return setErr('أدخل رقم الحساب/المحفظة')
     setBusy(true)
-    const { error } = await requestWithdrawal(value, destination.trim())
+    // نضمّن اسم صاحب الحساب مع الرقم ليراهما الأدمن عند التحويل.
+    const destination = `${accountName.trim()} — ${accountNumber.trim()}`
+    const { error } = await requestWithdrawal(value, destination)
     setBusy(false)
     if (error) return setErr(error)
     onDone()
@@ -271,11 +276,17 @@ function BankWithdrawForm({ max, onDone }: { max: number; onDone: () => void }) 
         />
       </div>
       <input
+        className="field"
+        placeholder="اسم صاحب الحساب"
+        value={accountName}
+        onChange={(e) => setAccountName(e.target.value)}
+      />
+      <input
         className="field text-left"
         dir="ltr"
         placeholder="رقم الحساب أو المحفظة"
-        value={destination}
-        onChange={(e) => setDestination(e.target.value)}
+        value={accountNumber}
+        onChange={(e) => setAccountNumber(e.target.value)}
       />
       {err && <p className="text-sm text-danger">{err}</p>}
       <button
@@ -416,12 +427,7 @@ function TopupForm({
           </div>
           <div>
             <label className="mb-1 block text-xs text-ink-muted">إثبات التحويل</label>
-            <input
-              type="file"
-              accept="image/*"
-              className="field"
-              onChange={(e) => setProof(e.target.files?.[0] ?? null)}
-            />
+            <ReceiptUpload value={proof} onChange={setProof} />
           </div>
           {err && <p className="text-sm text-danger">{err}</p>}
           <button

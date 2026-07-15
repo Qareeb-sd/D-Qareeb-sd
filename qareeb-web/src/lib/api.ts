@@ -339,6 +339,10 @@ export interface AdminRideRow {
   vehicle_type: string | null
   pickup_address: string | null
   dropoff_address: string | null
+  pickup_lat: number | null
+  pickup_lng: number | null
+  dropoff_lat: number | null
+  dropoff_lng: number | null
   driver_mismatch: boolean
   vehicle_mismatch: boolean
 }

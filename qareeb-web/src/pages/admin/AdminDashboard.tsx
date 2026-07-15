@@ -2139,10 +2139,31 @@ export default function AdminDashboard() {
                         </div>
                       </div>
 
-                      {/* المسار */}
-                      <p className="mt-2 text-xs text-ink-muted">
-                        {r.pickup_address ?? '—'} ← {r.dropoff_address ?? '—'}
-                      </p>
+                      {/* المسار (للسلطات): عناوين + رابط الخريطة بالإحداثيات */}
+                      <div className="mt-2 rounded-xl border border-hairline bg-ivory/60 p-2.5 text-xs">
+                        <p className="text-ink-soft">
+                          <span className="font-bold text-green">الانطلاق:</span>{' '}
+                          {r.pickup_address ?? (r.pickup_lat != null ? `${r.pickup_lat.toFixed(5)}, ${r.pickup_lng?.toFixed(5)}` : '—')}
+                        </p>
+                        <p className="mt-0.5 text-ink-soft">
+                          <span className="font-bold text-danger">الوصول:</span>{' '}
+                          {r.dropoff_address ?? (r.dropoff_lat != null ? `${r.dropoff_lat.toFixed(5)}, ${r.dropoff_lng?.toFixed(5)}` : 'مفتوح')}
+                        </p>
+                        {r.pickup_lat != null && (
+                          <a
+                            href={
+                              r.dropoff_lat != null
+                                ? `https://www.google.com/maps/dir/?api=1&origin=${r.pickup_lat},${r.pickup_lng}&destination=${r.dropoff_lat},${r.dropoff_lng}`
+                                : `https://www.google.com/maps/search/?api=1&query=${r.pickup_lat},${r.pickup_lng}`
+                            }
+                            target="_blank"
+                            rel="noreferrer"
+                            className="mt-1.5 inline-flex items-center gap-1 font-bold text-info underline"
+                          >
+                            عرض المسار على الخريطة ↗
+                          </a>
+                        )}
+                      </div>
 
                       {/* الدفع + التاريخ */}
                       <div className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-ink-muted">

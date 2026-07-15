@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import BottomNav from '@/components/BottomNav'
 import Logo from '@/components/Logo'
+import ReceiptUpload from '@/components/ReceiptUpload'
 import { money } from '@/lib/format'
 import { useAuth } from '@/store/AuthContext'
 import {
@@ -124,12 +125,7 @@ export default function Wallet() {
                 </div>
                 <div>
                   <label className="label">إثبات التحويل</label>
-                  <input
-                    type="file"
-                    accept="image/*"
-                    className="field"
-                    onChange={(e) => setProof(e.target.files?.[0] ?? null)}
-                  />
+                  <ReceiptUpload value={proof} onChange={setProof} />
                 </div>
                 {error && <p className="text-sm text-danger">{error}</p>}
                 <button className="btn-gold w-full" type="submit" disabled={submitting}>
