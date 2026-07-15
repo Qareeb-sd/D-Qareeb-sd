@@ -114,11 +114,17 @@ Deno.serve(async (req) => {
   if (payload.topup_id) {
     const { data: t } = await supabase
       .from('topups')
-      .select('amount, wallet_id, wallets:wallet_id(user_id)')
+      .select('amount, wallet_id')
       .eq('id', payload.topup_id)
       .maybeSingle()
-    const w = t?.wallets as { user_id?: string } | null
-    userId = w?.user_id
+    if (t?.wallet_id) {
+      const { data: w } = await supabase
+        .from('wallets')
+        .select('user_id')
+        .eq('id', t.wallet_id)
+        .maybeSingle()
+      userId = w?.user_id
+    }
     title = 'تمت الموافقة على التعبئة'
     body = t ? `أُضيف ${fmt(Number(t.amount))} إلى رصيدك` : 'تمت إضافة رصيدك'
     data.type = 'topup_approved'

@@ -25,18 +25,23 @@ export default function DriverWallet() {
   const userId = profile?.id ?? 'demo-user'
   const qc = useQueryClient()
 
+  // إعادة جلب دورية (وعند العودة للتطبيق) ليظهر الرصيد فور اعتماد الأدمن.
+  const live = { refetchInterval: 15000, refetchOnWindowFocus: true as const }
   const { data: wallet, isLoading: walletLoading } = useQuery({
     queryKey: ['driver-wallet', userId],
     queryFn: () => getWallet(userId),
+    ...live,
   })
   const { data: txs = [], isLoading: txLoading } = useQuery({
     queryKey: ['driver-transactions', wallet?.id],
     queryFn: () => listDriverTransactions(wallet!.id),
     enabled: Boolean(wallet?.id),
+    ...live,
   })
   const { data: withdrawals = [] } = useQuery({
     queryKey: ['driver-withdrawals', userId],
     queryFn: () => getMyWithdrawals(userId),
+    ...live,
   })
   const { data: stats } = useQuery({
     queryKey: ['driver-ride-stats', userId],

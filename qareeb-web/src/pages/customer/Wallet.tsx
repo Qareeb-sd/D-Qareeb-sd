@@ -20,15 +20,19 @@ export default function Wallet() {
   const qc = useQueryClient()
 
   // قراءات عبر react-query — إعادة محاولة تلقائية وتخزين مؤقت (يناسب الشبكة الضعيفة).
+  // إعادة جلب دورية (وعند العودة للتطبيق) ليظهر الرصيد فور اعتماد الأدمن.
+  const live = { refetchInterval: 15000, refetchOnWindowFocus: true as const }
   const { data: wallet, isLoading: walletLoading } = useQuery({
     queryKey: ['wallet', userId],
     queryFn: () => getWallet(userId),
+    ...live,
   })
   const { data: settings } = useQuery({ queryKey: ['settings'], queryFn: getSettings })
   const { data: txs = [], isLoading: txLoading } = useQuery({
     queryKey: ['transactions', wallet?.id],
     queryFn: () => listTransactions(wallet!.id),
     enabled: Boolean(wallet?.id),
+    ...live,
   })
   const loading = walletLoading || (Boolean(wallet) && txLoading)
 
