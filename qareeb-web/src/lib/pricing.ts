@@ -87,6 +87,40 @@ export function computeFare(km: number, min: number, rate: PeriodRate): number {
   return Math.round(floored / 100) * 100
 }
 
+/** تفصيل الأجرة لإيصال مفصّل (طلب المشوار + المسافة + الوقت + الحد الأدنى + الخصم). */
+export interface FareParts {
+  base: number // طلب المشوار
+  distance: number // مقابل المسافة (per_km × كم)
+  time: number // مقابل الوقت (per_min × دقيقة)
+  minApplied: boolean // هل طُبِّق الحد الأدنى؟
+  gross: number // الإجمالي قبل الخصم (مقرّب لأقرب 100)
+  discount: number // قيمة الخصم
+  total: number // الإجمالي النهائي
+}
+
+export function fareBreakdown(
+  km: number,
+  min: number,
+  rate: PeriodRate,
+  discount = 0,
+): FareParts {
+  const base = Math.round(rate.base_fare)
+  const distance = Math.round(rate.per_km * Math.max(0, km))
+  const time = Math.round(rate.per_min * Math.max(0, min))
+  const raw = rate.base_fare + rate.per_km * Math.max(0, km) + rate.per_min * Math.max(0, min)
+  const gross = computeFare(km, min, rate)
+  const d = Math.max(0, Math.round(discount))
+  return {
+    base,
+    distance,
+    time,
+    minApplied: raw < rate.min_fare,
+    gross,
+    discount: d,
+    total: Math.max(0, gross - d),
+  }
+}
+
 /** مسافة بالكيلومتر بين نقطتين (Haversine). */
 export function haversineKm(
   a: google.maps.LatLngLiteral,

@@ -36,7 +36,15 @@ import {
   listServicePeriods,
   type PromoResult,
 } from '@/lib/api'
-import { estimateFare, estimateRoute, computeFare, currentPeriod, type PeriodRate } from '@/lib/pricing'
+import {
+  estimateFare,
+  estimateRoute,
+  computeFare,
+  currentPeriod,
+  fareBreakdown,
+  type PeriodRate,
+} from '@/lib/pricing'
+import FareReceipt from '@/components/FareReceipt'
 import { fetchRoute, GOOGLE_MAPS_API_KEY } from '@/lib/maps'
 import { getCurrentPos, loadLastPos } from '@/lib/geo'
 import { reverseGeocode } from '@/lib/geocode'
@@ -116,6 +124,17 @@ export default function SelectLocation() {
   // السعر الفعّال بعد الخصم (إن طُبّق كود صالح).
   const baseFare = quote?.fare ?? 0
   const effectiveFare = promo?.valid ? promo.final : baseFare
+  const [showFareDetails, setShowFareDetails] = useState(false)
+  // تفصيل الأجرة للإيصال (يتوفّر مع تسعير الفترات).
+  const breakdown =
+    periodRate && quote
+      ? fareBreakdown(
+          quote.distanceKm,
+          quote.durationMin,
+          periodRate,
+          promo?.valid ? promo.discount : 0,
+        )
+      : null
 
   const applyPromo = async () => {
     if (!promoCode.trim() || !quote) return
@@ -679,8 +698,33 @@ export default function SelectLocation() {
                 <p className="text-[10px] text-ink-muted">
                   السعر {!quote.real && <span className="text-ink-muted/70">تقديري</span>}
                 </p>
-                <p className="text-[13px] font-bold text-sand-ink">{money(quote.fare)}</p>
+                <p className="text-[13px] font-bold text-sand-ink">{money(effectiveFare)}</p>
               </div>
+            </div>
+          )}
+
+          {/* تفصيل الأجرة — قابل للطيّ */}
+          {quote && destChosen && breakdown && (
+            <div className="mt-2">
+              <button
+                onClick={() => setShowFareDetails((v) => !v)}
+                className="press-scale flex w-full items-center justify-center gap-1 text-[12px] font-bold text-sand-ink"
+              >
+                {showFareDetails ? 'إخفاء تفاصيل السعر' : 'عرض تفاصيل السعر'}
+                <ChevronRight
+                  className={`h-3.5 w-3.5 transition-transform ${showFareDetails ? '-rotate-90' : 'rotate-90'}`}
+                />
+              </button>
+              {showFareDetails && (
+                <div className="mt-2 animate-fade-up">
+                  <FareReceipt
+                    b={breakdown}
+                    km={quote.distanceKm}
+                    min={quote.durationMin}
+                    estimate={!quote.real}
+                  />
+                </div>
+              )}
             </div>
           )}
 
