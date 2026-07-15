@@ -36,6 +36,10 @@ export async function getCurrentPos(): Promise<GeoPos | null> {
       // الدقّة أولاً: نراقب بدقّة عالية ونحتفظ بأفضل قراءة (أدقّها)، ونتوقّف مبكراً
       // متى بلغت دقّة جيّدة (≤ 40م) وإلا نُعيد الأفضل بعد مهلة قصوى. هذا يتجنّب
       // موقع الشبكة/المُخزَّن الخاطئ الذي قد يبعد كيلومترات.
+      // حاجز الدقّة: نقبل قراءات GPS الحقيقية فقط (≤ 150م) ونرفض موقع الشبكة
+      // التقريبي (قد يبعد كيلومترات/بلداناً مع شريحة أجنبية). إن لم نحصل على قراءة
+      // دقيقة خلال المهلة → null (فيحدّد المستخدم يدوياً على الخريطة).
+      const ACCEPT_M = 150
       return await new Promise<GeoPos | null>((resolve) => {
         let best: { lat: number; lng: number; acc: number } | null = null
         let done = false
@@ -45,7 +49,7 @@ export async function getCurrentPos(): Promise<GeoPos | null> {
           done = true
           clearTimeout(timer)
           if (watchId) void Geolocation.clearWatch({ id: watchId })
-          resolve(best ? { lat: best.lat, lng: best.lng } : null)
+          resolve(best && best.acc <= ACCEPT_M ? { lat: best.lat, lng: best.lng } : null)
         }
         const timer = setTimeout(finish, 15000)
         void Geolocation.watchPosition({ enableHighAccuracy: true, timeout: 15000 }, (p) => {
@@ -54,7 +58,7 @@ export async function getCurrentPos(): Promise<GeoPos | null> {
           if (!best || acc < best.acc) {
             best = { lat: p.coords.latitude, lng: p.coords.longitude, acc }
           }
-          if (acc <= 40) finish() // دقّة جيّدة كفاية — توقّف مبكراً
+          if (acc <= 40) finish() // دقّة ممتازة — توقّف مبكراً
         }).then((id) => {
           watchId = id
           if (done) void Geolocation.clearWatch({ id })
