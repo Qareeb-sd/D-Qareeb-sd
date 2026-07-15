@@ -12,6 +12,26 @@ export interface GeoPos {
 
 const isNative = Capacitor.isNativePlatform()
 
+// آخر موقع ناجح — يُحفظ محلياً ليصبح المركز الافتراضي (بدل الخرطوم) في المرّة
+// التالية، فلا يعود التطبيق «للسودان» بعد أوّل تحديد صحيح.
+const LAST_POS_KEY = 'qareeb_last_pos'
+export function saveLastPos(p: GeoPos): void {
+  try {
+    localStorage.setItem(LAST_POS_KEY, JSON.stringify(p))
+  } catch {
+    /* التخزين المحلي غير متاح */
+  }
+}
+export function loadLastPos(): GeoPos | null {
+  try {
+    const s = localStorage.getItem(LAST_POS_KEY)
+    const p = s ? (JSON.parse(s) as GeoPos) : null
+    return p && typeof p.lat === 'number' && typeof p.lng === 'number' ? p : null
+  } catch {
+    return null
+  }
+}
+
 /** يطلب إذن الموقع مبكراً (بلا جلب موقع) — لتجهيزه قبل بدء الرحلة. */
 export async function ensureGeoPermission(): Promise<void> {
   if (!isNative) return
@@ -49,7 +69,9 @@ export async function getCurrentPos(): Promise<GeoPos | null> {
           done = true
           clearTimeout(timer)
           if (watchId) void Geolocation.clearWatch({ id: watchId })
-          resolve(best && best.acc <= ACCEPT_M ? { lat: best.lat, lng: best.lng } : null)
+          const result = best && best.acc <= ACCEPT_M ? { lat: best.lat, lng: best.lng } : null
+          if (result) saveLastPos(result)
+          resolve(result)
         }
         const timer = setTimeout(finish, 15000)
         void Geolocation.watchPosition({ enableHighAccuracy: true, timeout: 15000 }, (p) => {
@@ -72,7 +94,11 @@ export async function getCurrentPos(): Promise<GeoPos | null> {
     if (!('geolocation' in navigator)) return resolve(null)
     // دقّة عالية لموقع صحيح (بلا موقع مُخزَّن قديم).
     navigator.geolocation.getCurrentPosition(
-      (p) => resolve({ lat: p.coords.latitude, lng: p.coords.longitude }),
+      (p) => {
+        const r = { lat: p.coords.latitude, lng: p.coords.longitude }
+        saveLastPos(r)
+        resolve(r)
+      },
       () => resolve(null),
       { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 },
     )

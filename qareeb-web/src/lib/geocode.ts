@@ -18,13 +18,27 @@ function shortAddress(full: string): string {
   return trimmed.slice(0, 2).join('، ') || parts.slice(0, 2).join('، ') || full
 }
 
+// نمط Plus Code (مثل GH36+XGP) — نتجنّبه لصالح اسم شارع/حي.
+const PLUS_CODE = /^[A-Z0-9]{4,}\+[A-Z0-9]+/
+
 export async function reverseGeocode(pos: google.maps.LatLngLiteral): Promise<string | null> {
   try {
     const maps = await loadGoogleMaps()
     if (!geocoder) geocoder = new maps.Geocoder()
     const res = await geocoder.geocode({ location: pos })
-    const first = res.results?.[0]
-    return first ? shortAddress(first.formatted_address) : null
+    const results = res.results ?? []
+    if (!results.length) return null
+    // نفضّل نتيجة وصفية (شارع/حي) وليست رمز Plus Code.
+    const descriptive = ['route', 'street_address', 'neighborhood', 'sublocality', 'sublocality_level_1', 'premise']
+    const preferred =
+      results.find(
+        (r) =>
+          !PLUS_CODE.test(r.formatted_address) &&
+          r.types?.some((t) => descriptive.includes(t)),
+      ) ??
+      results.find((r) => !PLUS_CODE.test(r.formatted_address)) ??
+      results[0]
+    return shortAddress(preferred.formatted_address)
   } catch {
     return null
   }

@@ -38,7 +38,7 @@ import {
 } from '@/lib/api'
 import { estimateFare, estimateRoute, computeFare, currentPeriod, type PeriodRate } from '@/lib/pricing'
 import { fetchRoute, GOOGLE_MAPS_API_KEY } from '@/lib/maps'
-import { getCurrentPos } from '@/lib/geo'
+import { getCurrentPos, loadLastPos } from '@/lib/geo'
 import { reverseGeocode } from '@/lib/geocode'
 import { km, mins, money } from '@/lib/format'
 import { KHARTOUM } from '@/theme'
@@ -88,10 +88,12 @@ export default function SelectLocation() {
   const [pickupMode, setPickupMode] = useState<PickupMode>('current')
   const [active, setActive] = useState<Field>('dropoff')
   const [searching, setSearching] = useState<Field | null>(null)
-  const [pickupPos, setPickupPos] = useState<google.maps.LatLngLiteral>(KHARTOUM)
+  // المركز الافتراضي = آخر موقع ناجح (إن وُجد) بدل الخرطوم — فلا يعود «للسودان».
+  const initialCenter = loadLastPos() ?? KHARTOUM
+  const [pickupPos, setPickupPos] = useState<google.maps.LatLngLiteral>(initialCenter)
   const [pickupAddr, setPickupAddr] = useState('')
   const [pickupSet, setPickupSet] = useState(false)
-  const [dropoffPos, setDropoffPos] = useState<google.maps.LatLngLiteral>(KHARTOUM)
+  const [dropoffPos, setDropoffPos] = useState<google.maps.LatLngLiteral>(initialCenter)
   const [dropoffAddr, setDropoffAddr] = useState('')
   const [dropoffSet, setDropoffSet] = useState(false)
   const [gpsBusy, setGpsBusy] = useState(false)
