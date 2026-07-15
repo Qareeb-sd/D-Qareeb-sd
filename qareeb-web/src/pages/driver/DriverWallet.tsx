@@ -53,6 +53,8 @@ export default function DriverWallet() {
   const loading = walletLoading || (Boolean(wallet) && txLoading)
 
   const balance = wallet?.balance ?? 0
+  // القابل للسحب = أرباح رحلات المحفظة (لا التعبئة)، بحدّ الرصيد الكلي المتاح.
+  const withdrawable = Math.max(0, Math.min(balance, wallet?.withdrawable ?? 0))
   const pending = withdrawals.find((w) => w.status === 'pending')
 
   // ملخّص الأرباح — الصافي = أرباح الرحلة − العمولة (العمولة مُخزَّنة بإشارة سالبة).
@@ -99,8 +101,11 @@ export default function DriverWallet() {
 
       <main className="flex-1 px-4 pb-24">
         <div className="rounded-3xl bg-gradient-to-br from-sand to-sand-ink p-6 text-royal shadow-lift">
-          <p className="text-sm text-royal/70">رصيدك القابل للسحب</p>
+          <p className="text-sm text-royal/70">رصيد المحفظة</p>
           <p className="mt-1 text-3xl font-extrabold">{loading ? '…' : money(balance)}</p>
+          <p className="mt-1 text-xs text-royal/70">
+            قابل للسحب: <span className="font-bold">{money(withdrawable)}</span>
+          </p>
           <div className="mt-4 flex flex-wrap gap-2">
             <button
               onClick={() => {
@@ -118,7 +123,7 @@ export default function DriverWallet() {
                   setShowForm((v) => !v)
                   setShowTopup(false)
                 }}
-                disabled={balance <= 0}
+                disabled={withdrawable <= 0}
                 className="flex items-center gap-2 rounded-2xl bg-royal/20 px-4 py-2.5 text-sm font-bold text-royal disabled:opacity-50"
               >
                 <WalletIcon className="h-4 w-4" strokeWidth={2} />
@@ -157,7 +162,7 @@ export default function DriverWallet() {
         {/* نموذج السحب */}
         {showForm && !pending && (
           <WithdrawForm
-            max={balance}
+            max={withdrawable}
             onDone={() => {
               setShowForm(false)
               refresh()
@@ -287,8 +292,13 @@ function WithdrawForm({ max, onDone }: { max: number; onDone: () => void }) {
   return (
     <div className="card mt-4 space-y-3 p-4">
       <p className="font-bold text-royal">طلب سحب</p>
+      <p className="text-[11px] text-ink-muted">
+        تسحب أرباح رحلات المحفظة فقط (ما دفعه العملاء). رصيد التعبئة يبقى لتغطية العمولات.
+      </p>
       <div>
-        <label className="mb-1 block text-xs text-ink-muted">المبلغ (بحد أقصى {money(max)})</label>
+        <label className="mb-1 block text-xs text-ink-muted">
+          المبلغ (القابل للسحب {money(max)})
+        </label>
         <input
           className="field text-left"
           dir="ltr"

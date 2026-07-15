@@ -85,6 +85,7 @@ export interface Wallet {
   id: string
   user_id: string
   balance: number
+  withdrawable?: number // أرباح رحلات المحفظة القابلة للسحب (منفصلة عن التعبئة)
   cancellation_debt?: number // دَيْن رسوم إلغاء يُضاف لأجرة الرحلة القادمة
   updated_at: string
 }
@@ -122,6 +123,7 @@ export interface Settings {
   cancellation_fee: number // رسوم إلغاء العميل بعد قبول السائق (0 = معطّلة)
   cancellation_far_km: number // مسافة تُعفي العميل («السائق بعيد») — كم
   cancellation_far_min: number // زمن وصول مقدّر يُعفي العميل — دقيقة
+  min_driver_balance: number // أدنى رصيد يسمح للسائق بالاتصال (استقبال الرحلات)
   updated_at: string
 }
 

@@ -132,6 +132,17 @@ export default function DriverHome() {
   const toggleOnline = async () => {
     const next = !online
     setOnline(next)
+    setAcceptMsg('')
+    // الخادم يفرض الحدّ الأدنى للرصيد عند الاتصال — نتحقّق أولاً قبل تشغيل الخدمات.
+    if (driver) {
+      const { error } = await setDriverOnline(driver.id, next)
+      if (error) {
+        // رُفض الاتصال (رصيد غير كافٍ) — أعِد الحالة وأبلغ السائق.
+        setOnline(!next)
+        setAcceptMsg(error)
+        return
+      }
+    }
     // خدمة الخلفية + إشعارات FCM: تعمل أثناء «متصل» فقط، وتتوقف عند «غير متصل».
     if (next) {
       void startCaptainBg()
@@ -140,7 +151,6 @@ export default function DriverHome() {
       void stopCaptainBg()
       void unregisterPush()
     }
-    if (driver) await setDriverOnline(driver.id, next)
   }
 
   const accept = async (ride: Ride) => {

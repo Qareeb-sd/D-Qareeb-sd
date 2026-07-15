@@ -44,6 +44,7 @@ const demoSettings: Settings = {
   cancellation_fee: 1000,
   cancellation_far_km: 5,
   cancellation_far_min: 15,
+  min_driver_balance: 0,
   updated_at: new Date().toISOString(),
 }
 
@@ -1132,14 +1133,12 @@ export async function rejectDriverApplication(
 }
 
 export async function setDriverOnline(
-  driverId: string,
+  _driverId: string,
   online: boolean,
 ): Promise<{ error?: string }> {
   if (!isSupabaseConfigured) return {}
-  const { error } = await supabase
-    .from('drivers')
-    .update({ is_online: online })
-    .eq('id', driverId)
+  // عبر دالة آمنة تفرض الحدّ الأدنى للرصيد عند الاتصال (يعمل على السائق الحالي).
+  const { error } = await supabase.rpc('set_driver_online', { p_online: online })
   return error ? { error: error.message } : {}
 }
 

@@ -1113,6 +1113,7 @@ export default function AdminDashboard() {
       cancellation_fee: settings.cancellation_fee,
       cancellation_far_km: settings.cancellation_far_km,
       cancellation_far_min: settings.cancellation_far_min,
+      min_driver_balance: settings.min_driver_balance,
     })
     setSavedMsg(error ? `خطأ: ${error}` : 'تم حفظ الإعدادات ✓')
   }
@@ -2919,6 +2920,20 @@ export default function AdminDashboard() {
                       {vipCharging ? 'جارٍ التحصيل…' : 'تحصيل المستحقّ الآن'}
                     </button>
                   </div>
+                </div>
+
+                <div className="rounded-2xl border border-sand/40 bg-sand-soft/40 p-3">
+                  <p className="font-bold text-royal">أدنى رصيد لاتصال السائق</p>
+                  <p className="mb-2 text-xs text-ink-muted">
+                    لا يستطيع السائق الضغط على «متصل» واستقبال الرحلات إن كان رصيد محفظته أقلّ
+                    من هذا الحدّ. اضبطه على 0 للسماح دائماً.
+                  </p>
+                  <NumField
+                    label="الحدّ الأدنى (ج.س)"
+                    step={500}
+                    value={settings.min_driver_balance}
+                    onChange={(v) => setSettings({ ...settings, min_driver_balance: v })}
+                  />
                 </div>
 
                 <div className="rounded-2xl border border-sand/40 bg-sand-soft/40 p-3">
