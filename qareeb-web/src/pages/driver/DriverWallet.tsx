@@ -1,16 +1,28 @@
 import { useMemo, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { Banknote, Landmark, Clock, CheckCircle2, XCircle, Wallet as WalletIcon } from 'lucide-react'
+import {
+  Banknote,
+  Landmark,
+  Clock,
+  CheckCircle2,
+  XCircle,
+  Wallet as WalletIcon,
+  Plus,
+} from 'lucide-react'
 import Logo from '@/components/Logo'
 import DriverNav from '@/components/DriverNav'
 import { useAuth } from '@/store/AuthContext'
 import {
+  getSettings,
   getWallet,
   listDriverTransactions,
   getMyWithdrawals,
   requestWithdrawal,
+  createTopup,
+  uploadTopupProof,
 } from '@/lib/api'
 import { money } from '@/lib/format'
+import type { Settings } from '@/lib/types'
 
 /** بداية اليوم بتوقيت الجهاز (لتجميع أرباح اليوم). */
 function startOfToday(): number {
@@ -69,6 +81,8 @@ export default function DriverWallet() {
   }, [txs])
 
   const [showForm, setShowForm] = useState(false)
+  const [showTopup, setShowTopup] = useState(false)
+  const { data: settings } = useQuery({ queryKey: ['settings'], queryFn: getSettings })
 
   const refresh = () => {
     void qc.invalidateQueries({ queryKey: ['driver-wallet', userId] })
@@ -87,17 +101,45 @@ export default function DriverWallet() {
         <div className="rounded-3xl bg-gradient-to-br from-sand to-sand-ink p-6 text-royal shadow-lift">
           <p className="text-sm text-royal/70">رصيدك القابل للسحب</p>
           <p className="mt-1 text-3xl font-extrabold">{loading ? '…' : money(balance)}</p>
-          {!pending && (
+          <div className="mt-4 flex flex-wrap gap-2">
             <button
-              onClick={() => setShowForm((v) => !v)}
-              disabled={balance <= 0}
-              className="mt-4 flex items-center gap-2 rounded-2xl bg-royal px-4 py-2.5 text-sm font-bold text-ivory disabled:opacity-50"
+              onClick={() => {
+                setShowTopup((v) => !v)
+                setShowForm(false)
+              }}
+              className="flex items-center gap-2 rounded-2xl bg-royal px-4 py-2.5 text-sm font-bold text-ivory"
             >
-              <WalletIcon className="h-4 w-4" strokeWidth={2} />
-              {showForm ? 'إغلاق' : 'سحب الأرباح'}
+              <Plus className="h-4 w-4" strokeWidth={2.2} />
+              {showTopup ? 'إغلاق' : 'تعبئة الرصيد'}
             </button>
-          )}
+            {!pending && (
+              <button
+                onClick={() => {
+                  setShowForm((v) => !v)
+                  setShowTopup(false)
+                }}
+                disabled={balance <= 0}
+                className="flex items-center gap-2 rounded-2xl bg-royal/20 px-4 py-2.5 text-sm font-bold text-royal disabled:opacity-50"
+              >
+                <WalletIcon className="h-4 w-4" strokeWidth={2} />
+                {showForm ? 'إغلاق' : 'سحب الأرباح'}
+              </button>
+            )}
+          </div>
         </div>
+
+        {/* تعبئة الرصيد (لتغطية عمولة الرحلات النقدية) */}
+        {showTopup && (
+          <TopupForm
+            settings={settings}
+            walletId={wallet?.id}
+            userId={userId}
+            onDone={() => {
+              setShowTopup(false)
+              refresh()
+            }}
+          />
+        )}
 
         {/* طلب سحب معلّق */}
         {pending && (
@@ -293,6 +335,109 @@ function WithdrawForm({ max, onDone }: { max: number; onDone: () => void }) {
       <p className="text-[11px] text-ink-muted">
         يُخصم المبلغ فوراً من رصيدك ويُعاد كاملاً إن رُفض الطلب.
       </p>
+    </div>
+  )
+}
+
+/** تعبئة رصيد السائق بتحويل بنكي + إثبات — يعتمدها الأدمن (كتعبئة العميل). */
+function TopupForm({
+  settings,
+  walletId,
+  userId,
+  onDone,
+}: {
+  settings?: Settings
+  walletId?: string
+  userId: string
+  onDone: () => void
+}) {
+  const [amount, setAmount] = useState('')
+  const [proof, setProof] = useState<File | null>(null)
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState('')
+  const [done, setDone] = useState(false)
+
+  const submit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setErr('')
+    const value = Math.round(Number(amount))
+    if (!walletId) return setErr('المحفظة غير جاهزة')
+    if (!value || value <= 0) return setErr('أدخل مبلغاً صحيحاً')
+    setBusy(true)
+    let proofPath: string | null = null
+    if (proof) {
+      const up = await uploadTopupProof(userId, proof)
+      if (up.error) {
+        setBusy(false)
+        return setErr(`تعذّر رفع الإثبات: ${up.error}`)
+      }
+      proofPath = up.path ?? null
+    }
+    const { error } = await createTopup(walletId, value, proofPath)
+    setBusy(false)
+    if (error) return setErr(error)
+    setDone(true)
+  }
+
+  return (
+    <div className="card mt-4 space-y-3 p-4">
+      <p className="font-bold text-royal">تعبئة الرصيد بتحويل بنكي</p>
+      <p className="text-xs text-ink-muted">
+        عبّئ رصيدك لتغطية عمولة المنصة على الرحلات النقدية. يُضاف الرصيد بعد اعتماد الإدارة.
+      </p>
+      {settings && (
+        <div className="rounded-2xl bg-sand-soft/60 p-3 text-sm text-ink">
+          <p>
+            <span className="text-ink-soft">البنك:</span> {settings.bank_name}
+          </p>
+          <p>
+            <span className="text-ink-soft">اسم الحساب:</span> {settings.bank_account_name}
+          </p>
+          <p dir="ltr" className="text-left">
+            <span className="text-ink-soft">الرقم:</span> {settings.bank_account_number}
+          </p>
+        </div>
+      )}
+      {done ? (
+        <div className="rounded-2xl bg-green-soft p-4 text-center text-sm text-green">
+          تم إرسال طلب التعبئة للمراجعة. سيُضاف الرصيد بعد اعتماد الإدارة.
+        </div>
+      ) : (
+        <form onSubmit={submit} className="space-y-3">
+          <div>
+            <label className="mb-1 block text-xs text-ink-muted">المبلغ المحوّل</label>
+            <input
+              className="field text-left"
+              dir="ltr"
+              inputMode="numeric"
+              placeholder="مثال: 20000"
+              value={amount}
+              onChange={(e) => setAmount(e.target.value.replace(/[^\d]/g, ''))}
+              required
+            />
+          </div>
+          <div>
+            <label className="mb-1 block text-xs text-ink-muted">إثبات التحويل</label>
+            <input
+              type="file"
+              accept="image/*"
+              className="field"
+              onChange={(e) => setProof(e.target.files?.[0] ?? null)}
+            />
+          </div>
+          {err && <p className="text-sm text-danger">{err}</p>}
+          <button
+            type="submit"
+            disabled={busy}
+            className="w-full rounded-2xl bg-royal px-4 py-3 text-sm font-bold text-ivory disabled:opacity-60"
+          >
+            {busy ? '…' : 'إرسال للمراجعة'}
+          </button>
+        </form>
+      )}
+      <button onClick={onDone} className="w-full text-center text-xs text-ink-muted">
+        إغلاق
+      </button>
     </div>
   )
 }
