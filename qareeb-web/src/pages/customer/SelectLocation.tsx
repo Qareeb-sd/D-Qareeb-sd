@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
   ChevronRight,
@@ -134,11 +134,16 @@ export default function SelectLocation() {
     }
   })
 
+  // معرّف الطلب — يمنع نتيجة محاولة قديمة/بطيئة من الكتابة فوق محاولة أحدث ناجحة
+  // (تفادي رسالة خطأ حمراء عالقة رغم نجاح التحديد).
+  const gpsReqId = useRef(0)
   const useMyLocation = async () => {
+    const myId = ++gpsReqId.current
     setGpsBusy(true)
     setGpsErr('')
     setPickupMode('current')
     const pos = await getCurrentPos()
+    if (myId !== gpsReqId.current) return // محاولة أحدث سبقتها — تجاهل هذه
     if (!pos) {
       setGpsBusy(false)
       setGpsErr('تعذّر تحديد الموقع بدقّة — حدّد نقطتك على الخريطة')
