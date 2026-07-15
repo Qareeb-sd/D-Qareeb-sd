@@ -1,19 +1,40 @@
+import { useState, type ReactNode } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { User, Star, LifeBuoy, Crown, BadgePercent } from 'lucide-react'
 import { useQuery } from '@tanstack/react-query'
 import DriverNav from '@/components/DriverNav'
 import NotificationToggle from '@/components/NotificationToggle'
+import VipSubscribe from '@/components/VipSubscribe'
 import { useAuth } from '@/store/AuthContext'
-import { getDriver } from '@/lib/api'
+import { getDriver, updateEmergencyContacts } from '@/lib/api'
 import { getService } from '@/data/services'
 
 export default function DriverProfile() {
   const navigate = useNavigate()
-  const { profile, signOut } = useAuth()
+  const { profile, signOut, refreshProfile } = useAuth()
   const userId = profile?.id ?? 'demo-user'
-  const { data: driver } = useQuery({
+  const { data: driver, refetch: refetchDriver } = useQuery({
     queryKey: ['driver', userId],
     queryFn: () => getDriver(userId),
   })
+
+  const [c1, setC1] = useState(profile?.sos_contact1 ?? '')
+  const [c2, setC2] = useState(profile?.sos_contact2 ?? '')
+  const [busy, setBusy] = useState(false)
+  const [msg, setMsg] = useState('')
+
+  const saveContacts = async () => {
+    setBusy(true)
+    setMsg('')
+    const { error } = await updateEmergencyContacts(
+      profile?.id ?? '',
+      c1.trim() || null,
+      c2.trim() || null,
+    )
+    await refreshProfile()
+    setBusy(false)
+    setMsg(error ? `خطأ: ${error}` : 'تم حفظ جهات الطوارئ ✓')
+  }
 
   const logout = async () => {
     await signOut()
@@ -21,15 +42,15 @@ export default function DriverProfile() {
   }
 
   return (
-    <div className="screen">
-      <header className="px-4 py-4">
+    <div className="screen font-plex bg-ivory">
+      <header className="border-b border-hairline px-4 py-4">
         <h1 className="text-lg font-bold">حسابي</h1>
       </header>
 
       <main className="flex-1 px-4 pb-24">
         <div className="card flex items-center gap-4 p-4">
-          <div className="grid h-14 w-14 place-items-center rounded-full bg-lemon/30 text-2xl">
-            🧑🏽‍✈️
+          <div className="grid h-14 w-14 place-items-center rounded-full bg-sand/25">
+            <User className="h-7 w-7 text-royal" strokeWidth={2} />
           </div>
           <div>
             <p className="font-bold">{profile?.full_name ?? 'سائق قريب'}</p>
@@ -43,9 +64,56 @@ export default function DriverProfile() {
           <div className="card mt-4 divide-y divide-hairline p-0">
             <Row label="المركبة" value={getService(driver.vehicle_type)?.name ?? driver.vehicle_type} />
             <Row label="رقم اللوحة" value={driver.plate_number ?? '—'} />
-            <Row label="التقييم" value={`⭐ ${driver.rating ?? '—'}`} />
+            <Row
+              label="التقييم"
+              value={
+                <span className="inline-flex items-center gap-1">
+                  <Star className="h-4 w-4 text-sand" fill="currentColor" strokeWidth={2} />
+                  {driver.rating != null
+                    ? `${driver.rating} · ${profile?.ratings_count ?? 0} تقييم`
+                    : '—'}
+                </span>
+              }
+            />
           </div>
         )}
+
+        {/* حالة العمولة / اشتراك VIP */}
+        {driver && <CommissionStatus driver={driver} />}
+        {driver && (
+          <VipSubscribe driver={driver} userId={userId} onChanged={() => void refetchDriver()} />
+        )}
+
+        {/* جهات الطوارئ (مثل العميل) */}
+        <div className="card mt-4 p-4">
+          <div className="mb-1 flex items-center gap-2">
+            <LifeBuoy className="h-5 w-5 text-danger" strokeWidth={2} />
+            <p className="font-bold">جهات الطوارئ</p>
+          </div>
+          <p className="mb-3 text-xs text-ink-muted">
+            رقمان يصلهما تنبيه فيه موقعك عند ضغطك زر الطوارئ أثناء الرحلة.
+          </p>
+          <input
+            className="field text-left"
+            dir="ltr"
+            inputMode="tel"
+            placeholder="رقم جهة الطوارئ الأولى"
+            value={c1}
+            onChange={(e) => setC1(e.target.value)}
+          />
+          <input
+            className="field mt-2 text-left"
+            dir="ltr"
+            inputMode="tel"
+            placeholder="رقم جهة الطوارئ الثانية (اختياري)"
+            value={c2}
+            onChange={(e) => setC2(e.target.value)}
+          />
+          {msg && <p className="mt-2 text-sm text-green">{msg}</p>}
+          <button onClick={saveContacts} disabled={busy} className="btn-driver mt-3 w-full">
+            {busy ? '…' : 'حفظ جهات الطوارئ'}
+          </button>
+        </div>
 
         <NotificationToggle userId={profile?.id ?? 'demo-user'} />
 
@@ -59,7 +127,69 @@ export default function DriverProfile() {
   )
 }
 
-function Row({ label, value }: { label: string; value: string }) {
+/** بطاقة حالة العمولة/الاشتراك للسائق (تُدار من الأدمن). */
+function CommissionStatus({ driver }: { driver: import('@/lib/types').Driver }) {
+  const now = Date.now()
+  const fmt = (s: string) => new Date(s).toLocaleDateString('ar-SD')
+  const vipActive =
+    Boolean(driver.vip) &&
+    Boolean(driver.vip_paid_until) &&
+    new Date(driver.vip_paid_until as string).getTime() > now
+  const freeActive =
+    Boolean(driver.commission_free_until) &&
+    new Date(driver.commission_free_until as string).getTime() > now
+
+  if (vipActive) {
+    return (
+      <div className="mt-4 rounded-2xl border border-sand bg-sand-soft/50 p-4">
+        <div className="flex items-center gap-2">
+          <Crown className="h-5 w-5 text-sand-ink" strokeWidth={2} />
+          <p className="font-bold text-royal">سائق VIP</p>
+          <span className="ms-auto chip bg-green-soft text-xs font-bold text-green">فعّال</span>
+        </div>
+        <p className="mt-1 text-sm text-ink-soft">
+          بلا عمولة على رحلاتك. الاشتراك ساري حتى{' '}
+          <span className="font-bold text-royal">{fmt(driver.vip_paid_until as string)}</span>.
+        </p>
+      </div>
+    )
+  }
+  if (driver.vip) {
+    // VIP لكن الاشتراك مستحقّ (غير مدفوع) → العمولة تُطبَّق مؤقّتاً.
+    return (
+      <div className="mt-4 rounded-2xl border border-danger/40 bg-danger/5 p-4">
+        <div className="flex items-center gap-2">
+          <Crown className="h-5 w-5 text-danger" strokeWidth={2} />
+          <p className="font-bold text-royal">اشتراك VIP مستحقّ</p>
+        </div>
+        <p className="mt-1 text-sm text-ink-soft">
+          اشتراكك الشهري غير مدفوع حالياً، لذا تُطبَّق العمولة حتى السداد. يُخصم تلقائياً من محفظتك
+          عند توفّر الرصيد.
+        </p>
+      </div>
+    )
+  }
+  if (freeActive) {
+    return (
+      <div className="mt-4 rounded-2xl border border-green/30 bg-green-soft/40 p-4">
+        <div className="flex items-center gap-2">
+          <BadgePercent className="h-5 w-5 text-green" strokeWidth={2} />
+          <p className="font-bold text-royal">إعفاء من العمولة</p>
+        </div>
+        <p className="mt-1 text-sm text-ink-soft">
+          معفى من العمولة حتى{' '}
+          <span className="font-bold text-royal">
+            {fmt(driver.commission_free_until as string)}
+          </span>{' '}
+          — تحصل على كامل الأجرة.
+        </p>
+      </div>
+    )
+  }
+  return null
+}
+
+function Row({ label, value }: { label: string; value: ReactNode }) {
   return (
     <div className="flex items-center justify-between px-4 py-3.5">
       <span className="text-sm text-ink-soft">{label}</span>

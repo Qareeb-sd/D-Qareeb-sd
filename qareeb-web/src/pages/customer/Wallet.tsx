@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import BottomNav from '@/components/BottomNav'
 import Logo from '@/components/Logo'
+import ReceiptUpload from '@/components/ReceiptUpload'
 import { money } from '@/lib/format'
 import { useAuth } from '@/store/AuthContext'
 import {
@@ -19,15 +20,19 @@ export default function Wallet() {
   const qc = useQueryClient()
 
   // قراءات عبر react-query — إعادة محاولة تلقائية وتخزين مؤقت (يناسب الشبكة الضعيفة).
+  // إعادة جلب دورية (وعند العودة للتطبيق) ليظهر الرصيد فور اعتماد الأدمن.
+  const live = { refetchInterval: 15000, refetchOnWindowFocus: true as const }
   const { data: wallet, isLoading: walletLoading } = useQuery({
     queryKey: ['wallet', userId],
     queryFn: () => getWallet(userId),
+    ...live,
   })
   const { data: settings } = useQuery({ queryKey: ['settings'], queryFn: getSettings })
   const { data: txs = [], isLoading: txLoading } = useQuery({
     queryKey: ['transactions', wallet?.id],
     queryFn: () => listTransactions(wallet!.id),
     enabled: Boolean(wallet?.id),
+    ...live,
   })
   const loading = walletLoading || (Boolean(wallet) && txLoading)
 
@@ -69,19 +74,19 @@ export default function Wallet() {
     <div className="screen">
       <header className="flex items-center gap-3 px-4 py-4">
         <Logo size={36} rounded={10} />
-        <h1 className="text-lg font-bold">محفظة قريب</h1>
+        <h1 className="text-lg font-bold text-royal">محفظة قريب</h1>
       </header>
 
       <main className="flex-1 px-4 pb-24">
         {/* بطاقة الرصيد */}
-        <div className="rounded-3xl bg-gradient-to-br from-green to-green-dark p-6 text-white shadow-lift">
-          <p className="text-sm text-white/80">رصيدك الحالي</p>
-          <p className="mt-1 text-3xl font-extrabold">
+        <div className="rounded-3xl bg-gradient-to-br from-royal to-[#0a2c22] p-6 text-white shadow-float ring-1 ring-sand/40">
+          <p className="text-sm text-white/70">رصيدك الحالي</p>
+          <p className="mt-1 text-3xl font-extrabold" style={{ color: '#e3c98f' }}>
             {loading ? '…' : money(wallet?.balance ?? 0)}
           </p>
           <button
             onClick={() => setShowTopup((v) => !v)}
-            className="btn mt-4 bg-white/15 text-white hover:bg-white/25"
+            className="press-scale mt-4 rounded-2xl bg-white/15 px-5 py-2.5 font-bold text-white hover:bg-white/25"
           >
             تعبئة الرصيد
           </button>
@@ -106,7 +111,7 @@ export default function Wallet() {
             )}
 
             {done ? (
-              <div className="rounded-2xl bg-green-soft p-4 text-center text-sm text-green">
+              <div className="rounded-2xl bg-royal-soft p-4 text-center text-sm text-royal">
                 تم إرسال طلب التعبئة للمراجعة. سيُضاف الرصيد بعد اعتماد الأدمن.
               </div>
             ) : (
@@ -124,12 +129,7 @@ export default function Wallet() {
                 </div>
                 <div>
                   <label className="label">إثبات التحويل</label>
-                  <input
-                    type="file"
-                    accept="image/*"
-                    className="field"
-                    onChange={(e) => setProof(e.target.files?.[0] ?? null)}
-                  />
+                  <ReceiptUpload value={proof} onChange={setProof} />
                 </div>
                 {error && <p className="text-sm text-danger">{error}</p>}
                 <button className="btn-gold w-full" type="submit" disabled={submitting}>
@@ -157,7 +157,7 @@ export default function Wallet() {
                   </p>
                 </div>
                 <p
-                  className={`font-bold ${t.amount > 0 ? 'text-green' : 'text-danger'}`}
+                  className={`font-bold ${t.amount > 0 ? 'text-royal' : 'text-danger'}`}
                   dir="ltr"
                 >
                   {t.amount > 0 ? '+' : ''}

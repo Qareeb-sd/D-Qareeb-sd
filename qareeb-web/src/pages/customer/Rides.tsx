@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
+import { Star } from 'lucide-react'
 import Screen from '@/components/Screen'
-import { StarIcon } from '@/components/Icons'
 import { useAuth } from '@/store/AuthContext'
 import { listRides } from '@/lib/api'
 import { getService } from '@/data/services'
@@ -28,8 +28,8 @@ export default function Rides() {
             return (
               <div key={r.id} className="card p-4">
                 <div className="flex items-center justify-between">
-                  <p className="font-bold">{service?.name ?? r.service_id}</p>
-                  <p className="font-extrabold text-green">{money(r.fare ?? 0)}</p>
+                  <p className="font-bold text-royal">{service?.name ?? r.service_id}</p>
+                  <p className="font-extrabold text-royal">{money(r.fare ?? 0)}</p>
                 </div>
                 <p className="mt-1 text-sm text-ink-soft">
                   {r.pickup_address ?? '—'} ← {r.dropoff_address ?? '—'}
@@ -37,8 +37,8 @@ export default function Rides() {
                 <div className="mt-2 flex items-center justify-between text-xs text-ink-muted">
                   <span>{new Date(r.created_at).toLocaleDateString('ar-SD')}</span>
                   {r.rating && (
-                    <span className="flex items-center gap-1 text-gold">
-                      <StarIcon width={14} height={14} fill="#C9A138" />
+                    <span className="flex items-center gap-1 text-sand-ink">
+                      <Star className="h-3.5 w-3.5 fill-sand text-sand" />
                       {r.rating}
                     </span>
                   )}

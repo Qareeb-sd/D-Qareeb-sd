@@ -17,7 +17,11 @@ export default function Screen({ title, back, right, children, bare }: ScreenPro
   return (
     <div className="screen">
       {(title || back) && (
-        <header className="sticky top-0 z-10 flex items-center gap-2 border-b border-hairline bg-bg/90 px-4 py-3 backdrop-blur">
+        <header
+          className="sticky z-10 flex items-center gap-2 border-b border-hairline bg-bg/90 px-4 py-3 backdrop-blur"
+          // يلتصق أسفل شريط حالة الهاتف لا خلفه
+          style={{ top: 'env(safe-area-inset-top)' }}
+        >
           {back && (
             <button
               onClick={() => navigate(-1)}
@@ -31,7 +35,13 @@ export default function Screen({ title, back, right, children, bare }: ScreenPro
           {right}
         </header>
       )}
-      <main className={bare ? 'flex-1' : 'flex-1 px-4 py-4'}>{children}</main>
+      <main
+        className={bare ? 'flex-1' : 'flex-1 px-4 py-4'}
+        // مسافة أمان أسفل المحتوى حتى لا يغطّي شريط الهاتف آخر زر
+        style={bare ? undefined : { paddingBottom: 'calc(1rem + env(safe-area-inset-bottom))' }}
+      >
+        {children}
+      </main>
     </div>
   )
 }

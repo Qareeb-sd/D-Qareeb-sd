@@ -33,6 +33,8 @@
   /* حاوية الشاشة بعرض الموبايل، ممركزة على الشاشات الكبيرة */
   .screen {
     @apply mx-auto w-full max-w-md min-h-screen bg-bg flex flex-col;
+    /* مسافة أمان أعلى الشاشة حتى لا يغطّي شريط حالة الهاتف المحتوى */
+    padding-top: env(safe-area-inset-top);
   }
 
   .btn {
@@ -51,9 +53,16 @@
   .btn-outline {
     @apply btn border border-hairline bg-white text-ink hover:bg-green-mint;
   }
+  /* هوية الكابتن — «الواحة الملكية»: زمردي عميق مع لمسة ذهبية */
+  .btn-driver {
+    @apply btn bg-royal text-white shadow-card ring-1 ring-sand/40 hover:brightness-110;
+  }
+  .chip-driver {
+    @apply chip bg-sand/20 text-sand-ink;
+  }
 
   .card {
-    @apply rounded-2xl bg-white shadow-card border border-hairline;
+    @apply rounded-2xl bg-white shadow-card border border-hairline leading-[1.6];
   }
 
   .field {
@@ -72,6 +81,21 @@
   /* حركات Micro-interactions */
   .shadow-lift {
     box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
+  }
+
+  /* ===== هوية «الواحة الملكية» (الرئيسية/تحديد الرحلة) ===== */
+  .shadow-soft {
+    box-shadow: 0 -10px 40px rgba(14, 59, 46, 0.1);
+  }
+  .shadow-float {
+    box-shadow: 0 10px 30px rgba(14, 59, 46, 0.22);
+  }
+  .press-scale {
+    @apply transition-transform duration-200 active:scale-[0.98];
+  }
+  /* حدّ ذهبي رفيع حول العنصر النشط */
+  .ring-gold {
+    box-shadow: 0 0 0 1.5px #c4a265, 0 6px 18px rgba(14, 59, 46, 0.18);
   }
 }
 
@@ -95,4 +119,73 @@
   .animate-shake {
     animation: shake 0.3s ease-in-out;
   }
+
+  /* دخول ناعم للعناصر والبطاقة السفلية — هوية الواحة الملكية */
+  @keyframes fade-up {
+    from { opacity: 0; transform: translateY(8px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+  .animate-fade-up {
+    animation: fade-up 0.45s ease-out both;
+  }
+  @keyframes sheet-up {
+    from { opacity: 0; transform: translateY(28px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+  .animate-sheet-up {
+    animation: sheet-up 0.35s ease-out both;
+  }
+  /* رادار البحث عن الطلبات (شاشة الكابتن) — حلقات متمدّدة + مسح دوّار */
+  @keyframes radar-ping {
+    0%   { transform: scale(0.35); opacity: 0.5; }
+    80%  { opacity: 0; }
+    100% { transform: scale(1.55); opacity: 0; }
+  }
+  .animate-radar-ping {
+    animation: radar-ping 2.6s cubic-bezier(0, 0, 0.2, 1) infinite;
+  }
+  @keyframes radar-sweep {
+    to { transform: rotate(360deg); }
+  }
+  .animate-radar-sweep {
+    animation: radar-sweep 3.2s linear infinite;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .animate-fade-up, .animate-sheet-up, .animate-radar-ping, .animate-radar-sweep {
+      animation: none;
+    }
+  }
+}
+
+/* ---------- خريطة Leaflet (OpenStreetMap) — الويب/الأدمن ---------- */
+/* Tailwind preflight يضبط img{max-width:100%} فيكسر بلاطات الخريطة — نلغيه داخلها. */
+.leaflet-container img {
+  max-width: none !important;
+  max-height: none !important;
+}
+/* عزل طبقات الخريطة حتى لا تعلو فوق عناصر التطبيق (الدبوس، الأزرار…) */
+.leaflet-container {
+  isolation: isolate;
+  z-index: 0;
+  font: inherit;
+}
+
+/* ---------- خريطة قوقل الأصلية (Native) — الجهاز ---------- */
+/* المكوّن الأصلي يرسم الخريطة خلف الـWebView ويجعل خلفيّته شفّافة. لكي تظهر
+   الخريطة يجب أن تكون سلسلة العناصر فوقها شفّافة أيضاً. نُفعّل ذلك فقط أثناء
+   وجود خريطة أصلية حيّة (الصنف native-map-open على <html>)، فلا يتأثّر بقيّة
+   التطبيق. العناصر التي يجب أن تبقى معتمة (اللوحة السفلية، البطاقات) تحتفظ
+   بخلفيّتها الخاصّة فتُرسم فوق الخريطة كالمعتاد. */
+html.native-map-open,
+html.native-map-open body,
+html.native-map-open #root,
+html.native-map-open .screen {
+  background-color: transparent !important;
+}
+
+/* حاويات الشاشات (ivory/bg) تُصبح شفّافة أيضاً حتى تظهر الخريطة الأصلية من خلفها.
+   اللوحات والبطاقات تستخدم bg-white فتبقى معتمة وتُرسم فوق الخريطة كالمعتاد. */
+html.native-map-open .bg-ivory,
+html.native-map-open .bg-bg {
+  background-color: transparent !important;
 }

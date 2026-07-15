@@ -11,7 +11,18 @@ import type {
   ServicePricing,
   SosAlert,
   SosRole,
+  StaffRow,
+  StaffPerm,
+  AdminAccess,
+  TrackedRide,
+  ServiceState,
+  RideStatus,
+  PaymentMethod,
+  PromoCode,
+  VipRequest,
+  Withdrawal,
 } from './types'
+import { services as seedServices, type Service, type VehicleArt } from '@/data/services'
 
 /**
  * طبقة الوصول للبيانات.
@@ -29,6 +40,11 @@ const demoSettings: Settings = {
   bank_name: 'بنك الخرطوم',
   bank_account_name: 'شركة قريب للنقل',
   bank_account_number: '1234567890123',
+  vip_subscription_fee: 15000,
+  cancellation_fee: 1000,
+  cancellation_far_km: 5,
+  cancellation_far_min: 15,
+  min_driver_balance: 0,
   updated_at: new Date().toISOString(),
 }
 
@@ -40,13 +56,13 @@ export async function getSettings(): Promise<Settings> {
 
 // ---------- تسعير المركبات ----------
 const demoPricing: ServicePricing[] = [
-  { service_id: 'standard', name: 'قريب عادي', base_fare: 600, per_km_urban: 130, per_km_far: 160, per_minute: 18, sort_order: 0, active: true, updated_at: '' },
-  { service_id: 'ladies', name: 'قريب نسائي', base_fare: 900, per_km_urban: 180, per_km_far: 220, per_minute: 25, sort_order: 1, active: true, updated_at: '' },
-  { service_id: 'amjad', name: 'أمجاد', base_fare: 800, per_km_urban: 160, per_km_far: 200, per_minute: 22, sort_order: 2, active: true, updated_at: '' },
-  { service_id: 'hiace', name: 'هايس', base_fare: 1200, per_km_urban: 200, per_km_far: 240, per_minute: 30, sort_order: 3, active: true, updated_at: '' },
-  { service_id: 'rickshaw', name: 'ركشة', base_fare: 300, per_km_urban: 90, per_km_far: 110, per_minute: 12, sort_order: 4, active: true, updated_at: '' },
-  { service_id: 'open', name: 'مشوار مفتوح', base_fare: 700, per_km_urban: 150, per_km_far: 190, per_minute: 20, sort_order: 5, active: true, updated_at: '' },
-  { service_id: 'tow', name: 'سحاب', base_fare: 2500, per_km_urban: 300, per_km_far: 350, per_minute: 40, sort_order: 6, active: true, updated_at: '' },
+  { service_id: 'standard', name: 'قريب عادي', base_fare: 600, per_km_urban: 130, per_km_far: 160, per_minute: 18, commission_rate: null, sort_order: 0, active: true, updated_at: '' },
+  { service_id: 'ladies', name: 'قريب نسائي', base_fare: 900, per_km_urban: 180, per_km_far: 220, per_minute: 25, commission_rate: null, sort_order: 1, active: true, updated_at: '' },
+  { service_id: 'amjad', name: 'أمجاد', base_fare: 800, per_km_urban: 160, per_km_far: 200, per_minute: 22, commission_rate: null, sort_order: 2, active: true, updated_at: '' },
+  { service_id: 'hiace', name: 'هايس', base_fare: 1200, per_km_urban: 200, per_km_far: 240, per_minute: 30, commission_rate: null, sort_order: 3, active: true, updated_at: '' },
+  { service_id: 'rickshaw', name: 'ركشة', base_fare: 300, per_km_urban: 90, per_km_far: 110, per_minute: 12, commission_rate: null, sort_order: 4, active: true, updated_at: '' },
+  { service_id: 'open', name: 'مشوار مفتوح', base_fare: 700, per_km_urban: 150, per_km_far: 190, per_minute: 20, commission_rate: null, sort_order: 5, active: true, updated_at: '' },
+  { service_id: 'tow', name: 'سحاب', base_fare: 2500, per_km_urban: 300, per_km_far: 350, per_minute: 40, commission_rate: null, sort_order: 6, active: true, updated_at: '' },
 ]
 
 export async function listServicePricing(): Promise<ServicePricing[]> {
@@ -78,6 +94,114 @@ export async function updateServicePricing(
     .update({ ...patch, updated_at: new Date().toISOString() })
     .eq('service_id', serviceId)
   return error ? { error: error.message } : {}
+}
+
+// ---------- التسعير حسب الفترة الزمنية ----------
+export interface ServicePeriod {
+  service_id: string
+  period: 'morning' | 'afternoon' | 'evening' | 'night'
+  base_fare: number
+  per_km: number
+  per_min: number
+  min_fare: number
+}
+
+/** كل صفوف التسعير حسب الفترات (لكل الخدمات والفترات). */
+export async function listServicePeriods(): Promise<ServicePeriod[]> {
+  if (!isSupabaseConfigured) return []
+  const { data } = await supabase.from('service_pricing_periods').select('*')
+  return (data as ServicePeriod[]) ?? []
+}
+
+/** تعديل/إضافة صفّ تسعير لفترة (أدمن — صلاحية settings). */
+export async function upsertServicePeriod(
+  row: ServicePeriod,
+): Promise<{ error?: string }> {
+  if (!isSupabaseConfigured) return {}
+  const { error } = await supabase
+    .from('service_pricing_periods')
+    .upsert({ ...row, updated_at: new Date().toISOString() })
+  return error ? { error: error.message } : {}
+}
+
+// ---------- الخدمات الديناميكية (حالات + إضافة مركبة من اللوحة) ----------
+const ALLOWED_ART = ['sedan', 'ladies', 'van', 'microbus', 'rickshaw', 'tow']
+
+/** يحوّل صفّ service_pricing إلى كائن Service لعرضه في تطبيق العميل. */
+function rowToService(p: ServicePricing): Service {
+  const art = (p.art && ALLOWED_ART.includes(p.art) ? p.art : 'sedan') as VehicleArt
+  return {
+    id: p.service_id,
+    name: p.name,
+    tagline: p.tagline ?? '',
+    image: `/vehicles/${p.service_id}.png`,
+    imageUrl: p.image_url ?? undefined,
+    art,
+    tint: p.tint || '#EDEFEC',
+    seats: p.seats ?? 4,
+    noun: p.noun ?? 'المركبة',
+    femaleDriver: p.female_driver ?? false,
+    sharable: p.sharable ?? true,
+    destinationOptional: p.destination_optional ?? false,
+    state: p.state ?? 'available',
+  }
+}
+
+/**
+ * قائمة الخدمات جاهزة للعرض (Service[]) — تُبنى من جدول service_pricing.
+ * تُستبعد غير النشطة (active=false) لكن تبقى المخفية ليتحكم بها الأدمن،
+ * والفلترة النهائية للحالة تتم في طبقة العرض.
+ */
+export async function listServices(): Promise<Service[]> {
+  if (!isSupabaseConfigured) return seedServices
+  const { data } = await supabase
+    .from('service_pricing')
+    .select('*')
+    .order('sort_order', { ascending: true })
+  if (!data || !data.length) return seedServices
+  return (data as ServicePricing[]).filter((p) => p.active !== false).map(rowToService)
+}
+
+/** يغيّر حالة الخدمة (available/maintenance/coming_soon/hidden). */
+export async function setServiceState(
+  serviceId: string,
+  state: ServiceState,
+): Promise<{ error?: string }> {
+  return updateServicePricing(serviceId, { state })
+}
+
+/** ينشئ خدمة/مركبة جديدة من لوحة الأدمن (بلا تحديث للتطبيق). */
+export async function createServicePricing(
+  row: Partial<ServicePricing> & { service_id: string; name: string },
+): Promise<{ error?: string }> {
+  if (!isSupabaseConfigured) return {}
+  const { error } = await supabase
+    .from('service_pricing')
+    .insert({ ...row, updated_at: new Date().toISOString() })
+  return error ? { error: error.message } : {}
+}
+
+/** يحذف خدمة (يُفضّل استخدام الحالة «مخفي» بدل الحذف للحفاظ على السجلّات). */
+export async function deleteServicePricing(serviceId: string): Promise<{ error?: string }> {
+  if (!isSupabaseConfigured) return {}
+  const { error } = await supabase.from('service_pricing').delete().eq('service_id', serviceId)
+  return error ? { error: error.message } : {}
+}
+
+/** يرفع صورة مركبة إلى مخزن vehicles ويعيد رابطها العام. */
+export async function uploadVehicleImage(
+  serviceId: string,
+  file: File,
+): Promise<{ url?: string; error?: string }> {
+  if (!isSupabaseConfigured) return { error: 'قاعدة البيانات غير مضبوطة' }
+  const ext = (file.name.split('.').pop() || 'png').toLowerCase()
+  const path = `${serviceId}-${Date.now()}.${ext}`
+  const { error } = await supabase.storage
+    .from('vehicles')
+    .upload(path, file, { upsert: true, contentType: file.type || 'image/png' })
+  if (error) return { error: error.message }
+  const { data } = supabase.storage.from('vehicles').getPublicUrl(path)
+  return { url: data.publicUrl }
 }
 
 // ---------- المحفظة ----------
@@ -177,12 +301,81 @@ export async function createRide(ride: Partial<Ride>): Promise<{ id?: string; er
 }
 
 /**
- * تقييم الرحلة من العميل (النجوم فقط) — لا يُنهي الرحلة ولا يسوّيها.
- * الإنهاء والتسوية يتمّان عبر السائق (settleRide) لتفادي إكمال الرحلة دون دفع.
+ * تقييم متبادل بعد الرحلة + شكوى اختيارية.
+ * الدور (عميل يقيّم السائق / سائق يقيّم العميل) يُستنتج من الرحلة في الخادم.
+ * لا يُنهي الرحلة ولا يسوّيها — التسوية عبر settleRide.
  */
-export async function rateRide(rideId: string, rating: number): Promise<void> {
-  if (!isSupabaseConfigured) return
-  await supabase.from('rides').update({ rating }).eq('id', rideId)
+export async function submitReview(
+  rideId: string,
+  stars: number,
+  complaint?: string | null,
+  mismatch?: { driver?: boolean; vehicle?: boolean },
+): Promise<{ error?: string }> {
+  if (!isSupabaseConfigured) return {}
+  const { error } = await supabase.rpc('submit_review', {
+    p_ride: rideId,
+    p_stars: stars,
+    p_complaint: complaint?.trim() || null,
+    p_driver_mismatch: mismatch?.driver ?? false,
+    p_vehicle_mismatch: mismatch?.vehicle ?? false,
+  })
+  return error ? { error: error.message } : {}
+}
+
+/** قائمة رحلات الأدمن بتفاصيل الطرفين والمركبة (للسلطات) + أعلام المخالفة. */
+export interface AdminRideRow {
+  id: string
+  status: RideStatus
+  service_id: string
+  fare: number | null
+  payment_method: PaymentMethod
+  prepaid: boolean
+  created_at: string
+  started_at: string | null
+  completed_at: string | null
+  rating: number | null
+  complaint: string | null
+  customer_name: string | null
+  customer_phone: string | null
+  driver_name: string | null
+  driver_phone: string | null
+  plate_number: string | null
+  vehicle_type: string | null
+  pickup_address: string | null
+  dropoff_address: string | null
+  pickup_lat: number | null
+  pickup_lng: number | null
+  dropoff_lat: number | null
+  dropoff_lng: number | null
+  driver_mismatch: boolean
+  vehicle_mismatch: boolean
+}
+
+export async function adminListRides(limit = 100): Promise<AdminRideRow[]> {
+  if (!isSupabaseConfigured) return []
+  const { data } = await supabase.rpc('admin_list_rides', { p_limit: limit })
+  return data ?? []
+}
+
+/** قائمة العملاء المسجّلين وتقييماتهم (للأدمن/الموظف). */
+export async function listAdminCustomers() {
+  if (!isSupabaseConfigured) return []
+  const { data } = await supabase.rpc('admin_list_customers')
+  return data ?? []
+}
+
+/** قائمة الشكاوى (للأدمن/الموظف). */
+export async function listComplaints() {
+  if (!isSupabaseConfigured) return []
+  const { data } = await supabase.rpc('admin_list_complaints')
+  return data ?? []
+}
+
+/** تعليم شكوى كمحلولة. */
+export async function resolveComplaint(reviewId: string): Promise<{ error?: string }> {
+  if (!isSupabaseConfigured) return {}
+  const { error } = await supabase.rpc('admin_resolve_complaint', { p_review: reviewId })
+  return error ? { error: error.message } : {}
 }
 
 /** بيانات السائق المُسنَد لرحلة (اسم، تقييم، هاتف، مركبة) عبر دالة آمنة. */
@@ -192,6 +385,8 @@ export interface RideDriverInfo {
   rating: number | null
   vehicle_type: string | null
   plate_number: string | null
+  photo_url: string | null
+  vehicle_photo_url: string | null
 }
 
 const demoRideDriver: RideDriverInfo = {
@@ -200,6 +395,8 @@ const demoRideDriver: RideDriverInfo = {
   rating: 4.9,
   vehicle_type: 'amjad',
   plate_number: 'خ ط م ١٢٣٤',
+  photo_url: null,
+  vehicle_photo_url: null,
 }
 
 export async function getRideDriver(rideId: string): Promise<RideDriverInfo | null> {
@@ -229,6 +426,22 @@ export async function getRide(rideId: string): Promise<Ride | null> {
   return data ?? null
 }
 
+// ---------- مشاركة الرحلة المباشرة (تتبّع) ----------
+/** يولّد/يعيد رمز مشاركة لرحلة (لطرفَيها) — يشاركه المستخدم مع متابِع. */
+export async function ensureRideShare(rideId: string): Promise<string | null> {
+  if (!isSupabaseConfigured || !rideId) return null
+  const { data } = await supabase.rpc('ensure_ride_share', { p_ride: rideId })
+  return (data as string | null) ?? null
+}
+
+/** يجلب لقطة تتبّع رحلة عبر الرمز (لأي متابِع). */
+export async function trackSharedRide(token: string): Promise<TrackedRide | null> {
+  if (!isSupabaseConfigured || !token) return null
+  const { data } = await supabase.rpc('track_shared_ride', { p_token: token })
+  const rows = (data as TrackedRide[] | null) ?? []
+  return rows[0] ?? null
+}
+
 /**
  * تتبع مباشر: يبثّ السائق موقعه عبر دالة آمنة (Supabase) — بلا أي طلب لخرائط قوقل.
  * يُستدعى بمعدّل مُقنَّن من جهاز السائق أثناء الرحلة.
@@ -256,6 +469,58 @@ export async function savePushSubscription(sub: {
 export async function deletePushSubscription(endpoint: string): Promise<void> {
   if (!isSupabaseConfigured) return
   await supabase.from('push_subscriptions').delete().eq('endpoint', endpoint)
+}
+
+// ---------- رموز أجهزة FCM (إشعارات أصلية) ----------
+/** يحفظ/يحدّث رمز جهاز FCM للمستخدم الحالي. */
+export async function saveDeviceToken(
+  userId: string,
+  token: string,
+  platform = 'android',
+): Promise<void> {
+  if (!isSupabaseConfigured) return
+  await supabase
+    .from('device_tokens')
+    .upsert(
+      { token, user_id: userId, platform, updated_at: new Date().toISOString() },
+      { onConflict: 'token' },
+    )
+}
+
+/** يحذف رمز جهاز (عند تسجيل الخروج أو إلغاء التسجيل). */
+export async function deleteDeviceToken(token: string): Promise<void> {
+  if (!isSupabaseConfigured) return
+  await supabase.from('device_tokens').delete().eq('token', token)
+}
+
+/** يستدعي دالة FCM لإشعار السائقين المتصلين بطلب جديد (بعد إنشاء الرحلة). */
+export async function notifyDriversOfRide(rideId: string): Promise<void> {
+  if (!isSupabaseConfigured) return
+  try {
+    await supabase.functions.invoke('notify-ride-fcm', { body: { ride_id: rideId } })
+  } catch {
+    // إشعار أفضل جهد — لا يوقف تدفّق الطلب إن فشل.
+  }
+}
+
+/** يُشعر صاحب التعبئة باعتمادها (أفضل جهد — يتحمّل غياب الدالة/الرمز). */
+export async function notifyTopupApproved(topupId: string): Promise<void> {
+  if (!isSupabaseConfigured) return
+  try {
+    await supabase.functions.invoke('notify-user-fcm', { body: { topup_id: topupId } })
+  } catch {
+    /* أفضل جهد */
+  }
+}
+
+/** يُشعر السائق باعتماد سحبه (أفضل جهد). */
+export async function notifyWithdrawalApproved(withdrawalId: string): Promise<void> {
+  if (!isSupabaseConfigured) return
+  try {
+    await supabase.functions.invoke('notify-user-fcm', { body: { withdrawal_id: withdrawalId } })
+  } catch {
+    /* أفضل جهد */
+  }
 }
 
 // ---------- الطوارئ (SOS) ----------
@@ -501,6 +766,209 @@ export async function listAllRides(limit = 50): Promise<Ride[]> {
   return data ?? []
 }
 
+/** الرحلات النشطة (لخريطة النشاط المباشر في لوحة الأدمن). */
+export async function listActiveRides(): Promise<Ride[]> {
+  if (!isSupabaseConfigured) return []
+  const { data } = await supabase
+    .from('rides')
+    .select('*')
+    .in('status', ['searching', 'accepted', 'arrived', 'in_progress'])
+    .order('created_at', { ascending: false })
+    .limit(100)
+  return data ?? []
+}
+
+/** حذف سائق (يزيل صف السائق ويعيد دور المستخدم لعميل) — عبر دالة أدمن آمنة. */
+export async function deleteDriver(userId: string): Promise<{ error?: string }> {
+  if (!isSupabaseConfigured) return {}
+  const { error } = await supabase.rpc('admin_delete_driver', { p_user: userId })
+  return error ? { error: error.message } : {}
+}
+
+// ------------------------- الموظفون (صلاحيات اللوحة) -------------------------
+
+/** صلاحياتي في لوحة الإدارة: أدمن (مالك) أم موظف بصلاحيات محدودة؟ */
+export async function getMyAdminAccess(): Promise<AdminAccess> {
+  // وضع المعاينة: وصول كامل لتجربة اللوحة.
+  if (!isSupabaseConfigured)
+    return { is_admin: true, perms: ['requests', 'drivers', 'rides', 'settings'] }
+  const { data } = await supabase.rpc('my_admin_access')
+  const row = data?.[0]
+  return {
+    is_admin: Boolean(row?.is_admin),
+    perms: (row?.perms ?? []) as StaffPerm[],
+  }
+}
+
+/** قائمة الموظفين مع أسمائهم وهواتفهم (للمالك فقط). */
+export async function listStaff(): Promise<StaffRow[]> {
+  if (!isSupabaseConfigured) return []
+  const { data } = await supabase
+    .from('staff')
+    .select('*, users(full_name, phone)')
+    .order('created_at', { ascending: false })
+  return (data as StaffRow[]) ?? []
+}
+
+/** إضافة/تعديل موظف برقم هاتفه وصلاحياته (للمالك فقط). */
+export async function setStaff(
+  phone: string,
+  perms: StaffPerm[],
+): Promise<{ message?: string; error?: string }> {
+  if (!isSupabaseConfigured) return { message: 'تم ✓ (معاينة)' }
+  const { data, error } = await supabase.rpc('admin_set_staff', {
+    p_phone: phone,
+    p_perms: perms,
+  })
+  if (error) return { error: error.message }
+  return { message: (data as string) ?? 'تم ✓' }
+}
+
+/** إزالة موظف (للمالك فقط). */
+export async function removeStaff(userId: string): Promise<{ error?: string }> {
+  if (!isSupabaseConfigured) return {}
+  const { error } = await supabase.rpc('admin_remove_staff', { p_user: userId })
+  return error ? { error: error.message } : {}
+}
+
+/** تفعيل/تعطيل موظف مؤقّتاً (للمالك فقط). */
+export async function setStaffActive(
+  userId: string,
+  active: boolean,
+): Promise<{ error?: string }> {
+  if (!isSupabaseConfigured) return {}
+  const { error } = await supabase.rpc('admin_set_staff_active', {
+    p_user: userId,
+    p_active: active,
+  })
+  return error ? { error: error.message } : {}
+}
+
+/** سجلّ النشاط (أحدث الأحداث). */
+export async function listAuditLog(limit = 100) {
+  if (!isSupabaseConfigured) return []
+  const { data } = await supabase
+    .from('audit_log')
+    .select('*')
+    .order('created_at', { ascending: false })
+    .limit(limit)
+  return data ?? []
+}
+
+// ------------------------- الحسابات الداخلية (HR) -------------------------
+
+export async function listCompanyAccounts() {
+  if (!isSupabaseConfigured) return []
+  const { data } = await supabase.from('company_accounts').select('*').order('created_at')
+  return data ?? []
+}
+export async function addCompanyAccount(a: { name: string; bank?: string; number?: string; balance?: number }) {
+  if (!isSupabaseConfigured) return {}
+  const { error } = await supabase.from('company_accounts').insert(a)
+  return error ? { error: error.message } : {}
+}
+export async function deleteCompanyAccount(id: string) {
+  if (!isSupabaseConfigured) return {}
+  const { error } = await supabase.from('company_accounts').delete().eq('id', id)
+  return error ? { error: error.message } : {}
+}
+
+export async function listHrEmployees() {
+  if (!isSupabaseConfigured) return []
+  const { data } = await supabase.from('hr_employees').select('*').order('created_at', { ascending: false })
+  return data ?? []
+}
+export async function addHrEmployee(e: { name: string; role?: string; phone?: string; salary?: number }) {
+  if (!isSupabaseConfigured) return {}
+  const { error } = await supabase.from('hr_employees').insert(e)
+  return error ? { error: error.message } : {}
+}
+export async function deleteHrEmployee(id: string) {
+  if (!isSupabaseConfigured) return {}
+  const { error } = await supabase.from('hr_employees').delete().eq('id', id)
+  return error ? { error: error.message } : {}
+}
+
+export async function listExpenses(limit = 100) {
+  if (!isSupabaseConfigured) return []
+  const { data } = await supabase
+    .from('expenses')
+    .select('*')
+    .order('spent_at', { ascending: false })
+    .limit(limit)
+  return data ?? []
+}
+export async function addExpense(p: {
+  category: string
+  description?: string
+  amount: number
+  employee?: string | null
+  account?: string | null
+  date?: string | null
+}) {
+  if (!isSupabaseConfigured) return {}
+  const { error } = await supabase.rpc('add_expense', {
+    p_category: p.category,
+    p_description: p.description ?? null,
+    p_amount: p.amount,
+    p_employee: p.employee ?? null,
+    p_account: p.account ?? null,
+    p_date: p.date ?? null,
+  })
+  return error ? { error: error.message } : {}
+}
+export async function paySalaries(accountId: string | null, note?: string): Promise<{ total?: number; error?: string }> {
+  if (!isSupabaseConfigured) return { total: 0 }
+  const { data, error } = await supabase.rpc('pay_salaries', { p_account: accountId, p_note: note ?? null })
+  return error ? { error: error.message } : { total: Number(data) }
+}
+
+/** تقرير الميزانية للفترة (شهري/سنوي). */
+export async function getBudgetReport(scope: 'month' | 'year') {
+  if (!isSupabaseConfigured) return []
+  const { data } = await supabase.rpc('budget_report', { p_scope: scope })
+  return (data ?? []) as { category: string; percent: number; allocated: number; spent: number; income: number }[]
+}
+
+/** ضبط نسبة بند في الميزانية. */
+export async function setBudget(category: string, percent: number) {
+  if (!isSupabaseConfigured) return {}
+  const { error } = await supabase.rpc('set_budget', { p_category: category, p_percent: percent })
+  return error ? { error: error.message } : {}
+}
+
+/** الصورة المالية: أمانات العملاء/السائقين + نصيبي (المتاح) + الاستدانة. */
+export async function getCompanyFinance() {
+  if (!isSupabaseConfigured)
+    return { customer_float: 0, driver_float: 0, commission: 0, expenses: 0, borrowed: 0, treasury: 0 }
+  const { data } = await supabase.rpc('company_finance')
+  const r = data?.[0]
+  return {
+    customer_float: Number(r?.customer_float ?? 0),
+    driver_float: Number(r?.driver_float ?? 0),
+    commission: Number(r?.commission ?? 0),
+    expenses: Number(r?.expenses ?? 0),
+    borrowed: Number(r?.borrowed ?? 0),
+    treasury: Number(r?.treasury ?? 0),
+  }
+}
+
+export async function listLoans() {
+  if (!isSupabaseConfigured) return []
+  const { data } = await supabase.from('loans').select('*').order('created_at', { ascending: false })
+  return data ?? []
+}
+export async function borrowFromFloat(source: 'customer' | 'driver', amount: number, note?: string) {
+  if (!isSupabaseConfigured) return {}
+  const { error } = await supabase.rpc('borrow_from_float', { p_source: source, p_amount: amount, p_note: note ?? null })
+  return error ? { error: error.message } : {}
+}
+export async function repayLoan(id: string) {
+  if (!isSupabaseConfigured) return {}
+  const { error } = await supabase.rpc('repay_loan', { p_id: id })
+  return error ? { error: error.message } : {}
+}
+
 export interface FinancialSummary {
   platform_commission: number
   total_topups: number
@@ -522,6 +990,23 @@ export async function getFinancialSummary(): Promise<FinancialSummary | null> {
     }
   const { data } = await supabase.rpc('admin_financial_summary')
   return (Array.isArray(data) ? data[0] : data) ?? null
+}
+
+/** تجميعات لوحة الأدمن (بلا سقف صفوف). null → المعاينة/تعذّر (اللوحة تحسبها من العيّنة). */
+export interface AdminAnalytics {
+  completedCount: number
+  revenue: number
+  weekly: { d: string; value: number }[]
+  weeklyRevenue: { d: string; value: number }[]
+  vehicle: { service_id: string; value: number }[]
+  vehicleRevenue: { service_id: string; value: number }[]
+}
+
+export async function getAdminAnalytics(): Promise<AdminAnalytics | null> {
+  if (!isSupabaseConfigured) return null
+  const { data, error } = await supabase.rpc('admin_analytics')
+  if (error || !data) return null
+  return data as AdminAnalytics
 }
 
 export async function updateSettings(
@@ -593,6 +1078,26 @@ export async function getDriverDocUrl(path: string): Promise<string | null> {
   return data?.signedUrl ?? null
 }
 
+/**
+ * يرفع صورة عرض (صورة السائق أو المركبة) إلى bucket عام ويعيد رابطها المباشر —
+ * تُعرَض للعميل عند قبول الرحلة (بعكس وثائق KYC الخاصّة).
+ */
+export async function uploadDriverPhoto(
+  userId: string,
+  kind: 'selfie' | 'vehicle',
+  file: File,
+): Promise<{ url?: string; error?: string }> {
+  if (!isSupabaseConfigured) return { url: `demo/${kind}` }
+  const ext = (file.name.split('.').pop() || 'jpg').replace(/[^\w]+/g, '') || 'jpg'
+  const path = `${userId}/${kind}-${Date.now()}.${ext}`
+  const { error } = await supabase.storage
+    .from('driver-photos')
+    .upload(path, file, { upsert: true, contentType: file.type || 'image/jpeg' })
+  if (error) return { error: error.message }
+  const { data } = supabase.storage.from('driver-photos').getPublicUrl(path)
+  return { url: data.publicUrl }
+}
+
 export type DriverApplicationInput = Omit<
   DriverApplication,
   'id' | 'status' | 'review_note' | 'reviewed_by' | 'created_at' | 'updated_at'
@@ -656,14 +1161,12 @@ export async function rejectDriverApplication(
 }
 
 export async function setDriverOnline(
-  driverId: string,
+  _driverId: string,
   online: boolean,
 ): Promise<{ error?: string }> {
   if (!isSupabaseConfigured) return {}
-  const { error } = await supabase
-    .from('drivers')
-    .update({ is_online: online })
-    .eq('id', driverId)
+  // عبر دالة آمنة تفرض الحدّ الأدنى للرصيد عند الاتصال (يعمل على السائق الحالي).
+  const { error } = await supabase.rpc('set_driver_online', { p_online: online })
   return error ? { error: error.message } : {}
 }
 
@@ -687,25 +1190,32 @@ const demoAvailableRide: Ride = {
 
 export async function listAvailableRides(): Promise<Ride[]> {
   if (!isSupabaseConfigured) return [demoAvailableRide]
-  const { data } = await supabase
-    .from('rides')
-    .select('*')
-    .eq('status', 'searching')
-    .is('driver_id', null)
-    .order('created_at', { ascending: true })
-  return data ?? []
+  // RPC آمنة تُرفق اسم الراكب وتقييمه (للسائقين فقط).
+  const { data } = await supabase.rpc('list_available_rides')
+  return (data as Ride[]) ?? []
 }
 
-export async function acceptRide(
+/** معلومات الراكب لرحلة السائق الجارية (اسم/هاتف/تقييم) — للاتصال والتحقّق. */
+export async function getRideCustomer(
   rideId: string,
-  driverUserId: string,
-): Promise<{ error?: string }> {
+): Promise<{ full_name: string | null; phone: string | null; rating: number | null } | null> {
+  if (!isSupabaseConfigured) return null
+  const { data } = await supabase.rpc('get_ride_customer', { p_ride: rideId })
+  const row = Array.isArray(data) ? data[0] : data
+  return row ?? null
+}
+
+/**
+ * قبول الرحلة ذرّياً عبر RPC آمنة.
+ *   • error → فشل حقيقي (شبكة/رحلة جارية).
+ *   • taken → أُخذت من سائق آخر أو لم تعد متاحة (بلا خطأ).
+ */
+export async function acceptRide(rideId: string): Promise<{ error?: string; taken?: boolean }> {
   if (!isSupabaseConfigured) return {}
-  const { error } = await supabase
-    .from('rides')
-    .update({ driver_id: driverUserId, status: 'accepted' })
-    .eq('id', rideId)
-  return error ? { error: error.message } : {}
+  const { data, error } = await supabase.rpc('accept_ride', { p_ride: rideId })
+  if (error) return { error: error.message }
+  if (data === false) return { taken: true }
+  return {}
 }
 
 /** رحلة السائق الجارية (لاسترجاع شاشة الرحلة بعد تحديث الصفحة). */
@@ -736,16 +1246,254 @@ export async function setRideStatus(
  * إلغاء الرحلة عبر دالة آمنة:
  *   • العميل → cancelled، • السائق → تعود searching بلا سائق.
  */
-export async function cancelRide(rideId: string): Promise<{ error?: string }> {
-  if (!isSupabaseConfigured) return {}
-  const { error } = await supabase.rpc('cancel_ride', { p_ride: rideId })
-  return error ? { error: error.message } : {}
+export interface CancelResult {
+  fee: number // الرسوم المطبَّقة (0 إن مبرّر أو قبل القبول)
+  charged: number // المخصوم فعلاً من المحفظة
+  debt: number // ما تحوّل لدَيْن على الرحلة القادمة
+  excused: boolean // هل اعتُبر الإلغاء مبرّراً؟
+}
+
+export async function cancelRide(
+  rideId: string,
+  reason?: string | null,
+  reasonCode?: string | null,
+): Promise<{ result?: CancelResult; error?: string }> {
+  if (!isSupabaseConfigured) return { result: { fee: 0, charged: 0, debt: 0, excused: true } }
+  const { data, error } = await supabase.rpc('cancel_ride', {
+    p_ride: rideId,
+    p_reason: reason?.trim() || null,
+    p_reason_code: reasonCode ?? null,
+  })
+  if (error) return { error: error.message }
+  return { result: (data as CancelResult) ?? { fee: 0, charged: 0, debt: 0, excused: true } }
+}
+
+/** دَيْن رسوم الإلغاء المعلّق على العميل (يُضاف لأجرة الرحلة القادمة). */
+export async function getCancellationDebt(userId: string): Promise<number> {
+  if (!isSupabaseConfigured) return 0
+  const { data } = await supabase
+    .from('wallets')
+    .select('cancellation_debt')
+    .eq('user_id', userId)
+    .maybeSingle()
+  return (data as { cancellation_debt?: number } | null)?.cancellation_debt ?? 0
 }
 
 /** تسوية الرحلة عند اكتمالها: يُقيَّد للسائق (الأجرة − العمولة) عبر دالة آمنة. */
 export async function settleRide(rideId: string): Promise<{ error?: string }> {
   if (!isSupabaseConfigured) return {}
   const { error } = await supabase.rpc('settle_ride', { p_ride: rideId })
+  return error ? { error: error.message } : {}
+}
+
+/** الدفع المسبق بالمحفظة: يخصم الأجرة فوراً عند تأكيد رحلة «محفظة قريب». */
+export async function prepayRide(rideId: string): Promise<{ error?: string }> {
+  if (!isSupabaseConfigured) return {}
+  const { error } = await supabase.rpc('prepay_ride', { p_ride: rideId })
+  return error ? { error: error.message } : {}
+}
+
+// ---------- البرومو كود + إعفاء العمولة + VIP ----------
+export interface PromoResult {
+  valid: boolean
+  discount: number
+  final: number
+  message: string
+}
+
+/** يتحقّق من كود خصم ويعيد قيمة الخصم والسعر النهائي (بلا كشف الأكواد). */
+export async function validatePromo(code: string, fare: number): Promise<PromoResult> {
+  if (!isSupabaseConfigured) return { valid: false, discount: 0, final: fare, message: 'غير متاح' }
+  const { data, error } = await supabase.rpc('validate_promo', { p_code: code, p_fare: fare })
+  const row = Array.isArray(data) ? data[0] : data
+  if (error || !row) return { valid: false, discount: 0, final: fare, message: 'تعذّر التحقّق' }
+  return {
+    valid: Boolean(row.valid),
+    discount: Number(row.discount ?? 0),
+    final: Number(row.final ?? fare),
+    message: String(row.message ?? ''),
+  }
+}
+
+/** قائمة أكواد الخصم (أدمن/موظف). */
+export async function listPromos(): Promise<PromoCode[]> {
+  if (!isSupabaseConfigured) return []
+  const { data } = await supabase.from('promo_codes').select('*').order('created_at', { ascending: false })
+  return data ?? []
+}
+
+/** إنشاء/تعديل كود خصم (أدمن — صلاحية settings). */
+export async function upsertPromo(promo: Partial<PromoCode> & { code: string }): Promise<{ error?: string }> {
+  if (!isSupabaseConfigured) return {}
+  const { error } = await supabase.from('promo_codes').upsert({ ...promo, code: promo.code.trim() })
+  return error ? { error: error.message } : {}
+}
+
+/** حذف كود خصم. */
+export async function deletePromo(code: string): Promise<{ error?: string }> {
+  if (!isSupabaseConfigured) return {}
+  const { error } = await supabase.from('promo_codes').delete().eq('code', code)
+  return error ? { error: error.message } : {}
+}
+
+/** جعل سائق VIP (بلا عمولة — اشتراك) أو إلغاؤه. */
+export async function setDriverVip(userId: string, vip: boolean): Promise<{ error?: string }> {
+  if (!isSupabaseConfigured) return {}
+  const { error } = await supabase.rpc('admin_set_driver_vip', { p_user: userId, p_vip: vip })
+  return error ? { error: error.message } : {}
+}
+
+/** منح سائق إعفاء عمولة مؤقّت حتى تاريخ (null = إلغاء الإعفاء). */
+export async function setDriverCommissionFree(
+  userId: string,
+  until: string | null,
+): Promise<{ error?: string }> {
+  if (!isSupabaseConfigured) return {}
+  const { error } = await supabase.rpc('admin_set_driver_commission_free', {
+    p_user: userId,
+    p_until: until,
+  })
+  return error ? { error: error.message } : {}
+}
+
+/** تحصيل اشتراكات VIP المستحقّة الآن (أدمن) — يعيد عدد المدفوع والمتعذّر. */
+export async function chargeVipSubscriptions(): Promise<{
+  charged: number
+  failed: number
+  error?: string
+}> {
+  if (!isSupabaseConfigured) return { charged: 0, failed: 0 }
+  const { data, error } = await supabase.rpc('charge_due_vip_subscriptions')
+  if (error) return { charged: 0, failed: 0, error: error.message }
+  const row = Array.isArray(data) ? data[0] : data
+  return { charged: row?.charged ?? 0, failed: row?.failed ?? 0 }
+}
+
+// ---------- طلبات اشتراك VIP من السائق ----------
+/** السائق يطلب VIP: دفع من المحفظة (فوري) أو تحويل بنكي بإيصال (اعتماد أدمن). */
+export async function requestVip(
+  method: 'wallet' | 'bank_transfer',
+  proofPath: string | null = null,
+): Promise<{ status?: 'approved' | 'pending'; error?: string }> {
+  if (!isSupabaseConfigured) return { status: method === 'wallet' ? 'approved' : 'pending' }
+  const { data, error } = await supabase.rpc('request_vip', {
+    p_method: method,
+    p_proof_url: proofPath,
+  })
+  if (error) return { error: error.message }
+  return { status: (data as { status?: 'approved' | 'pending' })?.status }
+}
+
+/** أحدث طلب VIP للسائق (لعرض حالته: معلّق/معتمد/مرفوض). */
+export async function getMyVipRequest(driverUserId: string): Promise<VipRequest | null> {
+  if (!isSupabaseConfigured) return null
+  const { data } = await supabase
+    .from('vip_requests')
+    .select('*')
+    .eq('driver_id', driverUserId)
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle()
+  return (data as VipRequest) ?? null
+}
+
+/** طلبات VIP المعلّقة (أدمن) مع اسم/هاتف السائق. */
+export async function listPendingVipRequests(): Promise<VipRequest[]> {
+  if (!isSupabaseConfigured) return []
+  const { data } = await supabase
+    .from('vip_requests')
+    .select('*, users:driver_id(full_name, phone)')
+    .eq('status', 'pending')
+    .order('created_at', { ascending: true })
+  return (data as VipRequest[]) ?? []
+}
+
+export async function approveVipRequest(id: string): Promise<{ error?: string }> {
+  if (!isSupabaseConfigured) return {}
+  const { error } = await supabase.rpc('approve_vip_request', { p_id: id })
+  return error ? { error: error.message } : {}
+}
+
+export async function rejectVipRequest(
+  id: string,
+  note: string | null = null,
+): Promise<{ error?: string }> {
+  if (!isSupabaseConfigured) return {}
+  const { error } = await supabase.rpc('reject_vip_request', { p_id: id, p_note: note })
+  return error ? { error: error.message } : {}
+}
+
+// ---------- مدفوعات العملاء: سحب بنكي أو تحويل إلى الرصيد ----------
+export interface DriverRideStats {
+  today: number
+  month: number
+  total: number
+  count: number
+}
+
+/** إحصاء قيم مشاوير السائق (اليوم/الشهر/الكلي + العدد). */
+export async function getDriverRideStats(): Promise<DriverRideStats> {
+  if (!isSupabaseConfigured) return { today: 0, month: 0, total: 0, count: 0 }
+  const { data } = await supabase.rpc('driver_ride_stats')
+  return (data as DriverRideStats) ?? { today: 0, month: 0, total: 0, count: 0 }
+}
+
+/** طلب سحب بنكي من مدفوعات العملاء — يُخصم فوراً كحجز ويعتمده الأدمن. */
+export async function requestWithdrawal(
+  amount: number,
+  destination: string | null = null,
+): Promise<{ status?: 'pending'; error?: string }> {
+  if (!isSupabaseConfigured) return { status: 'pending' }
+  const { data, error } = await supabase.rpc('request_withdrawal', {
+    p_amount: amount,
+    p_method: 'bank_transfer',
+    p_destination: destination,
+  })
+  if (error) return { error: error.message }
+  return { status: (data as { status?: 'pending' })?.status }
+}
+
+/** تحويل مدفوعات العملاء إلى رصيد السائق (فوري، بلا اعتماد). */
+export async function convertEarningsToBalance(amount: number): Promise<{ error?: string }> {
+  if (!isSupabaseConfigured) return {}
+  const { error } = await supabase.rpc('convert_earnings_to_balance', { p_amount: amount })
+  return error ? { error: error.message } : {}
+}
+
+/** طلبات السحب الخاصّة بالسائق (لعرض حالتها). */
+export async function getMyWithdrawals(driverUserId: string): Promise<Withdrawal[]> {
+  if (!isSupabaseConfigured) return []
+  const { data } = await supabase
+    .from('withdrawals')
+    .select('*')
+    .eq('driver_id', driverUserId)
+    .order('created_at', { ascending: false })
+  return (data as Withdrawal[]) ?? []
+}
+
+/** طلبات السحب المعلّقة (أدمن) مع اسم/هاتف السائق. */
+export async function listPendingWithdrawals(): Promise<Withdrawal[]> {
+  if (!isSupabaseConfigured) return []
+  const { data } = await supabase
+    .from('withdrawals')
+    .select('*, users:driver_id(full_name, phone)')
+    .eq('status', 'pending')
+    .order('created_at', { ascending: true })
+  return (data as Withdrawal[]) ?? []
+}
+
+export async function approveWithdrawal(id: string): Promise<{ error?: string }> {
+  if (!isSupabaseConfigured) return {}
+  const { error } = await supabase.rpc('approve_withdrawal', { p_id: id })
+  return error ? { error: error.message } : {}
+}
+
+export async function rejectWithdrawal(
+  id: string,
+  note: string | null = null,
+): Promise<{ error?: string }> {
+  if (!isSupabaseConfigured) return {}
+  const { error } = await supabase.rpc('reject_withdrawal', { p_id: id, p_note: note })
   return error ? { error: error.message } : {}
 }
 

@@ -5,6 +5,7 @@ interface Props {
 }
 interface State {
   hasError: boolean
+  message?: string
 }
 
 /**
@@ -15,8 +16,8 @@ interface State {
 export default class ErrorBoundary extends Component<Props, State> {
   state: State = { hasError: false }
 
-  static getDerivedStateFromError(): State {
-    return { hasError: true }
+  static getDerivedStateFromError(error: Error): State {
+    return { hasError: true, message: error?.message || String(error) }
   }
 
   componentDidCatch(error: Error, info: ErrorInfo) {
@@ -34,6 +35,11 @@ export default class ErrorBoundary extends Component<Props, State> {
           <p className="text-lg font-bold">حدث خطأ غير متوقّع</p>
           <p className="mt-1 text-sm text-ink-soft">نعتذر — أعد المحاولة، وإن تكرّر تواصل مع الدعم.</p>
         </div>
+        {this.state.message && (
+          <pre className="max-h-40 w-full max-w-md overflow-auto whitespace-pre-wrap rounded-xl bg-danger/10 p-3 text-left text-xs text-danger" dir="ltr">
+            {this.state.message}
+          </pre>
+        )}
         <button className="btn-primary" onClick={() => window.location.reload()}>
           إعادة تحميل التطبيق
         </button>

@@ -24,6 +24,11 @@ export default {
         },
         // الليموني (شعار السائق)
         lemon: '#F2E21C',
+        // هوية «الواحة الملكية» — للشاشات المعاد تصميمها (الرئيسية/تحديد الرحلة)
+        royal: { DEFAULT: '#0E3B2E', soft: '#E7EFEA' }, // زمردي عميق
+        sand: { DEFAULT: '#C4A265', ink: '#B08A4F', soft: '#F3ECDD' }, // ذهبي صحراوي
+        ivory: '#F6F2EA', // عاجي دافئ
+        ladies: '#B0526B', // وردي مخملي هادئ (نسائي)
         // محايدات
         bg: '#FAF7F2',
         ink: {
@@ -39,6 +44,8 @@ export default {
       },
       fontFamily: {
         sans: ['Tajawal', 'system-ui', 'sans-serif'],
+        // خط الواحة الملكية — للشاشات المعاد تصميمها
+        plex: ['"IBM Plex Sans Arabic"', 'Tajawal', 'system-ui', 'sans-serif'],
       },
       borderRadius: {
         xl: '1rem',

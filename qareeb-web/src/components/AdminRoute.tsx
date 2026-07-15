@@ -1,20 +1,30 @@
-import type { ReactNode } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
 import { Navigate } from 'react-router-dom'
 import { useAuth } from '@/store/AuthContext'
 import { isSupabaseConfigured } from '@/lib/supabase'
+import { getMyAdminAccess } from '@/lib/api'
+import type { AdminAccess } from '@/lib/types'
 import Logo from './Logo'
 
 /**
- * يحمي لوحة الأدمن: يتطلّب تسجيل الدخول + دور "admin".
+ * يحمي لوحة الأدمن: يتطلّب تسجيل الدخول + (دور admin أو موظفاً بصلاحيات).
  * الأمان الفعلي مفروض أيضاً على مستوى قاعدة البيانات (RLS)، وهذا حارس الواجهة.
  * في وضع المعاينة (بدون Supabase) يُسمح بالوصول لتجربة اللوحة.
  */
 export default function AdminRoute({ children }: { children: ReactNode }) {
   const { session, profile, loading } = useAuth()
+  const [access, setAccess] = useState<AdminAccess | null>(null)
+
+  const isAdminRole = profile?.role === 'admin'
+
+  useEffect(() => {
+    // الأدمن بالدور لا يحتاج استعلاماً؛ غيره نسأل قاعدة البيانات عن صلاحياته.
+    if (!isSupabaseConfigured || !session || isAdminRole) return
+    void getMyAdminAccess().then(setAccess)
+  }, [session, isAdminRole])
 
   if (loading) return <Spinner />
 
-  // وضع معاينة: لا يوجد backend، نسمح بالوصول للتجربة فقط.
   if (!isSupabaseConfigured) return <>{children}</>
 
   if (!session) return <Navigate to="/admin/login" replace />
@@ -22,9 +32,15 @@ export default function AdminRoute({ children }: { children: ReactNode }) {
   // الجلسة موجودة لكن الملف لم يُحمّل بعد.
   if (!profile) return <Spinner />
 
-  if (profile.role !== 'admin') return <NotAuthorized />
+  // أدمن كامل → دخول مباشر.
+  if (isAdminRole) return <>{children}</>
 
-  return <>{children}</>
+  // ليس أدمن: ننتظر نتيجة صلاحيات الموظف.
+  if (access === null) return <Spinner />
+
+  if (access.perms.length > 0) return <>{children}</>
+
+  return <NotAuthorized />
 }
 
 function Spinner() {

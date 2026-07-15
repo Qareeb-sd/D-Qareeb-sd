@@ -1,19 +1,25 @@
 /**
- * تنبيهات محلية للسائق (بلا خادم) — تعمل ما دام التطبيق مفتوحاً/«متصل».
- * عند وصول طلب جديد عبر Realtime: إشعار منبثق + صوت + اهتزاز.
- * لا تحتاج VAPID ولا Edge Function ولا اشتراكات — ضغطة إذن واحدة تكفي.
+ * تنبيهات السائق بطلب جديد: إشعار + صوت + اهتزاز.
+ *  • على أندرويد: مسار أصلي (إضافة CaptainBg) يعمل في الخلفية/الشاشة مقفلة.
+ *  • على الويب: Notification API + WebAudio + اهتزاز (أثناء فتح التطبيق فقط).
  */
+import { isAndroid, notifyRideNative, requestNotifNative } from './captainBg'
 
 export const notificationsSupported =
-  typeof window !== 'undefined' && 'Notification' in window
+  isAndroid || (typeof window !== 'undefined' && 'Notification' in window)
 
 export function notificationsGranted(): boolean {
-  return notificationsSupported && Notification.permission === 'granted'
+  if (isAndroid) return true // يُدار الإذن أصلياً عند الاتصال
+  return typeof Notification !== 'undefined' && Notification.permission === 'granted'
 }
 
 /** يطلب إذن الإشعارات (مرة واحدة). يُرجع true إن مُنح. */
 export async function enableNotifications(): Promise<boolean> {
-  if (!notificationsSupported) return false
+  if (isAndroid) {
+    await requestNotifNative()
+    return true
+  }
+  if (typeof Notification === 'undefined') return false
   if (Notification.permission === 'granted') return true
   if (Notification.permission === 'denied') return false
   const result = await Notification.requestPermission()
@@ -46,16 +52,27 @@ function beep() {
 
 /** ينبّه السائق بطلب جديد: إشعار + صوت + اهتزاز. */
 export async function alertNewRide(): Promise<void> {
-  const title = '🚗 طلب رحلة جديد'
+  // على أندرويد: المسار الأصلي (صوت + اهتزاز + شاشة القفل + الخلفية).
+  await notify('طلب رحلة جديد', 'يوجد راكب قريب منك — افتح «قريب» للقبول')
+}
+
+/** إشعار عام (صوت + اهتزاز) — يُستخدم أيضاً لإخطار العميل بقبول رحلته. */
+export async function notify(title: string, body: string): Promise<void> {
+  // على أندرويد: إشعار أصلي (يعمل في الخلفية/الشاشة مقفلة).
+  if (isAndroid) void notifyRideNative(title, body)
+  // نبرة + اهتزاز دائماً كتنبيه أمامي احتياطي (تعمل والتطبيق مفتوح).
+  if ('vibrate' in navigator) navigator.vibrate([200, 100, 200])
+  beep()
+  if (isAndroid) return
   const options: NotificationOptions = {
-    body: 'يوجد راكب قريب منك — افتح «قريب» للقبول',
+    body,
     icon: '/icon-192.png',
     badge: '/icon-192.png',
     tag: 'qareeb-ride',
     dir: 'rtl',
     lang: 'ar',
   }
-  if (notificationsGranted()) {
+  if (typeof Notification !== 'undefined' && Notification.permission === 'granted') {
     try {
       // على الجوال يجب استخدام الـ Service Worker لعرض الإشعار.
       const reg =
@@ -66,6 +83,4 @@ export async function alertNewRide(): Promise<void> {
       /* تجاهل — يبقى الصوت والاهتزاز */
     }
   }
-  if ('vibrate' in navigator) navigator.vibrate([200, 100, 200])
-  beep()
 }

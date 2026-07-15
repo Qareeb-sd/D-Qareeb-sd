@@ -1,27 +1,32 @@
 import { useEffect, useRef, useState } from 'react'
 import { Navigate, useNavigate } from 'react-router-dom'
+import { CheckCircle2, Clock, AlertTriangle, Camera, FileText } from 'lucide-react'
 import Screen from '@/components/Screen'
 import VehicleImage from '@/components/VehicleImage'
 import { useAuth } from '@/store/AuthContext'
 import { isSupabaseConfigured } from '@/lib/supabase'
-import { services } from '@/data/services'
+import { services, getService } from '@/data/services'
 import {
   submitDriverApplication,
   getMyDriverApplication,
   uploadDriverDoc,
+  uploadDriverPhoto,
   type DriverDocKind,
 } from '@/lib/api'
 import type { DriverApplication } from '@/lib/types'
 
-/** حقول الوثائق/الصور المطلوبة (المفتاح = نوع الوثيقة، والقيمة = التسمية). */
-const docFields: { kind: DriverDocKind; label: string; photo?: boolean }[] = [
-  { kind: 'driving_license', label: 'رخصة القيادة' },
-  { kind: 'vehicle_license', label: 'رخصة/استمارة السيارة' },
-  { kind: 'transport_permit', label: 'تصريح النقل' },
-  { kind: 'photo_front', label: 'صورة السيارة — أمامية', photo: true },
-  { kind: 'photo_back', label: 'صورة السيارة — خلفية', photo: true },
-  { kind: 'photo_side', label: 'صورة السيارة — جانبية/الأطراف', photo: true },
-  { kind: 'photo_interior', label: 'صورة السيارة — من الداخل', photo: true },
+/**
+ * حقول الوثائق/الصور المطلوبة. تسميات الصور تتكيّف مع نوع المركبة
+ * (noun) فتقول «صورة السحّاب/الركشة/الهايس…» بدل «السيارة» دائماً.
+ */
+const docFields: { kind: DriverDocKind; label: (noun: string) => string; photo?: boolean }[] = [
+  { kind: 'driving_license', label: () => 'رخصة القيادة' },
+  { kind: 'vehicle_license', label: (n) => `رخصة/استمارة ${n}` },
+  { kind: 'transport_permit', label: () => 'تصريح النقل' },
+  { kind: 'photo_front', label: (n) => `صورة ${n} — أمامية`, photo: true },
+  { kind: 'photo_back', label: (n) => `صورة ${n} — خلفية`, photo: true },
+  { kind: 'photo_side', label: (n) => `صورة ${n} — جانبية/الأطراف`, photo: true },
+  { kind: 'photo_interior', label: (n) => `صورة ${n} — من الداخل`, photo: true },
 ]
 
 const urlKey: Record<DriverDocKind, keyof DriverApplication> = {
@@ -56,8 +61,13 @@ export default function DriverRegister() {
   const [isRented, setIsRented] = useState(false)
   const [residence, setResidence] = useState('')
   const [files, setFiles] = useState<Partial<Record<DriverDocKind, File>>>({})
+  const [photoSelfie, setPhotoSelfie] = useState<File | null>(null)
+  const [photoVehicle, setPhotoVehicle] = useState<File | null>(null)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
+
+  // اسم المركبة المختارة للصياغة (السحّاب/الركشة/الهايس…).
+  const noun = getService(vehicleType)?.noun ?? 'المركبة'
 
   useEffect(() => {
     void getMyDriverApplication(userId).then((a) => {
@@ -82,6 +92,9 @@ export default function DriverRegister() {
     if (!fullName.trim() || !phone.trim() || !plate.trim()) {
       return setError('الاسم ورقم الهاتف ولوحة السيارة مطلوبة.')
     }
+    if (!photoSelfie || !photoVehicle) {
+      return setError('أرفق صورتك الشخصية وصورة مركبتك (تظهران للعميل).')
+    }
     const required: DriverDocKind[] = docFields.map((d) => d.kind)
     if (isRented) required.push('rental_contract')
     const missing = required.filter((k) => !files[k])
@@ -98,6 +111,12 @@ export default function DriverRegister() {
         if (error) throw new Error(`تعذّر رفع «${kind}»: ${error}`)
         if (path) urls[urlKey[kind]] = path
       }
+
+      // صور العرض (عامّة): صورة السائق + صورة المركبة تظهران للعميل.
+      const selfie = await uploadDriverPhoto(userId, 'selfie', photoSelfie)
+      if (selfie.error) throw new Error(`تعذّر رفع صورتك: ${selfie.error}`)
+      const veh = await uploadDriverPhoto(userId, 'vehicle', photoVehicle)
+      if (veh.error) throw new Error(`تعذّر رفع صورة المركبة: ${veh.error}`)
 
       const { error } = await submitDriverApplication({
         user_id: userId,
@@ -116,6 +135,8 @@ export default function DriverRegister() {
         photo_back_url: urls.photo_back_url ?? null,
         photo_side_url: urls.photo_side_url ?? null,
         photo_interior_url: urls.photo_interior_url ?? null,
+        driver_photo_url: selfie.url ?? null,
+        vehicle_photo_url: veh.url ?? null,
       })
       if (error) throw new Error(error)
 
@@ -136,7 +157,7 @@ export default function DriverRegister() {
     return (
       <Screen title="الانضمام كسائق">
         <div className="flex justify-center py-24">
-          <div className="h-10 w-10 animate-spin rounded-full border-4 border-green-soft border-t-green" />
+          <div className="h-10 w-10 animate-spin rounded-full border-4 border-royal-soft border-t-royal" />
         </div>
       </Screen>
     )
@@ -147,10 +168,10 @@ export default function DriverRegister() {
     return (
       <Screen title="الانضمام كسائق">
         <div className="flex flex-col items-center gap-4 py-16 text-center">
-          <div className="text-5xl">✅</div>
+          <CheckCircle2 className="h-14 w-14 text-royal" strokeWidth={2} />
           <p className="font-bold">تم اعتماد طلبك — أهلاً بك سائقاً في قريب!</p>
           <button
-            className="btn-primary"
+            className="btn-driver"
             onClick={async () => {
               await refreshProfile()
               navigate('/driver')
@@ -168,7 +189,7 @@ export default function DriverRegister() {
     return (
       <Screen title="الانضمام كسائق" back>
         <div className="flex flex-col items-center gap-4 py-16 text-center">
-          <div className="text-5xl">🕗</div>
+          <Clock className="h-14 w-14 text-sand-ink" strokeWidth={2} />
           <p className="font-bold">طلبك قيد المراجعة</p>
           <p className="max-w-xs text-sm text-ink-soft">
             استلمنا بياناتك ووثائقك، وسيراجعها فريق قريب. سنبلّغك عند الاعتماد.
@@ -183,10 +204,10 @@ export default function DriverRegister() {
     return (
       <Screen title="الانضمام كسائق" back>
         <div className="rounded-2xl bg-danger/10 p-5 text-center text-sm">
-          <div className="text-4xl">⚠️</div>
+          <AlertTriangle className="mx-auto h-10 w-10 text-danger" strokeWidth={2} />
           <p className="mt-2 font-bold text-danger">تم رفض طلبك السابق.</p>
           {app.review_note && <p className="mt-1 text-ink-soft">السبب: {app.review_note}</p>}
-          <button className="btn-primary mt-4" onClick={() => setShowForm(true)}>
+          <button className="btn-driver mt-4" onClick={() => setShowForm(true)}>
             إعادة التقديم
           </button>
         </div>
@@ -233,7 +254,7 @@ export default function DriverRegister() {
                     onClick={() => setVehicleType(s.id)}
                     className={`flex items-center gap-2 rounded-2xl border p-2.5 text-right transition ${
                       vehicleType === s.id
-                        ? 'border-green bg-green-soft font-bold text-green'
+                        ? 'border-sand bg-sand/25 font-bold text-royal'
                         : 'border-hairline bg-white text-ink-soft'
                     }`}
                   >
@@ -260,9 +281,26 @@ export default function DriverRegister() {
               <input type="checkbox" checked={isRented} onChange={(e) => setIsRented(e.target.checked)} className="h-5 w-5 accent-green" />
             </label>
 
+            {/* صور العرض للعميل (صورة السائق + المركبة) */}
+            <div className="space-y-3">
+              <p className="label">صورتك وصورة مركبتك — تظهران للعميل عند القبول</p>
+              <FileField
+                label="صورتك الشخصية"
+                photo
+                file={photoSelfie}
+                onChange={setPhotoSelfie}
+              />
+              <FileField
+                label={`صورة ${noun} واضحة`}
+                photo
+                file={photoVehicle}
+                onChange={setPhotoVehicle}
+              />
+            </div>
+
             {/* الوثائق والصور */}
             <div className="space-y-3">
-              <p className="label">الوثائق وصور السيارة</p>
+              <p className="label">الوثائق وصور {noun}</p>
               {isRented && (
                 <FileField
                   label="عقد الإيجار"
@@ -273,7 +311,7 @@ export default function DriverRegister() {
               {docFields.map((d) => (
                 <FileField
                   key={d.kind}
-                  label={d.label}
+                  label={d.label(noun)}
                   photo={d.photo}
                   file={files[d.kind] ?? null}
                   onChange={(f) => setFile(d.kind, f)}
@@ -281,7 +319,7 @@ export default function DriverRegister() {
               ))}
             </div>
 
-        <button className="btn-primary w-full" type="submit" disabled={busy}>
+        <button className="btn-driver w-full" type="submit" disabled={busy}>
           {busy ? 'جارٍ الإرسال…' : 'إرسال الطلب للمراجعة'}
         </button>
       </form>
@@ -304,10 +342,14 @@ function FileField({
   const inputRef = useRef<HTMLInputElement>(null)
   return (
     <div className="flex items-center gap-3 rounded-2xl border border-hairline bg-white p-3">
-      <span className="text-xl">{photo ? '📷' : '📄'}</span>
+      {photo ? (
+        <Camera className="h-5 w-5 shrink-0 text-ink-soft" strokeWidth={2} />
+      ) : (
+        <FileText className="h-5 w-5 shrink-0 text-ink-soft" strokeWidth={2} />
+      )}
       <div className="min-w-0 flex-1">
         <p className="truncate text-sm font-medium">{label}</p>
-        {file && <p className="truncate text-xs text-green">{file.name}</p>}
+        {file && <p className="truncate text-xs text-royal">{file.name}</p>}
       </div>
       <input
         ref={inputRef}
@@ -321,7 +363,7 @@ function FileField({
         type="button"
         onClick={() => inputRef.current?.click()}
         className={`shrink-0 rounded-xl px-3 py-1.5 text-sm font-bold ${
-          file ? 'bg-green-soft text-green' : 'bg-hairline text-ink-soft'
+          file ? 'bg-sand/25 text-royal' : 'bg-hairline text-ink-soft'
         }`}
       >
         {file ? 'تغيير' : 'إرفاق'}

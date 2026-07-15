@@ -47,6 +47,80 @@ export function estimateFare(params: {
   return { base, distance, time, surgeMultiplier: surge, total }
 }
 
+// ============================================================
+//  التسعير حسب الفترة الزمنية (النموذج الجديد)
+//  الأجرة = فتح العداد + سعر الكيلومتر × كم + سعر الدقيقة × دقيقة
+//  ثم الحدّ الأدنى min_fare فقط (بلا سقف)، وتقرّب لأقرب 100.
+// ============================================================
+export type Period = 'morning' | 'afternoon' | 'evening' | 'night'
+
+export interface PeriodRate {
+  base_fare: number
+  per_km: number
+  per_min: number
+  min_fare: number
+}
+
+export const PERIOD_LABEL: Record<Period, string> = {
+  morning: 'صباحاً',
+  afternoon: 'ظهراً',
+  evening: 'مساءً',
+  night: 'ليلاً',
+}
+
+/** الفترة الحالية حسب توقيت الخرطوم (UTC+2). */
+export function currentPeriod(now: Date = new Date()): Period {
+  const utcMs = now.getTime() + now.getTimezoneOffset() * 60000
+  const kh = new Date(utcMs + 2 * 3600000)
+  const h = kh.getHours()
+  const m = kh.getMinutes()
+  if (h < 6) return 'night' // 00:00–05:59
+  if (h < 14) return 'morning' // 06:00–13:59
+  if (h < 17 || (h === 17 && m === 0)) return 'afternoon' // 14:00–17:00
+  return 'evening' // 17:01–23:59
+}
+
+/** يحسب الأجرة بنموذج الفترات: حدّ أدنى فقط + تقريب لأقرب 100. */
+export function computeFare(km: number, min: number, rate: PeriodRate): number {
+  const raw = rate.base_fare + rate.per_km * Math.max(0, km) + rate.per_min * Math.max(0, min)
+  const floored = Math.max(raw, rate.min_fare)
+  return Math.round(floored / 100) * 100
+}
+
+/** تفصيل الأجرة لإيصال مفصّل (طلب المشوار + المسافة + الوقت + الحد الأدنى + الخصم). */
+export interface FareParts {
+  base: number // طلب المشوار
+  distance: number // مقابل المسافة (per_km × كم)
+  time: number // مقابل الوقت (per_min × دقيقة)
+  minApplied: boolean // هل طُبِّق الحد الأدنى؟
+  gross: number // الإجمالي قبل الخصم (مقرّب لأقرب 100)
+  discount: number // قيمة الخصم
+  total: number // الإجمالي النهائي
+}
+
+export function fareBreakdown(
+  km: number,
+  min: number,
+  rate: PeriodRate,
+  discount = 0,
+): FareParts {
+  const base = Math.round(rate.base_fare)
+  const distance = Math.round(rate.per_km * Math.max(0, km))
+  const time = Math.round(rate.per_min * Math.max(0, min))
+  const raw = rate.base_fare + rate.per_km * Math.max(0, km) + rate.per_min * Math.max(0, min)
+  const gross = computeFare(km, min, rate)
+  const d = Math.max(0, Math.round(discount))
+  return {
+    base,
+    distance,
+    time,
+    minApplied: raw < rate.min_fare,
+    gross,
+    discount: d,
+    total: Math.max(0, gross - d),
+  }
+}
+
 /** مسافة بالكيلومتر بين نقطتين (Haversine). */
 export function haversineKm(
   a: google.maps.LatLngLiteral,

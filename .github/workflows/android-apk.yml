@@ -36,9 +36,6 @@ jobs:
           VITE_VAPID_PUBLIC_KEY=${{ secrets.VITE_VAPID_PUBLIC_KEY }}
           EOF
 
-      - name: بناء الويب (dist)
-        run: npm run build
-
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
@@ -49,15 +46,30 @@ jobs:
       - name: تجهيز حزم Android SDK المطلوبة
         run: yes | sdkmanager "platforms;android-36" "build-tools;36.0.0" "platform-tools"
 
-      - name: نسخ الويب إلى مشروع أندرويد
-        run: npx cap sync android
+      # ===== تطبيق العميل «قريب» =====
+      - name: بناء ويب العميل + APK
+        run: |
+          VITE_APP=customer npm run build
+          npx cap sync android
+          cd android && ./gradlew assembleCustomerDebug --no-daemon
 
-      - name: بناء APK (debug)
-        run: cd android && ./gradlew assembleDebug --no-daemon
-
-      - name: رفع الـ APK كـ Artifact
+      - name: رفع APK العميل «قريب»
         uses: actions/upload-artifact@v4
         with:
-          name: qareeb-debug-apk
-          path: qareeb-web/android/app/build/outputs/apk/debug/app-debug.apk
+          name: qareeb-customer-apk
+          path: qareeb-web/android/app/build/outputs/apk/customer/debug/app-customer-debug.apk
+          if-no-files-found: error
+
+      # ===== تطبيق السائق «كابتن قريب» =====
+      - name: بناء ويب السائق + APK
+        run: |
+          VITE_APP=driver npm run build
+          npx cap sync android
+          cd android && ./gradlew assembleDriverDebug --no-daemon
+
+      - name: رفع APK السائق «كابتن قريب»
+        uses: actions/upload-artifact@v4
+        with:
+          name: qareeb-captain-apk
+          path: qareeb-web/android/app/build/outputs/apk/driver/debug/app-driver-debug.apk
           if-no-files-found: error
