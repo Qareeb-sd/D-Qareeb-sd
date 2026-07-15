@@ -1395,21 +1395,41 @@ export async function rejectVipRequest(
   return error ? { error: error.message } : {}
 }
 
-// ---------- سحب أرباح السائق ----------
-/** السائق يطلب سحب مبلغ من رصيده — يُخصم فوراً ويُنشأ طلب معلّق للاعتماد. */
+// ---------- مدفوعات العملاء: سحب بنكي أو تحويل إلى الرصيد ----------
+export interface DriverRideStats {
+  today: number
+  month: number
+  total: number
+  count: number
+}
+
+/** إحصاء قيم مشاوير السائق (اليوم/الشهر/الكلي + العدد). */
+export async function getDriverRideStats(): Promise<DriverRideStats> {
+  if (!isSupabaseConfigured) return { today: 0, month: 0, total: 0, count: 0 }
+  const { data } = await supabase.rpc('driver_ride_stats')
+  return (data as DriverRideStats) ?? { today: 0, month: 0, total: 0, count: 0 }
+}
+
+/** طلب سحب بنكي من مدفوعات العملاء — يُخصم فوراً كحجز ويعتمده الأدمن. */
 export async function requestWithdrawal(
   amount: number,
-  method: 'cash' | 'bank_transfer',
   destination: string | null = null,
 ): Promise<{ status?: 'pending'; error?: string }> {
   if (!isSupabaseConfigured) return { status: 'pending' }
   const { data, error } = await supabase.rpc('request_withdrawal', {
     p_amount: amount,
-    p_method: method,
+    p_method: 'bank_transfer',
     p_destination: destination,
   })
   if (error) return { error: error.message }
   return { status: (data as { status?: 'pending' })?.status }
+}
+
+/** تحويل مدفوعات العملاء إلى رصيد السائق (فوري، بلا اعتماد). */
+export async function convertEarningsToBalance(amount: number): Promise<{ error?: string }> {
+  if (!isSupabaseConfigured) return {}
+  const { error } = await supabase.rpc('convert_earnings_to_balance', { p_amount: amount })
+  return error ? { error: error.message } : {}
 }
 
 /** طلبات السحب الخاصّة بالسائق (لعرض حالتها). */

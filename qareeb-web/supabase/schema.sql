@@ -2755,3 +2755,162 @@ begin
   update public.drivers set is_online = p_online where user_id = auth.uid();
 end $$;
 grant execute on function public.set_driver_online(boolean) to authenticated;
+
+-- ============================================================
+--  استراتيجية محفظة السائق (نهائية):
+--   • الرصيد (balance) = فلوت التعبئة لتغطية العمولات فقط.
+--   • مدفوعات العملاء (withdrawable) = ما سدّده العملاء عبر المحفظة (وعاء منفصل
+--     تماماً عن الرصيد). يدخله صافي رحلات المحفظة.
+--   • السحب خياران: تحويل بنكي (طلب يعتمده الأدمن)، أو تحويلها إلى الرصيد (فوري).
+--   • النقدي: العمولة تُخصم من الرصيد. رحلات المحفظة لا تمسّ الرصيد.
+-- ============================================================
+
+-- التسوية: رحلة المحفظة → الصافي يدخل «مدفوعات العملاء» فقط (لا الرصيد).
+create or replace function public.settle_ride(p_ride uuid)
+returns void language plpgsql security definer set search_path = public as $$
+declare
+  v_driver_user uuid; v_customer uuid; v_fare numeric; v_status ride_status;
+  v_payment payment_method; v_service text; v_rate numeric; v_commission numeric;
+  v_net numeric; v_dwallet uuid; v_cwallet uuid; v_cbalance numeric; v_prepaid boolean;
+  v_vip boolean; v_free timestamptz;
+begin
+  select driver_id, customer_id, fare, status, payment_method, service_id, prepaid
+    into v_driver_user, v_customer, v_fare, v_status, v_payment, v_service, v_prepaid
+    from public.rides where id = p_ride for update;
+
+  if v_driver_user is null then raise exception 'الرحلة بلا سائق'; end if;
+  if auth.uid() <> v_driver_user and not public.is_admin() then raise exception 'غير مصرّح'; end if;
+  if v_status = 'completed' then raise exception 'الرحلة مسوّاة مسبقاً'; end if;
+  if v_status = 'cancelled' then raise exception 'الرحلة ملغاة'; end if;
+
+  v_rate := coalesce(
+    (select commission_rate from public.service_pricing where service_id = v_service),
+    (select commission_rate from public.settings where id = 1));
+
+  select vip, commission_free_until into v_vip, v_free
+    from public.drivers where user_id = v_driver_user;
+  if coalesce(v_vip, false) or (v_free is not null and v_free > now()) then
+    v_rate := 0;
+  end if;
+
+  v_fare       := coalesce(v_fare, 0);
+  v_commission := round(v_fare * coalesce(v_rate, 0));
+  v_net        := v_fare - v_commission;
+
+  if v_payment = 'wallet' and not v_prepaid then
+    select id, balance into v_cwallet, v_cbalance from public.wallets where user_id = v_customer for update;
+    if v_cwallet is null then raise exception 'محفظة العميل غير موجودة'; end if;
+    if v_cbalance < v_fare then raise exception 'رصيد محفظة العميل غير كافٍ'; end if;
+    update public.wallets set balance = balance - v_fare, updated_at = now() where id = v_cwallet;
+    insert into public.transactions (wallet_id, type, amount, ride_id, note)
+      values (v_cwallet, 'ride_payment', -v_fare, p_ride, 'دفع رحلة');
+  end if;
+
+  update public.rides set status = 'completed' where id = p_ride;
+
+  select id into v_dwallet from public.wallets where user_id = v_driver_user for update;
+  if v_dwallet is not null then
+    if v_payment = 'wallet' then
+      -- مدفوعات العميل: الصافي يدخل «القابل للسحب» فقط، دون مسّ الرصيد (الفلوت).
+      update public.wallets
+        set withdrawable = withdrawable + v_net, updated_at = now()
+        where id = v_dwallet;
+      insert into public.transactions (wallet_id, type, amount, ride_id, note)
+        values (v_dwallet, 'ride_earning', v_net, p_ride, 'مدفوعات عميل (محفظة)');
+    else
+      -- نقدي/تحويل: العمولة تُخصم من الرصيد (الفلوت).
+      if v_commission > 0 then
+        update public.wallets set balance = balance - v_commission, updated_at = now() where id = v_dwallet;
+        insert into public.transactions (wallet_id, type, amount, ride_id, note)
+          values (v_dwallet, 'commission', -v_commission, p_ride, 'عمولة المنصة (نقدي/تحويل)');
+      end if;
+    end if;
+  end if;
+end $$;
+
+-- تحويل مدفوعات العملاء إلى الرصيد (فوري): withdrawable → balance.
+create or replace function public.convert_earnings_to_balance(p_amount numeric)
+returns void language plpgsql security definer set search_path = public as $$
+declare v_wallet uuid; v_wd numeric; v_uid uuid := auth.uid();
+begin
+  if v_uid is null then raise exception 'غير مصرّح'; end if;
+  if coalesce(p_amount, 0) <= 0 then raise exception 'المبلغ غير صالح'; end if;
+  select id, withdrawable into v_wallet, v_wd from public.wallets where user_id = v_uid for update;
+  if v_wallet is null then raise exception 'المحفظة غير موجودة'; end if;
+  if p_amount > coalesce(v_wd, 0) then raise exception 'المبلغ أكبر من مدفوعات العملاء المتاحة'; end if;
+  update public.wallets
+    set withdrawable = withdrawable - p_amount, balance = balance + p_amount, updated_at = now()
+    where id = v_wallet;
+  insert into public.transactions (wallet_id, type, amount, note)
+    values (v_wallet, 'topup', p_amount, 'تحويل مدفوعات العملاء إلى الرصيد');
+  perform public.log_action('تحويل أرباح إلى الرصيد', p_amount::text || ' ج.س');
+end $$;
+grant execute on function public.convert_earnings_to_balance(numeric) to authenticated;
+
+-- طلب سحب بنكي: من «مدفوعات العملاء» فقط (يخصم فوراً كحجز، ويعتمده الأدمن).
+create or replace function public.request_withdrawal(
+  p_amount numeric, p_method text default 'bank_transfer', p_destination text default null
+)
+returns jsonb language plpgsql security definer set search_path = public as $$
+declare v_wallet uuid; v_wd numeric; v_uid uuid := auth.uid();
+begin
+  if v_uid is null then raise exception 'غير مصرّح'; end if;
+  if coalesce(p_amount, 0) <= 0 then raise exception 'المبلغ غير صالح'; end if;
+  if not exists (select 1 from public.drivers where user_id = v_uid) then
+    raise exception 'الحساب ليس سائقاً';
+  end if;
+  if exists (select 1 from public.withdrawals where driver_id = v_uid and status = 'pending') then
+    raise exception 'لديك طلب سحب قيد المراجعة بالفعل';
+  end if;
+  select id, withdrawable into v_wallet, v_wd from public.wallets where user_id = v_uid for update;
+  if v_wallet is null then raise exception 'المحفظة غير موجودة'; end if;
+  if coalesce(v_wd, 0) <= 0 then raise exception 'لا توجد مدفوعات عملاء قابلة للسحب'; end if;
+  if p_amount > v_wd then raise exception 'المبلغ أكبر من مدفوعات العملاء المتاحة'; end if;
+
+  update public.wallets set withdrawable = withdrawable - p_amount, updated_at = now() where id = v_wallet;
+  insert into public.withdrawals (driver_id, wallet_id, amount, method, destination, status)
+    values (v_uid, v_wallet, p_amount, 'bank_transfer', p_destination, 'pending');
+  perform public.log_action('طلب سحب أرباح (بنكي)', p_amount::text || ' ج.س');
+  return jsonb_build_object('status', 'pending');
+end $$;
+
+-- رفض السحب: يعيد المبلغ إلى «مدفوعات العملاء» (لا يمسّ الرصيد).
+create or replace function public.reject_withdrawal(p_id uuid, p_note text default null)
+returns void language plpgsql security definer set search_path = public as $$
+declare v_driver uuid; v_wallet uuid; v_amount numeric; v_status topup_status;
+begin
+  if not public.has_perm('requests') and not public.has_perm('drivers') then
+    raise exception 'غير مصرّح';
+  end if;
+  select driver_id, wallet_id, amount, status
+    into v_driver, v_wallet, v_amount, v_status
+    from public.withdrawals where id = p_id for update;
+  if v_driver is null then raise exception 'الطلب غير موجود'; end if;
+  if v_status <> 'pending' then raise exception 'الطلب روجع مسبقاً'; end if;
+
+  update public.withdrawals
+    set status = 'rejected', reviewed_by = auth.uid(), note = coalesce(p_note, note)
+    where id = p_id;
+  update public.wallets set withdrawable = withdrawable + v_amount, updated_at = now() where id = v_wallet;
+  perform public.log_action('رفض سحب أرباح', p_note);
+end $$;
+
+-- إحصاء قيم مشاوير السائق (اليوم/الشهر/الكلي + العدد) بتوقيت الخرطوم.
+create or replace function public.driver_ride_stats()
+returns jsonb language plpgsql security definer set search_path = public as $$
+declare tz text := 'Africa/Khartoum'; v_uid uuid := auth.uid();
+begin
+  return jsonb_build_object(
+    'today', coalesce((select round(sum(fare)) from public.rides
+       where driver_id = v_uid and status = 'completed'
+         and (created_at at time zone tz)::date = (now() at time zone tz)::date), 0),
+    'month', coalesce((select round(sum(fare)) from public.rides
+       where driver_id = v_uid and status = 'completed'
+         and date_trunc('month', created_at at time zone tz) = date_trunc('month', now() at time zone tz)), 0),
+    'total', coalesce((select round(sum(fare)) from public.rides
+       where driver_id = v_uid and status = 'completed'), 0),
+    'count', coalesce((select count(*) from public.rides
+       where driver_id = v_uid and status = 'completed'), 0)
+  );
+end $$;
+grant execute on function public.driver_ride_stats() to authenticated;

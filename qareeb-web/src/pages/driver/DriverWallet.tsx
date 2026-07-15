@@ -1,14 +1,6 @@
-import { useMemo, useState } from 'react'
+import { useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import {
-  Banknote,
-  Landmark,
-  Clock,
-  CheckCircle2,
-  XCircle,
-  Wallet as WalletIcon,
-  Plus,
-} from 'lucide-react'
+import { Clock, CheckCircle2, XCircle, Plus, Landmark, ArrowDownToLine } from 'lucide-react'
 import Logo from '@/components/Logo'
 import DriverNav from '@/components/DriverNav'
 import { useAuth } from '@/store/AuthContext'
@@ -17,21 +9,16 @@ import {
   getWallet,
   listDriverTransactions,
   getMyWithdrawals,
+  getDriverRideStats,
   requestWithdrawal,
+  convertEarningsToBalance,
   createTopup,
   uploadTopupProof,
 } from '@/lib/api'
 import { money } from '@/lib/format'
 import type { Settings } from '@/lib/types'
 
-/** بداية اليوم بتوقيت الجهاز (لتجميع أرباح اليوم). */
-function startOfToday(): number {
-  const d = new Date()
-  d.setHours(0, 0, 0, 0)
-  return d.getTime()
-}
-
-/** محفظة السائق: الرصيد + ملخّص الأرباح (اليوم/الأسبوع/الصافي) + سحب + سجل. */
+/** محفظة السائق: الرصيد (فلوت) + قيمة المشاوير + مدفوعات العملاء (سحب/تحويل للرصيد). */
 export default function DriverWallet() {
   const { profile } = useAuth()
   const userId = profile?.id ?? 'demo-user'
@@ -50,47 +37,25 @@ export default function DriverWallet() {
     queryKey: ['driver-withdrawals', userId],
     queryFn: () => getMyWithdrawals(userId),
   })
+  const { data: stats } = useQuery({
+    queryKey: ['driver-ride-stats', userId],
+    queryFn: () => getDriverRideStats(),
+  })
+  const { data: settings } = useQuery({ queryKey: ['settings'], queryFn: getSettings })
   const loading = walletLoading || (Boolean(wallet) && txLoading)
 
   const balance = wallet?.balance ?? 0
-  // القابل للسحب = أرباح رحلات المحفظة (لا التعبئة)، بحدّ الرصيد الكلي المتاح.
-  const withdrawable = Math.max(0, Math.min(balance, wallet?.withdrawable ?? 0))
+  const withdrawable = Math.max(0, wallet?.withdrawable ?? 0)
   const pending = withdrawals.find((w) => w.status === 'pending')
 
-  // ملخّص الأرباح — الصافي = أرباح الرحلة − العمولة (العمولة مُخزَّنة بإشارة سالبة).
-  const summary = useMemo(() => {
-    const today = startOfToday()
-    const weekAgo = Date.now() - 7 * 86400000
-    let earnings = 0
-    let commission = 0
-    let netToday = 0
-    let netWeek = 0
-    let rides = 0
-    for (const t of txs) {
-      const ts = new Date(t.created_at).getTime()
-      if (t.type === 'ride_earning') {
-        earnings += t.amount
-        rides += 1
-      } else if (t.type === 'commission') {
-        commission += Math.abs(t.amount)
-      }
-      if (t.type === 'ride_earning' || t.type === 'commission') {
-        if (ts >= today) netToday += t.amount
-        if (ts >= weekAgo) netWeek += t.amount
-      }
-    }
-    return { earnings, commission, net: earnings - commission, netToday, netWeek, rides }
-  }, [txs])
-
-  const [showForm, setShowForm] = useState(false)
-  const [showTopup, setShowTopup] = useState(false)
-  const { data: settings } = useQuery({ queryKey: ['settings'], queryFn: getSettings })
+  const [panel, setPanel] = useState<'topup' | 'bank' | 'convert' | null>(null)
 
   const refresh = () => {
     void qc.invalidateQueries({ queryKey: ['driver-wallet', userId] })
     void qc.invalidateQueries({ queryKey: ['driver-transactions', wallet?.id] })
     void qc.invalidateQueries({ queryKey: ['driver-withdrawals', userId] })
   }
+  const toggle = (p: 'topup' | 'bank' | 'convert') => setPanel((cur) => (cur === p ? null : p))
 
   return (
     <div className="screen font-plex bg-ivory">
@@ -100,93 +65,98 @@ export default function DriverWallet() {
       </header>
 
       <main className="flex-1 px-4 pb-24">
+        {/* الرصيد (الفلوت) + تعبئة */}
         <div className="rounded-3xl bg-gradient-to-br from-sand to-sand-ink p-6 text-royal shadow-lift">
-          <p className="text-sm text-royal/70">رصيد المحفظة</p>
+          <p className="text-sm text-royal/70">الرصيد</p>
           <p className="mt-1 text-3xl font-extrabold">{loading ? '…' : money(balance)}</p>
-          <p className="mt-1 text-xs text-royal/70">
-            قابل للسحب: <span className="font-bold">{money(withdrawable)}</span>
-          </p>
-          <div className="mt-4 flex flex-wrap gap-2">
-            <button
-              onClick={() => {
-                setShowTopup((v) => !v)
-                setShowForm(false)
-              }}
-              className="flex items-center gap-2 rounded-2xl bg-royal px-4 py-2.5 text-sm font-bold text-ivory"
-            >
-              <Plus className="h-4 w-4" strokeWidth={2.2} />
-              {showTopup ? 'إغلاق' : 'تعبئة الرصيد'}
-            </button>
-            {!pending && (
-              <button
-                onClick={() => {
-                  setShowForm((v) => !v)
-                  setShowTopup(false)
-                }}
-                disabled={withdrawable <= 0}
-                className="flex items-center gap-2 rounded-2xl bg-royal/20 px-4 py-2.5 text-sm font-bold text-royal disabled:opacity-50"
-              >
-                <WalletIcon className="h-4 w-4" strokeWidth={2} />
-                {showForm ? 'إغلاق' : 'سحب الأرباح'}
-              </button>
-            )}
-          </div>
+          <p className="mt-1 text-xs text-royal/70">يُستخدم لتغطية عمولة الرحلات النقدية</p>
+          <button
+            onClick={() => toggle('topup')}
+            className="mt-4 flex items-center gap-2 rounded-2xl bg-royal px-4 py-2.5 text-sm font-bold text-ivory"
+          >
+            <Plus className="h-4 w-4" strokeWidth={2.2} />
+            {panel === 'topup' ? 'إغلاق' : 'تعبئة الرصيد'}
+          </button>
         </div>
 
-        {/* تعبئة الرصيد (لتغطية عمولة الرحلات النقدية) */}
-        {showTopup && (
+        {panel === 'topup' && (
           <TopupForm
             settings={settings}
             walletId={wallet?.id}
             userId={userId}
             onDone={() => {
-              setShowTopup(false)
+              setPanel(null)
               refresh()
             }}
           />
         )}
 
-        {/* طلب سحب معلّق */}
-        {pending && (
-          <div className="mt-4 flex items-center gap-3 rounded-2xl border border-sand/50 bg-sand-soft/50 p-4">
-            <Clock className="h-5 w-5 shrink-0 text-sand-ink" strokeWidth={2} />
-            <div className="flex-1">
-              <p className="text-sm font-bold text-sand-ink">طلب سحب قيد المراجعة</p>
-              <p className="text-xs text-ink-muted">
-                {money(pending.amount)} · {pending.method === 'cash' ? 'استلام نقدي' : 'تحويل بنكي'}
+        {/* مدفوعات العملاء (وعاء منفصل) + سحب/تحويل */}
+        <div className="card mt-4 p-4">
+          <p className="text-sm text-ink-muted">مدفوعات العملاء (المحفظة)</p>
+          <p className="mt-1 text-2xl font-extrabold text-green">{money(withdrawable)}</p>
+          <p className="mt-1 text-[11px] text-ink-muted">
+            ما سدّده العملاء عبر محفظة قريب — لك سحبه بنكياً أو تحويله إلى رصيدك.
+          </p>
+          {pending ? (
+            <div className="mt-3 flex items-center gap-2 rounded-2xl border border-sand/50 bg-sand-soft/50 p-3">
+              <Clock className="h-4 w-4 shrink-0 text-sand-ink" strokeWidth={2} />
+              <p className="text-xs text-sand-ink">
+                طلب سحب بنكي قيد المراجعة: {money(pending.amount)}
               </p>
             </div>
-          </div>
-        )}
+          ) : (
+            <div className="mt-3 flex flex-wrap gap-2">
+              <button
+                onClick={() => toggle('bank')}
+                disabled={withdrawable <= 0}
+                className="flex items-center gap-2 rounded-2xl bg-royal px-4 py-2.5 text-sm font-bold text-ivory disabled:opacity-50"
+              >
+                <Landmark className="h-4 w-4" strokeWidth={2} />
+                {panel === 'bank' ? 'إغلاق' : 'تحويل بنكي'}
+              </button>
+              <button
+                onClick={() => toggle('convert')}
+                disabled={withdrawable <= 0}
+                className="flex items-center gap-2 rounded-2xl bg-royal/15 px-4 py-2.5 text-sm font-bold text-royal disabled:opacity-50"
+              >
+                <ArrowDownToLine className="h-4 w-4" strokeWidth={2} />
+                {panel === 'convert' ? 'إغلاق' : 'تحويل إلى الرصيد'}
+              </button>
+            </div>
+          )}
+        </div>
 
-        {/* نموذج السحب */}
-        {showForm && !pending && (
-          <WithdrawForm
+        {panel === 'bank' && !pending && (
+          <BankWithdrawForm
             max={withdrawable}
             onDone={() => {
-              setShowForm(false)
+              setPanel(null)
+              refresh()
+            }}
+          />
+        )}
+        {panel === 'convert' && !pending && (
+          <ConvertForm
+            max={withdrawable}
+            onDone={() => {
+              setPanel(null)
               refresh()
             }}
           />
         )}
 
-        {/* ملخّص الأرباح */}
+        {/* قيمة المشاوير */}
         <div className="mt-5 grid grid-cols-3 gap-3">
-          <SummaryCard value={money(summary.netToday)} label="صافي اليوم" />
-          <SummaryCard value={money(summary.netWeek)} label="صافي الأسبوع" />
-          <SummaryCard value={String(summary.rides)} label="عدد الرحلات" />
+          <StatCard value={money(stats?.today ?? 0)} label="قيمة مشاوير اليوم" />
+          <StatCard value={money(stats?.month ?? 0)} label="قيمة الشهر" />
+          <StatCard value={money(stats?.total ?? 0)} label="القيمة الكليّة" />
         </div>
-        <div className="mt-3 grid grid-cols-2 gap-3">
-          <div className="card p-4 text-center">
-            <p className="text-lg font-extrabold text-green">{money(summary.net)}</p>
-            <p className="text-xs text-ink-muted">صافي الأرباح الكلي</p>
-          </div>
-          <div className="card p-4 text-center">
-            <p className="text-lg font-extrabold text-danger">{money(summary.commission)}</p>
-            <p className="text-xs text-ink-muted">عمولة المنصة</p>
-          </div>
-        </div>
+        <p className="mt-2 text-center text-[11px] text-ink-muted">
+          إجمالي رحلاتك المكتملة: {stats?.count ?? 0}
+        </p>
 
+        {/* سجل المعاملات */}
         <h2 className="mb-2 mt-6 font-bold">سجل المعاملات</h2>
         {loading ? (
           <div className="card h-24 animate-pulse" />
@@ -211,17 +181,16 @@ export default function DriverWallet() {
           </div>
         )}
 
-        {/* سجل طلبات السحب */}
+        {/* سجل طلبات السحب البنكي */}
         {withdrawals.length > 0 && (
           <>
-            <h2 className="mb-2 mt-6 font-bold">طلبات السحب</h2>
+            <h2 className="mb-2 mt-6 font-bold">طلبات السحب البنكي</h2>
             <div className="card divide-y divide-hairline p-0">
               {withdrawals.map((w) => (
                 <div key={w.id} className="flex items-center justify-between px-4 py-3">
                   <div>
                     <p className="font-medium">{money(w.amount)}</p>
                     <p className="text-xs text-ink-muted">
-                      {w.method === 'cash' ? 'استلام نقدي' : 'تحويل بنكي'} ·{' '}
                       {new Date(w.created_at).toLocaleDateString('ar-SD')}
                     </p>
                   </div>
@@ -238,10 +207,10 @@ export default function DriverWallet() {
   )
 }
 
-function SummaryCard({ value, label }: { value: string; label: string }) {
+function StatCard({ value, label }: { value: string; label: string }) {
   return (
     <div className="card p-3 text-center">
-      <p className="text-base font-extrabold text-sand-ink">{value}</p>
+      <p className="text-[15px] font-extrabold text-sand-ink">{value}</p>
       <p className="text-[11px] text-ink-muted">{label}</p>
     </div>
   )
@@ -267,10 +236,9 @@ function WithdrawStatus({ status }: { status: 'pending' | 'approved' | 'rejected
   )
 }
 
-/** نموذج طلب سحب: مبلغ + طريقة استلام + وجهة (حساب/ملاحظة). */
-function WithdrawForm({ max, onDone }: { max: number; onDone: () => void }) {
+/** سحب بنكي: مبلغ + رقم حساب/محفظة — طلب يعتمده الأدمن. */
+function BankWithdrawForm({ max, onDone }: { max: number; onDone: () => void }) {
   const [amount, setAmount] = useState('')
-  const [method, setMethod] = useState<'cash' | 'bank_transfer'>('cash')
   const [destination, setDestination] = useState('')
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState('')
@@ -279,26 +247,20 @@ function WithdrawForm({ max, onDone }: { max: number; onDone: () => void }) {
     const value = Math.round(Number(amount))
     setErr('')
     if (!value || value <= 0) return setErr('أدخل مبلغاً صحيحاً')
-    if (value > max) return setErr('المبلغ أكبر من رصيدك')
-    if (method === 'bank_transfer' && !destination.trim())
-      return setErr('أدخل رقم الحساب/المحفظة لاستلام التحويل')
+    if (value > max) return setErr('المبلغ أكبر من المتاح')
+    if (!destination.trim()) return setErr('أدخل رقم الحساب/المحفظة لاستلام التحويل')
     setBusy(true)
-    const { error } = await requestWithdrawal(value, method, destination.trim() || null)
+    const { error } = await requestWithdrawal(value, destination.trim())
     setBusy(false)
     if (error) return setErr(error)
     onDone()
   }
 
   return (
-    <div className="card mt-4 space-y-3 p-4">
-      <p className="font-bold text-royal">طلب سحب</p>
-      <p className="text-[11px] text-ink-muted">
-        تسحب أرباح رحلات المحفظة فقط (ما دفعه العملاء). رصيد التعبئة يبقى لتغطية العمولات.
-      </p>
+    <div className="card mt-3 space-y-3 p-4">
+      <p className="font-bold text-royal">تحويل بنكي</p>
       <div>
-        <label className="mb-1 block text-xs text-ink-muted">
-          المبلغ (القابل للسحب {money(max)})
-        </label>
+        <label className="mb-1 block text-xs text-ink-muted">المبلغ (المتاح {money(max)})</label>
         <input
           className="field text-left"
           dir="ltr"
@@ -308,32 +270,13 @@ function WithdrawForm({ max, onDone }: { max: number; onDone: () => void }) {
           onChange={(e) => setAmount(e.target.value.replace(/[^\d]/g, ''))}
         />
       </div>
-      <div>
-        <label className="mb-1 block text-xs text-ink-muted">طريقة الاستلام</label>
-        <div className="grid grid-cols-2 gap-2">
-          <MethodChip
-            active={method === 'cash'}
-            onClick={() => setMethod('cash')}
-            Icon={Banknote}
-            label="نقداً"
-          />
-          <MethodChip
-            active={method === 'bank_transfer'}
-            onClick={() => setMethod('bank_transfer')}
-            Icon={Landmark}
-            label="تحويل بنكي"
-          />
-        </div>
-      </div>
-      {method === 'bank_transfer' && (
-        <input
-          className="field text-left"
-          dir="ltr"
-          placeholder="رقم الحساب أو المحفظة"
-          value={destination}
-          onChange={(e) => setDestination(e.target.value)}
-        />
-      )}
+      <input
+        className="field text-left"
+        dir="ltr"
+        placeholder="رقم الحساب أو المحفظة"
+        value={destination}
+        onChange={(e) => setDestination(e.target.value)}
+      />
       {err && <p className="text-sm text-danger">{err}</p>}
       <button
         onClick={submit}
@@ -342,14 +285,59 @@ function WithdrawForm({ max, onDone }: { max: number; onDone: () => void }) {
       >
         {busy ? '…' : 'إرسال الطلب'}
       </button>
-      <p className="text-[11px] text-ink-muted">
-        يُخصم المبلغ فوراً من رصيدك ويُعاد كاملاً إن رُفض الطلب.
-      </p>
+      <p className="text-[11px] text-ink-muted">يُخصم المبلغ فوراً ويُعاد إن رُفض الطلب.</p>
     </div>
   )
 }
 
-/** تعبئة رصيد السائق بتحويل بنكي + إثبات — يعتمدها الأدمن (كتعبئة العميل). */
+/** تحويل مدفوعات العملاء إلى الرصيد (فوري). */
+function ConvertForm({ max, onDone }: { max: number; onDone: () => void }) {
+  const [amount, setAmount] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState('')
+
+  const submit = async () => {
+    const value = Math.round(Number(amount))
+    setErr('')
+    if (!value || value <= 0) return setErr('أدخل مبلغاً صحيحاً')
+    if (value > max) return setErr('المبلغ أكبر من المتاح')
+    setBusy(true)
+    const { error } = await convertEarningsToBalance(value)
+    setBusy(false)
+    if (error) return setErr(error)
+    onDone()
+  }
+
+  return (
+    <div className="card mt-3 space-y-3 p-4">
+      <p className="font-bold text-royal">تحويل إلى الرصيد</p>
+      <p className="text-[11px] text-ink-muted">
+        يُضاف المبلغ إلى رصيدك فوراً لتستخدمه في تغطية العمولات.
+      </p>
+      <div>
+        <label className="mb-1 block text-xs text-ink-muted">المبلغ (المتاح {money(max)})</label>
+        <input
+          className="field text-left"
+          dir="ltr"
+          inputMode="numeric"
+          placeholder="0"
+          value={amount}
+          onChange={(e) => setAmount(e.target.value.replace(/[^\d]/g, ''))}
+        />
+      </div>
+      {err && <p className="text-sm text-danger">{err}</p>}
+      <button
+        onClick={submit}
+        disabled={busy}
+        className="w-full rounded-2xl bg-royal px-4 py-3 text-sm font-bold text-ivory disabled:opacity-60"
+      >
+        {busy ? '…' : 'تحويل إلى الرصيد'}
+      </button>
+    </div>
+  )
+}
+
+/** تعبئة رصيد السائق بتحويل بنكي + إثبات — يعتمدها الأدمن. */
 function TopupForm({
   settings,
   walletId,
@@ -393,7 +381,7 @@ function TopupForm({
     <div className="card mt-4 space-y-3 p-4">
       <p className="font-bold text-royal">تعبئة الرصيد بتحويل بنكي</p>
       <p className="text-xs text-ink-muted">
-        عبّئ رصيدك لتغطية عمولة المنصة على الرحلات النقدية. يُضاف الرصيد بعد اعتماد الإدارة.
+        عبّئ رصيدك لتغطية عمولة الرحلات النقدية. يُضاف الرصيد بعد اعتماد الإدارة.
       </p>
       {settings && (
         <div className="rounded-2xl bg-sand-soft/60 p-3 text-sm text-ink">
@@ -449,29 +437,5 @@ function TopupForm({
         إغلاق
       </button>
     </div>
-  )
-}
-
-function MethodChip({
-  active,
-  onClick,
-  Icon,
-  label,
-}: {
-  active: boolean
-  onClick: () => void
-  Icon: typeof Banknote
-  label: string
-}) {
-  return (
-    <button
-      onClick={onClick}
-      className={`flex items-center justify-center gap-1.5 rounded-xl border px-3 py-2.5 text-sm font-bold transition ${
-        active ? 'border-royal bg-royal text-ivory' : 'border-hairline bg-ivory text-ink-soft'
-      }`}
-    >
-      <Icon className="h-4 w-4" strokeWidth={1.9} />
-      {label}
-    </button>
   )
 }
