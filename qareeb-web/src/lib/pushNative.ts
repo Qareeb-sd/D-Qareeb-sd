@@ -11,6 +11,23 @@ const isNative = Capacitor.getPlatform() === 'android'
 
 let currentToken: string | null = null
 
+// حالة تشخيصية مرئية (لمعرفة أين يفشل تسجيل الإشعارات دون سجلّ الهاتف).
+const STATUS_KEY = 'qareeb_fcm_status'
+function setStatus(s: string): void {
+  try {
+    localStorage.setItem(STATUS_KEY, s)
+  } catch {
+    /* تجاهل */
+  }
+}
+export function getPushStatus(): string {
+  try {
+    return localStorage.getItem(STATUS_KEY) || 'لم يبدأ'
+  } catch {
+    return 'غير متاح'
+  }
+}
+
 // استيراد ديناميكي حتى لا يُحمَّل الملحق على الويب.
 async function plugin() {
   const mod = await import('@capacitor/push-notifications')
@@ -44,7 +61,14 @@ export async function ensurePushPermission(): Promise<void> {
 }
 
 export async function registerPushForDriver(userId: string): Promise<boolean> {
-  if (!isNative || !userId) return false
+  if (!isNative) {
+    setStatus('ليس أندرويد')
+    return false
+  }
+  if (!userId) {
+    setStatus('لا مستخدم')
+    return false
+  }
   try {
     const PushNotifications = await plugin()
     const perm = await PushNotifications.checkPermissions()
@@ -52,22 +76,30 @@ export async function registerPushForDriver(userId: string): Promise<boolean> {
     if (status === 'prompt' || status === 'prompt-with-rationale') {
       status = (await PushNotifications.requestPermissions()).receive
     }
-    if (status !== 'granted') return false
+    if (status !== 'granted') {
+      setStatus(`الإذن: ${status}`)
+      return false
+    }
+    setStatus('الإذن ممنوح — جارٍ التسجيل…')
 
     // مستمعو الأحداث — نُنتظرهم قبل register() حتى لا يُطلق الرمز قبل جهوز
     // المستمع فيضيع (سبب بقاء device_tokens فارغاً).
     await PushNotifications.removeAllListeners()
     await PushNotifications.addListener('registration', (t: { value: string }) => {
       currentToken = t.value
+      setStatus(`رمز مستلَم ✓ (${t.value.slice(0, 10)}…) — جارٍ الحفظ`)
       void saveDeviceToken(userId, t.value)
+        .then(() => setStatus(`محفوظ ✓ (${t.value.slice(0, 10)}…)`))
+        .catch((e) => setStatus(`فشل الحفظ: ${String(e).slice(0, 60)}`))
     })
-    await PushNotifications.addListener('registrationError', () => {
-      /* تجاهل — الاستطلاع الاحتياطي يبقى يعمل */
+    await PushNotifications.addListener('registrationError', (e: unknown) => {
+      setStatus(`خطأ تسجيل FCM: ${JSON.stringify(e).slice(0, 80)}`)
     })
 
     await PushNotifications.register()
     return true
-  } catch {
+  } catch (e) {
+    setStatus(`استثناء: ${String(e).slice(0, 80)}`)
     return false
   }
 }

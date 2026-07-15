@@ -16,6 +16,7 @@ import {
   uploadTopupProof,
 } from '@/lib/api'
 import ReceiptUpload from '@/components/ReceiptUpload'
+import PushStatus from '@/components/PushStatus'
 import { money } from '@/lib/format'
 import type { Settings } from '@/lib/types'
 
@@ -84,6 +85,8 @@ export default function DriverWallet() {
             {panel === 'topup' ? 'إغلاق' : 'تعبئة الرصيد'}
           </button>
         </div>
+
+        <PushStatus />
 
         {panel === 'topup' && (
           <TopupForm
