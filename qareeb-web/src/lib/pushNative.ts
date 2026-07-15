@@ -1,5 +1,6 @@
 import { Capacitor } from '@capacitor/core'
 import { saveDeviceToken, deleteDeviceToken } from './api'
+import { supabase, isSupabaseConfigured } from './supabase'
 
 /**
  * إشعارات FCM الأصلية للكابتن — تصله والتطبيق في الخلفية أو الشاشة مقفلة.
@@ -44,19 +45,35 @@ export async function registerPush(userId: string): Promise<boolean> {
 }
 
 /**
- * يطلب إذن الإشعارات مبكراً عند فتح التطبيق (بلا حاجة لتسجيل الدخول)، فيظهر طلب
- * السماح على أندرويد 13+ فوراً. حفظ الرمز يتم لاحقاً في registerPush بعد الدخول.
+ * يهيّئ الإشعارات عند فتح التطبيق: يطلب الإذن، ويسجّل الرمز مباشرةً بقراءة معرّف
+ * المستخدم من جلسة Supabase (بلا اعتماد على حالة React) — أكثر موثوقية. يُعيد
+ * التسجيل عند تغيّر الجلسة (دخول/خروج).
  */
 export async function ensurePushPermission(): Promise<void> {
-  if (!isNative) return
-  try {
-    const PushNotifications = await plugin()
-    const perm = await PushNotifications.checkPermissions()
-    if (perm.receive === 'prompt' || perm.receive === 'prompt-with-rationale') {
-      await PushNotifications.requestPermissions()
+  if (!isNative) {
+    setStatus('ليس أندرويد')
+    return
+  }
+  const tryRegister = async () => {
+    if (!isSupabaseConfigured) {
+      setStatus('Supabase غير مضبوط')
+      return
     }
-  } catch {
-    /* يتحمّل غياب الدعم بهدوء */
+    setStatus('يقرأ الجلسة…')
+    const { data } = await supabase.auth.getSession()
+    const uid = data.session?.user?.id
+    if (!uid) {
+      setStatus('لا جلسة بعد — بانتظار الدخول')
+      return
+    }
+    await registerPushForDriver(uid)
+  }
+  await tryRegister()
+  // أعِد المحاولة عند تغيّر الجلسة (بعد تسجيل الدخول مثلاً).
+  if (isSupabaseConfigured) {
+    supabase.auth.onAuthStateChange(() => {
+      void tryRegister()
+    })
   }
 }
 
@@ -70,7 +87,9 @@ export async function registerPushForDriver(userId: string): Promise<boolean> {
     return false
   }
   try {
+    setStatus('تحميل ملحق الإشعارات…')
     const PushNotifications = await plugin()
+    setStatus('فحص الإذن…')
     const perm = await PushNotifications.checkPermissions()
     let status = perm.receive
     if (status === 'prompt' || status === 'prompt-with-rationale') {
