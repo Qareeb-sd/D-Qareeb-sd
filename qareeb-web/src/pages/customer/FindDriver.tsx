@@ -5,7 +5,7 @@ import Logo from '@/components/Logo'
 import { useRide } from '@/store/RideContext'
 import { subscribeToRide } from '@/lib/realtime'
 import { cancelRide, getRide } from '@/lib/api'
-import CancelReasonSheet from '@/components/CancelReasonSheet'
+import CancelReasonSheet, { type CancelReason } from '@/components/CancelReasonSheet'
 import { notify } from '@/lib/notifications'
 import { isSupabaseConfigured } from '@/lib/supabase'
 
@@ -27,9 +27,10 @@ export default function FindDriver() {
   const [phase, setPhase] = useState<'searching' | 'timeout' | 'cancelled'>('searching')
   const done = useRef(false)
 
-  const cancel = async (reason: string) => {
+  const cancel = async (reason: CancelReason) => {
     setBusy(true)
-    if (rideId) await cancelRide(rideId, reason)
+    // قبل قبول السائق لا رسوم إطلاقاً.
+    if (rideId) await cancelRide(rideId, reason.label, reason.code)
     reset()
     navigate('/home')
   }

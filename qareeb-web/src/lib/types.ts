@@ -85,6 +85,7 @@ export interface Wallet {
   id: string
   user_id: string
   balance: number
+  cancellation_debt?: number // دَيْن رسوم إلغاء يُضاف لأجرة الرحلة القادمة
   updated_at: string
 }
 
@@ -118,6 +119,9 @@ export interface Settings {
   bank_account_name: string | null
   bank_account_number: string | null
   vip_subscription_fee: number // رسم اشتراك VIP الشهري (يُخصم من محفظة السائق)
+  cancellation_fee: number // رسوم إلغاء العميل بعد قبول السائق (0 = معطّلة)
+  cancellation_far_km: number // مسافة تُعفي العميل («السائق بعيد») — كم
+  cancellation_far_min: number // زمن وصول مقدّر يُعفي العميل — دقيقة
   updated_at: string
 }
 

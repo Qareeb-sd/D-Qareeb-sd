@@ -26,10 +26,11 @@ import {
   getActiveCustomerRide,
   cancelRide,
   getRide,
+  getSettings,
   type RideDriverInfo,
 } from '@/lib/api'
 import { fetchRoutePath } from '@/lib/maps'
-import CancelReasonSheet from '@/components/CancelReasonSheet'
+import CancelReasonSheet, { type CancelReason } from '@/components/CancelReasonSheet'
 import { notify } from '@/lib/notifications'
 import { isSupabaseConfigured } from '@/lib/supabase'
 import { money } from '@/lib/format'
@@ -63,6 +64,8 @@ export default function Trip() {
   const [busy, setBusy] = useState(false)
   const [confirmCancel, setConfirmCancel] = useState(false)
   const [cancelErr, setCancelErr] = useState('')
+  const [cancelFee, setCancelFee] = useState(0)
+  const [cancelInfo, setCancelInfo] = useState<string | null>(null)
   const notified = useRef(false)
 
   // استرجاع الرحلة الجارية بعد تحديث الصفحة (تُفقد الحالة من الذاكرة).
@@ -167,17 +170,36 @@ export default function Trip() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [origin?.lat, origin?.lng, dest?.lat, dest?.lng])
 
-  const cancel = async (reason: string) => {
+  // رسوم الإلغاء (تُطبَّق فقط بعد قبول السائق ولسبب غير مبرّر).
+  useEffect(() => {
+    void getSettings().then((s) => setCancelFee(s.cancellation_fee ?? 0))
+  }, [])
+
+  const cancel = async (reason: CancelReason) => {
     setBusy(true)
     setCancelErr('')
     if (rideId) {
-      const { error } = await cancelRide(rideId, reason)
+      const { result, error } = await cancelRide(rideId, reason.label, reason.code)
       if (error) {
         setBusy(false)
         setCancelErr(error)
         return
       }
+      // إن طُبِّقت رسوم، أعلِم العميل قبل العودة للرئيسية.
+      if (result && (result.charged > 0 || result.debt > 0)) {
+        const parts: string[] = []
+        if (result.charged > 0) parts.push(`خُصم ${money(result.charged)} من محفظتك`)
+        if (result.debt > 0) parts.push(`${money(result.debt)} تُضاف لأجرة رحلتك القادمة`)
+        setBusy(false)
+        setCancelInfo(`رسوم إلغاء: ${parts.join('، ')}.`)
+        return
+      }
     }
+    reset()
+    navigate('/home')
+  }
+
+  const finishCancel = () => {
     reset()
     navigate('/home')
   }
@@ -296,11 +318,21 @@ export default function Trip() {
                 إنهاء الرحلة (معاينة)
               </button>
             )}
-            {cancellable &&
+            {cancelInfo ? (
+              <div className="space-y-3 rounded-2xl border border-hairline bg-ivory/60 p-4 text-center">
+                <p className="text-sm font-bold text-royal">تم إلغاء الرحلة</p>
+                <p className="text-[13px] text-ink-soft">{cancelInfo}</p>
+                <button className="btn-primary w-full" onClick={finishCancel}>
+                  حسناً
+                </button>
+              </div>
+            ) : (
+              cancellable &&
               (confirmCancel ? (
                 <CancelReasonSheet
                   busy={busy}
                   error={cancelErr}
+                  fee={status === 'accepted' || status === 'arrived' ? cancelFee : 0}
                   onConfirm={cancel}
                   onDismiss={() => {
                     setConfirmCancel(false)
@@ -319,7 +351,7 @@ export default function Trip() {
                     إلغاء الرحلة
                   </button>
                 </>
-              ))}
+              )))}
           </div>
         </section>
       </div>

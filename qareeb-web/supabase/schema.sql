@@ -2447,3 +2447,152 @@ begin
   perform public.log_action('رفض سحب أرباح', p_note);
 end $$;
 grant execute on function public.reject_withdrawal(uuid, text) to authenticated;
+
+-- ============================================================
+--  رسوم إلغاء العميل: بعد قبول السائق، الإلغاء بسبب مبرّر (السائق بعيد فعلاً /
+--  السيارة مختلفة / السائق مختلف) بلا رسوم. غير ذلك تُخصم رسوم من محفظة العميل،
+--  وإن لم يكفِ الرصيد يُضاف الباقي كدَيْن يُحصّل مع أجرة رحلته القادمة.
+--  «بعيد فعلاً» = مسافة السائق عن الانطلاق > cancellation_far_km،
+--  أو زمن الوصول المقدّر > cancellation_far_min دقيقة.
+-- ============================================================
+alter table public.settings add column if not exists cancellation_fee     numeric(12,2) not null default 0;
+alter table public.settings add column if not exists cancellation_far_km   numeric        not null default 5;
+alter table public.settings add column if not exists cancellation_far_min  numeric        not null default 15;
+alter table public.wallets  add column if not exists cancellation_debt     numeric(12,2) not null default 0;
+
+-- مسافة هافرساين بالكيلومتر بين نقطتين (لتقدير بُعد السائق).
+create or replace function public.haversine_km(
+  lat1 double precision, lng1 double precision,
+  lat2 double precision, lng2 double precision
+) returns double precision language sql immutable as $$
+  select 2 * 6371 * asin(sqrt(
+    power(sin(radians(lat2 - lat1) / 2), 2) +
+    cos(radians(lat1)) * cos(radians(lat2)) *
+    power(sin(radians(lng2 - lng1) / 2), 2)
+  ));
+$$;
+
+-- نُسقط التوقيع السابق (uuid,text) ثم نعيد التعريف بإضافة رمز السبب وإرجاع jsonb.
+drop function if exists public.cancel_ride(uuid, text);
+create or replace function public.cancel_ride(
+  p_ride uuid,
+  p_reason text default null,
+  p_reason_code text default null
+)
+returns jsonb language plpgsql security definer set search_path = public as $$
+declare
+  v_customer uuid; v_driver uuid; v_status ride_status;
+  v_fare numeric; v_prepaid boolean; v_cwallet uuid; v_bal numeric;
+  v_plat double precision; v_plng double precision;
+  v_dlat double precision; v_dlng double precision;
+  v_fee numeric := 0; v_far_km numeric; v_far_min numeric;
+  v_excused boolean := false; v_dist numeric; v_eta_min numeric;
+  v_charged numeric := 0; v_debt numeric := 0;
+begin
+  select customer_id, driver_id, status, fare, prepaid,
+         pickup_lat, pickup_lng, driver_lat, driver_lng
+    into v_customer, v_driver, v_status, v_fare, v_prepaid,
+         v_plat, v_plng, v_dlat, v_dlng
+    from public.rides where id = p_ride for update;
+
+  if v_customer is null then raise exception 'الرحلة غير موجودة'; end if;
+  if v_status in ('completed', 'cancelled') then raise exception 'لا يمكن إلغاء هذه الرحلة'; end if;
+
+  if auth.uid() = v_customer then
+    if v_status not in ('requested', 'searching', 'accepted', 'arrived') then
+      raise exception 'لا يمكن الإلغاء بعد بدء الرحلة';
+    end if;
+
+    -- الرسوم تُطبَّق فقط بعد قبول السائق (accepted/arrived)؛ قبلها الإلغاء مجّاني.
+    if v_status in ('accepted', 'arrived') then
+      if p_reason_code in ('car_mismatch', 'driver_mismatch') then
+        v_excused := true;
+      elsif p_reason_code = 'driver_far' then
+        if v_dlat is null or v_dlng is null then
+          v_excused := true; -- موقع السائق غير معروف بعد — لصالح العميل
+        else
+          select cancellation_far_km, cancellation_far_min
+            into v_far_km, v_far_min from public.settings where id = 1;
+          v_dist := public.haversine_km(v_plat, v_plng, v_dlat, v_dlng);
+          v_eta_min := (v_dist * 1.3 / 25.0) * 60.0; -- تقدير الزمن (عامل طريق 1.3، 25كم/س)
+          v_excused := v_dist > coalesce(v_far_km, 5) or v_eta_min > coalesce(v_far_min, 15);
+        end if;
+      else
+        v_excused := false;
+      end if;
+
+      if not v_excused then
+        select cancellation_fee into v_fee from public.settings where id = 1;
+        v_fee := coalesce(v_fee, 0);
+      end if;
+    end if;
+
+    update public.rides
+       set status = 'cancelled',
+           cancel_reason = nullif(btrim(coalesce(p_reason, '')), '')
+     where id = p_ride;
+
+    -- استرجاع الدفع المسبق (إن وُجد).
+    if v_prepaid then
+      select id into v_cwallet from public.wallets where user_id = v_customer for update;
+      if v_cwallet is not null then
+        update public.wallets set balance = balance + coalesce(v_fare, 0), updated_at = now() where id = v_cwallet;
+        insert into public.transactions (wallet_id, type, amount, ride_id, note)
+          values (v_cwallet, 'topup', coalesce(v_fare, 0), p_ride, 'استرجاع دفع رحلة ملغاة');
+      end if;
+      update public.rides set prepaid = false where id = p_ride;
+    end if;
+
+    -- رسوم الإلغاء: خصم من المحفظة، والباقي دَيْن على الرحلة القادمة.
+    if v_fee > 0 then
+      select id, balance into v_cwallet, v_bal from public.wallets where user_id = v_customer for update;
+      if v_cwallet is null then
+        v_debt := v_fee; -- لا محفظة (نادر) — يبقى ديناً نظرياً
+      elsif v_bal >= v_fee then
+        update public.wallets set balance = balance - v_fee, updated_at = now() where id = v_cwallet;
+        insert into public.transactions (wallet_id, type, amount, ride_id, note)
+          values (v_cwallet, 'ride_payment', -v_fee, p_ride, 'رسوم إلغاء الرحلة');
+        v_charged := v_fee;
+      else
+        if v_bal > 0 then
+          update public.wallets set balance = 0, updated_at = now() where id = v_cwallet;
+          insert into public.transactions (wallet_id, type, amount, ride_id, note)
+            values (v_cwallet, 'ride_payment', -v_bal, p_ride, 'رسوم إلغاء (خصم جزئي)');
+          v_charged := v_bal;
+        end if;
+        v_debt := v_fee - v_charged;
+        update public.wallets set cancellation_debt = cancellation_debt + v_debt where id = v_cwallet;
+      end if;
+      perform public.log_action('رسوم إلغاء رحلة', v_fee::text || ' ج.س');
+    end if;
+
+    return jsonb_build_object('fee', v_fee, 'charged', v_charged, 'debt', v_debt, 'excused', v_excused);
+
+  elsif auth.uid() = v_driver then
+    if v_status not in ('accepted', 'arrived') then
+      raise exception 'لا يمكن التخلّي عن الرحلة الآن';
+    end if;
+    update public.rides set status = 'searching', driver_id = null where id = p_ride;
+    return jsonb_build_object('fee', 0, 'charged', 0, 'debt', 0, 'excused', true);
+  else
+    raise exception 'غير مصرّح';
+  end if;
+end $$;
+grant execute on function public.cancel_ride(uuid, text, text) to authenticated;
+
+-- تحصيل دَيْن الإلغاء: يُضاف لأجرة أوّل رحلة جديدة للعميل ثم يُصفّر (خادم موثوق).
+create or replace function public.apply_cancellation_debt()
+returns trigger language plpgsql security definer set search_path = public as $$
+declare v_debt numeric;
+begin
+  select cancellation_debt into v_debt from public.wallets where user_id = new.customer_id for update;
+  if coalesce(v_debt, 0) > 0 and new.fare is not null then
+    new.fare := new.fare + v_debt;
+    update public.wallets set cancellation_debt = 0 where user_id = new.customer_id;
+  end if;
+  return new;
+end $$;
+drop trigger if exists trg_apply_cancellation_debt on public.rides;
+create trigger trg_apply_cancellation_debt
+  before insert on public.rides
+  for each row execute function public.apply_cancellation_debt();

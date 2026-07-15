@@ -26,6 +26,7 @@ import {
   notifyDriversOfRide,
   prepayRide,
   cancelRide,
+  getCancellationDebt,
   getActiveCustomerRide,
   getServicePricing,
   getSettings,
@@ -112,6 +113,12 @@ export default function SelectLocation() {
   const [promoCode, setPromoCode] = useState('')
   const [promo, setPromo] = useState<PromoResult | null>(null)
   const [promoBusy, setPromoBusy] = useState(false)
+
+  // دَيْن رسوم إلغاء سابق (يُضاف لأجرة هذه الرحلة).
+  const [debt, setDebt] = useState(0)
+  useEffect(() => {
+    if (profile?.id) void getCancellationDebt(profile.id).then(setDebt)
+  }, [profile?.id])
 
   // السعر الفعّال بعد الخصم (إن طُبّق كود صالح).
   const baseFare = quote?.fare ?? 0
@@ -357,7 +364,8 @@ export default function SelectLocation() {
     const dropoff = { pos: dropoffPos, address: dropoffAddr || 'الوجهة' }
     setPickup(pickup)
     setDropoff(dropoff)
-    setFare(effectiveFare)
+    // الأجرة المعروضة تشمل دَيْن الإلغاء السابق (يضيفه الخادم فعلياً عند الإنشاء).
+    setFare(effectiveFare + debt)
     const { id, error } = await createRide({
       customer_id: profile?.id,
       service_id: sid,
@@ -677,8 +685,18 @@ export default function SelectLocation() {
                 <p className="text-[10px] text-ink-muted">
                   السعر {!quote.real && <span className="text-ink-muted/70">تقديري</span>}
                 </p>
-                <p className="text-[13px] font-bold text-sand-ink">{money(effectiveFare)}</p>
+                <p className="text-[13px] font-bold text-sand-ink">
+                  {money(effectiveFare + debt)}
+                </p>
               </div>
+            </div>
+          )}
+
+          {/* دَيْن رسوم إلغاء سابق مُضاف لهذه الرحلة */}
+          {quote && destChosen && debt > 0 && (
+            <div className="mt-2 flex items-center justify-between rounded-xl bg-warning/10 px-3 py-2 text-[12px]">
+              <span className="font-medium text-warning">رسوم إلغاء سابقة</span>
+              <span className="font-bold text-warning">+ {money(debt)}</span>
             </div>
           )}
 

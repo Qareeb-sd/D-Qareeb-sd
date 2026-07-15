@@ -1110,6 +1110,9 @@ export default function AdminDashboard() {
       bank_account_name: settings.bank_account_name,
       bank_account_number: settings.bank_account_number,
       vip_subscription_fee: settings.vip_subscription_fee,
+      cancellation_fee: settings.cancellation_fee,
+      cancellation_far_km: settings.cancellation_far_km,
+      cancellation_far_min: settings.cancellation_far_min,
     })
     setSavedMsg(error ? `خطأ: ${error}` : 'تم حفظ الإعدادات ✓')
   }
@@ -2915,6 +2918,35 @@ export default function AdminDashboard() {
                     >
                       {vipCharging ? 'جارٍ التحصيل…' : 'تحصيل المستحقّ الآن'}
                     </button>
+                  </div>
+                </div>
+
+                <div className="rounded-2xl border border-sand/40 bg-sand-soft/40 p-3">
+                  <p className="font-bold text-royal">رسوم إلغاء العميل</p>
+                  <p className="mb-2 text-xs text-ink-muted">
+                    تُخصم عند إلغاء العميل بعد قبول السائق لسبب غير مبرّر. الإلغاء لأنّ السائق
+                    بعيد فعلاً (مسافة/زمن أكبر من الحدّين) أو السيارة/السائق مختلف = بلا رسوم.
+                    اضبط الرسوم على 0 لتعطيلها.
+                  </p>
+                  <div className="grid grid-cols-3 gap-2">
+                    <NumField
+                      label="الرسوم (ج.س)"
+                      step={250}
+                      value={settings.cancellation_fee}
+                      onChange={(v) => setSettings({ ...settings, cancellation_fee: v })}
+                    />
+                    <NumField
+                      label="حدّ البُعد (كم)"
+                      step={1}
+                      value={settings.cancellation_far_km}
+                      onChange={(v) => setSettings({ ...settings, cancellation_far_km: v })}
+                    />
+                    <NumField
+                      label="حدّ الزمن (دقيقة)"
+                      step={1}
+                      value={settings.cancellation_far_min}
+                      onChange={(v) => setSettings({ ...settings, cancellation_far_min: v })}
+                    />
                   </div>
                 </div>
 

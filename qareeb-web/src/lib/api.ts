@@ -41,6 +41,9 @@ const demoSettings: Settings = {
   bank_account_name: 'شركة قريب للنقل',
   bank_account_number: '1234567890123',
   vip_subscription_fee: 15000,
+  cancellation_fee: 1000,
+  cancellation_far_km: 5,
+  cancellation_far_min: 15,
   updated_at: new Date().toISOString(),
 }
 
@@ -1216,16 +1219,37 @@ export async function setRideStatus(
  * إلغاء الرحلة عبر دالة آمنة:
  *   • العميل → cancelled، • السائق → تعود searching بلا سائق.
  */
+export interface CancelResult {
+  fee: number // الرسوم المطبَّقة (0 إن مبرّر أو قبل القبول)
+  charged: number // المخصوم فعلاً من المحفظة
+  debt: number // ما تحوّل لدَيْن على الرحلة القادمة
+  excused: boolean // هل اعتُبر الإلغاء مبرّراً؟
+}
+
 export async function cancelRide(
   rideId: string,
   reason?: string | null,
-): Promise<{ error?: string }> {
-  if (!isSupabaseConfigured) return {}
-  const { error } = await supabase.rpc('cancel_ride', {
+  reasonCode?: string | null,
+): Promise<{ result?: CancelResult; error?: string }> {
+  if (!isSupabaseConfigured) return { result: { fee: 0, charged: 0, debt: 0, excused: true } }
+  const { data, error } = await supabase.rpc('cancel_ride', {
     p_ride: rideId,
     p_reason: reason?.trim() || null,
+    p_reason_code: reasonCode ?? null,
   })
-  return error ? { error: error.message } : {}
+  if (error) return { error: error.message }
+  return { result: (data as CancelResult) ?? { fee: 0, charged: 0, debt: 0, excused: true } }
+}
+
+/** دَيْن رسوم الإلغاء المعلّق على العميل (يُضاف لأجرة الرحلة القادمة). */
+export async function getCancellationDebt(userId: string): Promise<number> {
+  if (!isSupabaseConfigured) return 0
+  const { data } = await supabase
+    .from('wallets')
+    .select('cancellation_debt')
+    .eq('user_id', userId)
+    .maybeSingle()
+  return (data as { cancellation_debt?: number } | null)?.cancellation_debt ?? 0
 }
 
 /** تسوية الرحلة عند اكتمالها: يُقيَّد للسائق (الأجرة − العمولة) عبر دالة آمنة. */
