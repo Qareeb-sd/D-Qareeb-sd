@@ -3435,3 +3435,70 @@ begin
   perform public.log_action('حذف حافز سائق', p_id::text);
 end $$;
 grant execute on function public.admin_delete_incentive(uuid) to authenticated;
+
+-- ============================================================
+--  اشتراك VIP «دفع مقدّم بحت»: الإعفاء من العمولة يسري فقط ما دام الاشتراك
+--  مدفوعاً (vip_paid_until > now). عند انتهائه تعود العمولة تلقائياً حتى يجدّد
+--  السائق بنفسه — بلا تحصيل تلقائي. (يُلغي منح الإعفاء لاشتراك منتهٍ.)
+-- ============================================================
+create or replace function public.settle_ride(p_ride uuid)
+returns void language plpgsql security definer set search_path = public as $$
+declare
+  v_driver_user uuid; v_customer uuid; v_fare numeric; v_status ride_status;
+  v_payment payment_method; v_service text; v_rate numeric; v_commission numeric;
+  v_net numeric; v_dwallet uuid; v_cwallet uuid; v_cbalance numeric; v_prepaid boolean;
+  v_vip boolean; v_free timestamptz; v_paid_until timestamptz;
+begin
+  select driver_id, customer_id, fare, status, payment_method, service_id, prepaid
+    into v_driver_user, v_customer, v_fare, v_status, v_payment, v_service, v_prepaid
+    from public.rides where id = p_ride for update;
+
+  if v_driver_user is null then raise exception 'الرحلة بلا سائق'; end if;
+  if auth.uid() <> v_driver_user and not public.is_admin() then raise exception 'غير مصرّح'; end if;
+  if v_status = 'completed' then raise exception 'الرحلة مسوّاة مسبقاً'; end if;
+  if v_status = 'cancelled' then raise exception 'الرحلة ملغاة'; end if;
+
+  v_rate := coalesce(
+    (select commission_rate from public.service_pricing where service_id = v_service),
+    (select commission_rate from public.settings where id = 1));
+
+  -- الإعفاء: VIP مدفوع الاشتراك (سارٍ) أو إعفاء عمولة مؤقّت سارٍ.
+  select vip, commission_free_until, vip_paid_until into v_vip, v_free, v_paid_until
+    from public.drivers where user_id = v_driver_user;
+  if (coalesce(v_vip, false) and v_paid_until is not null and v_paid_until > now())
+     or (v_free is not null and v_free > now()) then
+    v_rate := 0;
+  end if;
+
+  v_fare       := coalesce(v_fare, 0);
+  v_commission := round(v_fare * coalesce(v_rate, 0));
+  v_net        := v_fare - v_commission;
+
+  if v_payment = 'wallet' and not v_prepaid then
+    select id, balance into v_cwallet, v_cbalance from public.wallets where user_id = v_customer for update;
+    if v_cwallet is null then raise exception 'محفظة العميل غير موجودة'; end if;
+    if v_cbalance < v_fare then raise exception 'رصيد محفظة العميل غير كافٍ'; end if;
+    update public.wallets set balance = balance - v_fare, updated_at = now() where id = v_cwallet;
+    insert into public.transactions (wallet_id, type, amount, ride_id, note)
+      values (v_cwallet, 'ride_payment', -v_fare, p_ride, 'دفع رحلة');
+  end if;
+
+  update public.rides set status = 'completed' where id = p_ride;
+
+  select id into v_dwallet from public.wallets where user_id = v_driver_user for update;
+  if v_dwallet is not null then
+    if v_payment = 'wallet' then
+      update public.wallets
+        set withdrawable = withdrawable + v_net, updated_at = now()
+        where id = v_dwallet;
+      insert into public.transactions (wallet_id, type, amount, ride_id, note)
+        values (v_dwallet, 'ride_earning', v_net, p_ride, 'مدفوعات عميل (محفظة)');
+    else
+      if v_commission > 0 then
+        update public.wallets set balance = balance - v_commission, updated_at = now() where id = v_dwallet;
+        insert into public.transactions (wallet_id, type, amount, ride_id, note)
+          values (v_dwallet, 'commission', -v_commission, p_ride, 'عمولة المنصة (نقدي/تحويل)');
+      end if;
+    end if;
+  end if;
+end $$;
