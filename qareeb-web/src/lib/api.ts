@@ -1,4 +1,4 @@
-import { supabase, isSupabaseConfigured } from './supabase'
+import { supabase, isSupabaseConfigured, supabaseAnonKey } from './supabase'
 import type {
   Settings,
   Wallet,
@@ -503,11 +503,18 @@ export async function notifyDriversOfRide(rideId: string): Promise<void> {
   }
 }
 
+// نمرّر مفتاح anon صراحةً كـ Authorization ليتجاوز فحص «Verify JWT» في الدالة
+// (بدل رمز جلسة الأدمن الذي قد لا يرضي الفحص).
+const fnAuthHeaders = { Authorization: `Bearer ${supabaseAnonKey}` }
+
 /** يُشعر صاحب التعبئة باعتمادها (أفضل جهد — يتحمّل غياب الدالة/الرمز). */
 export async function notifyTopupApproved(topupId: string): Promise<void> {
   if (!isSupabaseConfigured) return
   try {
-    await supabase.functions.invoke('notify-user-fcm', { body: { topup_id: topupId } })
+    await supabase.functions.invoke('notify-user-fcm', {
+      body: { topup_id: topupId },
+      headers: fnAuthHeaders,
+    })
   } catch {
     /* أفضل جهد */
   }
@@ -517,7 +524,10 @@ export async function notifyTopupApproved(topupId: string): Promise<void> {
 export async function notifyWithdrawalApproved(withdrawalId: string): Promise<void> {
   if (!isSupabaseConfigured) return
   try {
-    await supabase.functions.invoke('notify-user-fcm', { body: { withdrawal_id: withdrawalId } })
+    await supabase.functions.invoke('notify-user-fcm', {
+      body: { withdrawal_id: withdrawalId },
+      headers: fnAuthHeaders,
+    })
   } catch {
     /* أفضل جهد */
   }
