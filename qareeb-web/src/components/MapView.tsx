@@ -26,6 +26,8 @@ interface MapViewProps {
   markers?: google.maps.LatLngLiteral[]
   /** مواقع سائقين متعددة (icon = صورة المركبة، أو art لاختيار رمز بديل). */
   driverMarkers?: (google.maps.LatLngLiteral & { art?: string; icon?: string })[]
+  /** طبقة كثافة الطلب (خريطة حرارية بسيطة) — تُعرض في خرائط Google JS فقط. */
+  heat?: google.maps.LatLngLiteral[]
   /** خطّ مسار القيادة (للملاحة الحيّة أثناء الرحلة). */
   route?: google.maps.LatLngLiteral[]
   zoom?: number

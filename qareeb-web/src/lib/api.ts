@@ -1190,6 +1190,13 @@ export async function updateMyLocation(lat: number, lng: number): Promise<void> 
   await supabase.rpc('update_my_location', { p_lat: lat, p_lng: lng })
 }
 
+/** نقاط كثافة الطلب الأخيرة (لخريطة السائق الحرارية). */
+export async function getDemandHotspots(hours = 3): Promise<{ lat: number; lng: number }[]> {
+  if (!isSupabaseConfigured) return []
+  const { data } = await supabase.rpc('demand_hotspots', { p_hours: hours })
+  return (data as { lat: number; lng: number }[]) ?? []
+}
+
 /** سائقون متصلون قريبون (إحداثيات فقط) لعرضهم على خريطة العميل قبل الطلب. */
 export async function nearbyOnlineDrivers(
   lat: number,

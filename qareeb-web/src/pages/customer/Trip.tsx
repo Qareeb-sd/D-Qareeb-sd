@@ -224,21 +224,32 @@ export default function Trip() {
             zoom={15}
             className="absolute inset-0"
           />
-          {/* لافتة الحالة أعلى الخريطة */}
+          {/* لافتة الحالة أعلى الخريطة — مع عدّاد وصول متوقّع بارز */}
           {banner && (
             <div className="absolute inset-x-3 top-3 flex items-center gap-3 rounded-2xl bg-white/95 p-3 shadow-float backdrop-blur">
               <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-royal-soft text-royal">
                 <banner.Icon className="h-5 w-5" strokeWidth={2} />
               </span>
               <div className="min-w-0 flex-1">
-                <p className="font-bold text-royal">{banner.text}</p>
+                <p className="font-bold text-royal">
+                  {status === 'accepted' && eta
+                    ? `السائق يصل خلال ~${Math.max(1, Math.round(eta.min))} دقيقة`
+                    : banner.text}
+                </p>
                 {eta && status !== 'arrived' && (
                   <p className="text-[12px] text-ink-soft">
-                    {status === 'in_progress' ? 'الوصول خلال' : 'يبعد'} ~
-                    {Math.max(1, Math.round(eta.min))} دقيقة · {eta.km.toFixed(1)} كم
+                    {status === 'in_progress' ? 'الوصول للوجهة' : 'المسافة'} · {eta.km.toFixed(1)} كم
                   </p>
                 )}
               </div>
+              {eta && status !== 'arrived' && (
+                <div className="shrink-0 rounded-xl bg-green-mint px-3 py-1.5 text-center">
+                  <p className="text-xl font-extrabold leading-none text-green">
+                    {Math.max(1, Math.round(eta.min))}
+                  </p>
+                  <p className="text-[9px] font-bold text-green">دقيقة</p>
+                </div>
+              )}
             </div>
           )}
         </div>

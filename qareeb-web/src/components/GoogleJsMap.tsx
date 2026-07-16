@@ -14,6 +14,8 @@ interface MapViewProps {
   driver?: google.maps.LatLngLiteral
   markers?: google.maps.LatLngLiteral[]
   driverMarkers?: (google.maps.LatLngLiteral & { art?: string; icon?: string })[]
+  /** طبقة كثافة الطلب — نقاط تُرسم كدوائر شفّافة متراكبة. */
+  heat?: google.maps.LatLngLiteral[]
   route?: google.maps.LatLngLiteral[]
   zoom?: number
   onCenterChanged?: (pos: google.maps.LatLngLiteral) => void
@@ -126,6 +128,7 @@ export default function GoogleJsMap({
   driver,
   markers,
   driverMarkers,
+  heat,
   route,
   zoom = 14,
   onCenterChanged,
@@ -134,9 +137,14 @@ export default function GoogleJsMap({
 }: MapViewProps) {
   const divRef = useRef<HTMLDivElement | null>(null)
   const mapRef = useRef<google.maps.Map | null>(null)
-  const overlays = useRef<{ markers: google.maps.Marker[]; lines: google.maps.Polyline[] }>({
+  const overlays = useRef<{
+    markers: google.maps.Marker[]
+    lines: google.maps.Polyline[]
+    circles: google.maps.Circle[]
+  }>({
     markers: [],
     lines: [],
+    circles: [],
   })
   const lastCam = useRef<google.maps.LatLngLiteral>(center)
   const cbRef = useRef({ onCenterChanged, onUserDrag })
@@ -183,7 +191,8 @@ export default function GoogleJsMap({
       cancelled = true
       overlays.current.markers.forEach((m) => m.setMap(null))
       overlays.current.lines.forEach((l) => l.setMap(null))
-      overlays.current = { markers: [], lines: [] }
+      overlays.current.circles.forEach((c) => c.setMap(null))
+      overlays.current = { markers: [], lines: [], circles: [] }
       mapRef.current = null
     }
     // إنشاء لمرة واحدة.
@@ -212,6 +221,7 @@ export default function GoogleJsMap({
     driver?.lng,
     JSON.stringify(markers ?? []),
     JSON.stringify(driverMarkers ?? []),
+    JSON.stringify(heat ?? []),
     JSON.stringify(route ?? []),
   ])
 
@@ -222,7 +232,24 @@ export default function GoogleJsMap({
 
     overlays.current.markers.forEach((m) => m.setMap(null))
     overlays.current.lines.forEach((l) => l.setMap(null))
-    overlays.current = { markers: [], lines: [] }
+    overlays.current.circles.forEach((c) => c.setMap(null))
+    overlays.current = { markers: [], lines: [], circles: [] }
+
+    // طبقة كثافة الطلب: دوائر برتقالية شفّافة متراكبة (خريطة حرارية بسيطة).
+    heat?.forEach((h) => {
+      overlays.current.circles.push(
+        new maps.Circle({
+          center: h,
+          radius: 380,
+          map,
+          fillColor: '#F97316',
+          fillOpacity: 0.16,
+          strokeOpacity: 0,
+          clickable: false,
+          zIndex: 1,
+        }),
+      )
+    })
 
     // خطّ المسار: هالة بيضاء ثم خطّ زمردي فوقها.
     if (route && route.length > 1) {

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useLocation } from 'react-router-dom'
 import {
   ChevronRight,
   ArrowUpDown,
@@ -14,6 +14,8 @@ import {
   Banknote,
   Landmark,
   Wallet,
+  Plus,
+  X,
   type LucideIcon,
 } from 'lucide-react'
 import MapView from '@/components/MapView'
@@ -88,6 +90,9 @@ export default function SelectLocation() {
   const sid = serviceId ?? DEFAULT_SERVICE_ID
   const service = getService(sid)
 
+  // إعادة الطلب: وجهة مُمرَّرة من «رحلاتي» لتعبئة الوجهة تلقائياً.
+  const rebook = (useLocation().state as { rebook?: { dropoffPos: google.maps.LatLngLiteral | null; dropoffAddr: string } } | null)?.rebook
+
   const [pickupMode, setPickupMode] = useState<PickupMode>('current')
   const [active, setActive] = useState<Field>('dropoff')
   const [searching, setSearching] = useState<Field | null>(null)
@@ -96,9 +101,11 @@ export default function SelectLocation() {
   const [pickupPos, setPickupPos] = useState<google.maps.LatLngLiteral>(initialCenter)
   const [pickupAddr, setPickupAddr] = useState('')
   const [pickupSet, setPickupSet] = useState(false)
-  const [dropoffPos, setDropoffPos] = useState<google.maps.LatLngLiteral>(initialCenter)
-  const [dropoffAddr, setDropoffAddr] = useState('')
-  const [dropoffSet, setDropoffSet] = useState(false)
+  const [dropoffPos, setDropoffPos] = useState<google.maps.LatLngLiteral>(
+    rebook?.dropoffPos ?? initialCenter,
+  )
+  const [dropoffAddr, setDropoffAddr] = useState(rebook?.dropoffAddr ?? '')
+  const [dropoffSet, setDropoffSet] = useState(Boolean(rebook?.dropoffPos))
   const [gpsBusy, setGpsBusy] = useState(false)
   const [gpsErr, setGpsErr] = useState('')
   // وضع «تكبير الخريطة» أثناء وضع الدبوس — تكبر الخريطة وتصغر البطاقة السفلية.
@@ -115,6 +122,13 @@ export default function SelectLocation() {
   const [promoCode, setPromoCode] = useState('')
   const [promo, setPromo] = useState<PromoResult | null>(null)
   const [promoBusy, setPromoBusy] = useState(false)
+  // الرحلة لشخص آخر (اختياري).
+  const [forOther, setForOther] = useState(false)
+  const [riderName, setRiderName] = useState('')
+  const [riderPhone, setRiderPhone] = useState('')
+  // نقاط توقّف متوسّطة (اختياري) — بين الانطلاق والوجهة.
+  const [stops, setStops] = useState<{ pos: google.maps.LatLngLiteral; address: string }[]>([])
+  const [stopSearch, setStopSearch] = useState<number | null>(null) // فهرس النقطة قيد البحث
 
   // دَيْن رسوم إلغاء سابق (يُضاف لأجرة هذه الرحلة).
   const [debt, setDebt] = useState(0)
@@ -297,25 +311,31 @@ export default function SelectLocation() {
     let alive = true
     const bothPlaced = pickupSet && dropoffSet
     const t = setTimeout(async () => {
-      const real = bothPlaced ? await fetchRoute(pickupPos, dropoffPos) : null
-      const route = real ?? estimateRoute(pickupPos, dropoffPos)
+      // المسار عبر نقاط التوقّف: انطلاق → توقّف₁ → … → وجهة (جمع المسافات والأزمنة).
+      const pts = [pickupPos, ...stops.map((s) => s.pos), dropoffPos]
+      let km = 0
+      let min = 0
+      let anyReal = false
+      for (let i = 0; i < pts.length - 1; i++) {
+        const real = bothPlaced ? await fetchRoute(pts[i], pts[i + 1]) : null
+        const leg = real ?? estimateRoute(pts[i], pts[i + 1])
+        km += leg.distanceKm
+        min += leg.durationMin
+        if (real) anyReal = true
+      }
       if (!alive) return
       // النموذج الجديد (فترات) إن توفّر، وإلا التسعير القديم (شرائح).
       const fare = periodRate
-        ? computeFare(route.distanceKm, route.durationMin, periodRate)
-        : estimateFare({
-            distanceKm: route.distanceKm,
-            durationMin: route.durationMin,
-            pricing,
-            settings,
-          }).total
-      setQuote({ ...route, fare, real: Boolean(real) })
+        ? computeFare(km, min, periodRate)
+        : estimateFare({ distanceKm: km, durationMin: min, pricing, settings }).total
+      setQuote({ distanceKm: km, durationMin: min, fare, real: anyReal })
     }, 700)
     return () => {
       alive = false
       clearTimeout(t)
     }
-  }, [pickupPos, dropoffPos, pickupSet, dropoffSet, pricing, settings, periodRate])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pickupPos, dropoffPos, pickupSet, dropoffSet, pricing, settings, periodRate, JSON.stringify(stops)])
 
   const activePos = active === 'pickup' ? pickupPos : dropoffPos
   const setActivePos = active === 'pickup' ? setPickupPos : setDropoffPos
@@ -370,6 +390,11 @@ export default function SelectLocation() {
     (Math.abs(otherRaw.lat - activePos.lat) > 3e-4 || Math.abs(otherRaw.lng - activePos.lng) > 3e-4)
       ? otherRaw
       : null
+
+  // علامات الخريطة الثابتة: النقطة الأخرى + نقاط التوقّف.
+  const staticMarkers = [otherMarker, ...stops.map((s) => s.pos)].filter(
+    Boolean,
+  ) as google.maps.LatLngLiteral[]
 
   // جدولة لوقت لاحق
   const [showSchedule, setShowSchedule] = useState(false)
@@ -429,6 +454,14 @@ export default function SelectLocation() {
       // حقول الخصم تُرسَل فقط عند تطبيق كود صالح (حتى تعمل الرحلة العادية
       // قبل تنفيذ مخطّط قاعدة البيانات المحدّث).
       ...(promo?.valid ? { promo_code: promoCode.trim(), discount: promo.discount } : {}),
+      // الرحلة لشخص آخر: اسم/رقم الراكب الفعلي (يراهما السائق ويتصل به).
+      ...(forOther && riderName.trim()
+        ? { rider_name: riderName.trim(), rider_phone: riderPhone.trim() || null }
+        : {}),
+      // نقاط التوقّف المتوسّطة (إن وُجدت).
+      ...(stops.length
+        ? { stops: stops.map((s) => ({ lat: s.pos.lat, lng: s.pos.lng, address: s.address })) }
+        : {}),
     })
     if (error || !id) {
       setBusy(false)
@@ -475,7 +508,7 @@ export default function SelectLocation() {
               if (!dropoffAddr.trim()) setDropoffAddr('موقع محدّد من الخريطة')
             }
           }}
-          markers={otherMarker ? [otherMarker] : undefined}
+          markers={staticMarkers.length ? staticMarkers : undefined}
           driverMarkers={nearby}
           zoom={16}
           className="absolute inset-0"
@@ -633,6 +666,37 @@ export default function SelectLocation() {
                 <ArrowUpDown className="h-3.5 w-3.5" strokeWidth={2} />
               </button>
             </div>
+
+            {/* نقاط التوقّف المتوسّطة */}
+            {stops.map((s, i) => (
+              <div key={i} className="mb-1 flex items-center gap-3">
+                <MapPinIcon className="h-[20px] w-[20px] shrink-0 text-royal/60" strokeWidth={2} />
+                <button
+                  onClick={() => setStopSearch(i)}
+                  className="min-w-0 flex-1 truncate text-right text-[14px] font-semibold text-royal"
+                >
+                  {s.address || `توقّف ${i + 1}`}
+                </button>
+                <button
+                  onClick={() => setStops((cur) => cur.filter((_, j) => j !== i))}
+                  className="grid h-7 w-7 shrink-0 place-items-center rounded-full text-danger"
+                  aria-label="حذف التوقّف"
+                >
+                  <X className="h-4 w-4" strokeWidth={2.4} />
+                </button>
+              </div>
+            ))}
+            {stops.length < 3 && (
+              <button
+                onClick={() => setStopSearch(stops.length)}
+                className="mb-1 flex items-center gap-2 text-[12px] font-bold text-green"
+              >
+                <span className="grid h-[22px] w-[22px] place-items-center">
+                  <Plus className="h-4 w-4" strokeWidth={2.4} />
+                </span>
+                إضافة نقطة توقّف
+              </button>
+            )}
 
             {/* الوجهة */}
             <button onClick={() => setSearching('dropoff')} className="flex w-full items-center gap-3 text-right">
@@ -810,6 +874,42 @@ export default function SelectLocation() {
             </div>
           )}
 
+          {/* الرحلة لشخص آخر — اسم ورقم الراكب الفعلي (اختياري) */}
+          {quote && destChosen && (
+            <div className="mt-3 rounded-2xl border border-hairline p-3">
+              <label className="flex items-center gap-2 text-[13px] font-bold text-royal">
+                <input
+                  type="checkbox"
+                  className="h-4 w-4 accent-green"
+                  checked={forOther}
+                  onChange={(e) => setForOther(e.target.checked)}
+                />
+                هذه الرحلة لشخص آخر
+              </label>
+              {forOther && (
+                <div className="mt-2 space-y-2">
+                  <p className="text-[11px] text-ink-muted">
+                    يتواصل السائق مع الراكب الفعلي بهذه البيانات.
+                  </p>
+                  <input
+                    className="w-full rounded-2xl border border-hairline bg-white px-4 py-2.5 text-[13px] text-ink outline-none focus:border-royal"
+                    placeholder="اسم الراكب"
+                    value={riderName}
+                    onChange={(e) => setRiderName(e.target.value)}
+                  />
+                  <input
+                    className="w-full rounded-2xl border border-hairline bg-white px-4 py-2.5 text-left text-[13px] text-ink outline-none focus:border-royal"
+                    dir="ltr"
+                    inputMode="tel"
+                    placeholder="رقم هاتف الراكب"
+                    value={riderPhone}
+                    onChange={(e) => setRiderPhone(e.target.value)}
+                  />
+                </div>
+              )}
+            </div>
+          )}
+
           {/* طريقة الدفع — تُختار قبل الطلب */}
           <div className="mt-4">
             <p className="mb-1.5 text-[13px] font-bold text-royal">طريقة الدفع</p>
@@ -897,6 +997,36 @@ export default function SelectLocation() {
           )}
         </div>
       </section>
+      )}
+
+      {/* بحث نقطة توقّف */}
+      {stopSearch !== null && (
+        <LocationSearchPanel
+          field="dropoff"
+          initial={stops[stopSearch]?.address ?? ''}
+          saved={savedEntries}
+          onPick={({ pos, address }) => {
+            setStops((cur) => {
+              const next = [...cur]
+              if (stopSearch < next.length) next[stopSearch] = { pos, address }
+              else next.push({ pos, address })
+              return next
+            })
+            setStopSearch(null)
+          }}
+          onChooseOnMap={() => {
+            const idx = stopSearch
+            setStops((cur) => {
+              const next = [...cur]
+              const entry = { pos: activePos, address: 'موقع محدّد من الخريطة' }
+              if (idx < next.length) next[idx] = entry
+              else next.push(entry)
+              return next
+            })
+            setStopSearch(null)
+          }}
+          onClose={() => setStopSearch(null)}
+        />
       )}
 
       {/* شاشة البحث الكاملة — تُخفي الخريطة وتستغلّ المساحة (مثل أوبر) */}
