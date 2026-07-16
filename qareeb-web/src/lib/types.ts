@@ -34,6 +34,7 @@ export interface AppUser {
   birthdate?: string | null // تاريخ الميلاد (YYYY-MM-DD)
   rating?: number | null // متوسط تقييمه (من الطرف الآخر في الرحلات)
   ratings_count?: number // عدد التقييمات المستلمة
+  referred_by?: string | null // مُعرّف صاحب رمز الدعوة الذي انضمّ عبره
   created_at: string
 }
 
@@ -124,6 +125,7 @@ export interface Settings {
   cancellation_far_km: number // مسافة تُعفي العميل («السائق بعيد») — كم
   cancellation_far_min: number // زمن وصول مقدّر يُعفي العميل — دقيقة
   min_driver_balance: number // أدنى رصيد يسمح للسائق بالاتصال (استقبال الرحلات)
+  referral_reward: number // مكافأة دعوة صديق للطرفين عند أوّل رحلة (0 = معطّلة)
   updated_at: string
 }
 

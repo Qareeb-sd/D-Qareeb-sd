@@ -3182,3 +3182,79 @@ select cron.unschedule('dispatch-scheduled-rides')
   where exists (select 1 from cron.job where jobname = 'dispatch-scheduled-rides');
 select cron.schedule('dispatch-scheduled-rides', '* * * * *',
   $cron$ select public.dispatch_due_scheduled_rides() $cron$);
+
+-- ============================================================
+--  دعوة صديق (إحالة): لكل مستخدم رمز فريد. من يُدخل رمز صديق يُسجَّل كمُحال،
+--  وعند إكماله أوّل رحلة يُكافأ الطرفان برصيد (referral_reward من الأدمن).
+-- ============================================================
+alter table public.users add column if not exists referral_code     text unique;
+alter table public.users add column if not exists referred_by        uuid references public.users(id) on delete set null;
+alter table public.users add column if not exists referral_rewarded  boolean not null default false;
+alter table public.settings add column if not exists referral_reward numeric(12,2) not null default 0;
+
+-- رمز الإحالة للمستخدم الحالي (يولّده إن لم يوجد).
+create or replace function public.get_my_referral_code()
+returns text language plpgsql security definer set search_path = public as $$
+declare v_code text; v_uid uuid := auth.uid();
+begin
+  if v_uid is null then raise exception 'غير مصرّح'; end if;
+  select referral_code into v_code from public.users where id = v_uid;
+  if v_code is not null then return v_code; end if;
+  loop
+    v_code := upper(substr(md5(random()::text || v_uid::text), 1, 6));
+    exit when not exists (select 1 from public.users where referral_code = v_code);
+  end loop;
+  update public.users set referral_code = v_code where id = v_uid;
+  return v_code;
+end $$;
+grant execute on function public.get_my_referral_code() to authenticated;
+
+-- إدخال رمز دعوة (مرّة واحدة، قبل المكافأة).
+create or replace function public.apply_referral_code(p_code text)
+returns jsonb language plpgsql security definer set search_path = public as $$
+declare v_ref uuid; v_uid uuid := auth.uid();
+begin
+  if v_uid is null then raise exception 'غير مصرّح'; end if;
+  if exists (select 1 from public.users where id = v_uid and referred_by is not null) then
+    raise exception 'أدخلت رمز دعوة من قبل';
+  end if;
+  select id into v_ref from public.users where referral_code = upper(btrim(p_code));
+  if v_ref is null then raise exception 'رمز الدعوة غير صحيح'; end if;
+  if v_ref = v_uid then raise exception 'لا يمكنك دعوة نفسك'; end if;
+  update public.users set referred_by = v_ref where id = v_uid;
+  return jsonb_build_object('ok', true);
+end $$;
+grant execute on function public.apply_referral_code(text) to authenticated;
+
+-- مكافأة الإحالة عند أوّل رحلة مكتملة للمُحال (الطرفان).
+create or replace function public.reward_referral()
+returns trigger language plpgsql security definer set search_path = public as $$
+declare v_ref uuid; v_rewarded boolean; v_reward numeric; v_cw uuid; v_rw uuid;
+begin
+  if new.status = 'completed' and old.status is distinct from 'completed' then
+    select referred_by, referral_rewarded into v_ref, v_rewarded
+      from public.users where id = new.customer_id;
+    if v_ref is not null and not coalesce(v_rewarded, false) then
+      select referral_reward into v_reward from public.settings where id = 1;
+      if coalesce(v_reward, 0) > 0 then
+        select id into v_cw from public.wallets where user_id = new.customer_id;
+        if v_cw is not null then
+          update public.wallets set balance = balance + v_reward, updated_at = now() where id = v_cw;
+          insert into public.transactions (wallet_id, type, amount, note)
+            values (v_cw, 'topup', v_reward, 'مكافأة دعوة صديق');
+        end if;
+        select id into v_rw from public.wallets where user_id = v_ref;
+        if v_rw is not null then
+          update public.wallets set balance = balance + v_reward, updated_at = now() where id = v_rw;
+          insert into public.transactions (wallet_id, type, amount, note)
+            values (v_rw, 'topup', v_reward, 'مكافأة إحالة صديق');
+        end if;
+      end if;
+      update public.users set referral_rewarded = true where id = new.customer_id;
+    end if;
+  end if;
+  return new;
+end $$;
+drop trigger if exists trg_reward_referral on public.rides;
+create trigger trg_reward_referral after update on public.rides
+  for each row execute function public.reward_referral();

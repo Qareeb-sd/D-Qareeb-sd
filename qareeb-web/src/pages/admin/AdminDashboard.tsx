@@ -1130,6 +1130,7 @@ export default function AdminDashboard() {
       cancellation_far_km: settings.cancellation_far_km,
       cancellation_far_min: settings.cancellation_far_min,
       min_driver_balance: settings.min_driver_balance,
+      referral_reward: settings.referral_reward,
     })
     setSavedMsg(error ? `خطأ: ${error}` : 'تم حفظ الإعدادات ✓')
   }
@@ -2977,6 +2978,20 @@ export default function AdminDashboard() {
                       {vipCharging ? 'جارٍ التحصيل…' : 'تحصيل المستحقّ الآن'}
                     </button>
                   </div>
+                </div>
+
+                <div className="rounded-2xl border border-sand/40 bg-sand-soft/40 p-3">
+                  <p className="font-bold text-royal">مكافأة دعوة صديق</p>
+                  <p className="mb-2 text-xs text-ink-muted">
+                    تُمنح للطرفين (الداعي والمدعوّ) عند إكمال المدعوّ أوّل رحلة. اضبطها على 0
+                    لتعطيل الإحالة.
+                  </p>
+                  <NumField
+                    label="قيمة المكافأة (ج.س)"
+                    step={500}
+                    value={settings.referral_reward}
+                    onChange={(v) => setSettings({ ...settings, referral_reward: v })}
+                  />
                 </div>
 
                 <div className="rounded-2xl border border-sand/40 bg-sand-soft/40 p-3">

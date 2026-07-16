@@ -46,6 +46,7 @@ const demoSettings: Settings = {
   cancellation_far_km: 5,
   cancellation_far_min: 15,
   min_driver_balance: 0,
+  referral_reward: 0,
   updated_at: new Date().toISOString(),
 }
 
@@ -1276,6 +1277,21 @@ export async function cancelRide(
   })
   if (error) return { error: error.message }
   return { result: (data as CancelResult) ?? { fee: 0, charged: 0, debt: 0, excused: true } }
+}
+
+// ---------- دعوة صديق (إحالة) ----------
+/** رمز الإحالة للمستخدم الحالي (يولّده الخادم إن لم يوجد). */
+export async function getMyReferralCode(): Promise<string | null> {
+  if (!isSupabaseConfigured) return 'QAREEB'
+  const { data } = await supabase.rpc('get_my_referral_code')
+  return (data as string) ?? null
+}
+
+/** إدخال رمز دعوة صديق (مرّة واحدة). */
+export async function applyReferralCode(code: string): Promise<{ error?: string }> {
+  if (!isSupabaseConfigured) return {}
+  const { error } = await supabase.rpc('apply_referral_code', { p_code: code })
+  return error ? { error: error.message } : {}
 }
 
 // ---------- الرحلات المجدولة ----------
