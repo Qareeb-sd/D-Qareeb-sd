@@ -297,6 +297,16 @@ export interface DriverApplication {
 /** صلاحيات لوحة الإدارة المتاحة للموظفين. */
 export type StaffPerm = 'requests' | 'drivers' | 'rides' | 'settings'
 
+/** رسالة محادثة داخل الرحلة بين العميل والسائق. */
+export interface RideMessage {
+  id: string
+  ride_id: string
+  sender_id: string
+  sender_role: 'customer' | 'driver'
+  body: string
+  created_at: string
+}
+
 /** موظف لوحة الإدارة وصلاحياته. */
 export interface StaffRow {
   user_id: string

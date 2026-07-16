@@ -17,6 +17,7 @@ import MapView from '@/components/MapView'
 import VehicleImage from '@/components/VehicleImage'
 import SosButton from '@/components/SosButton'
 import ShareRideButton from '@/components/ShareRideButton'
+import RideChat from '@/components/RideChat'
 import { useRide } from '@/store/RideContext'
 import { useAuth } from '@/store/AuthContext'
 import { getService } from '@/data/services'
@@ -271,13 +272,23 @@ export default function Trip() {
                   {driver?.plate_number ? ` · ${driver.plate_number}` : ''}
                 </p>
               </div>
-              <a
-                href={`tel:${driver?.phone ?? ''}`}
-                className={`press-scale flex items-center gap-1.5 rounded-2xl bg-royal px-4 py-2 text-sm font-bold text-white ${driver?.phone ? '' : 'pointer-events-none opacity-40'}`}
-              >
-                <Phone className="h-4 w-4" strokeWidth={2} />
-                اتصال
-              </a>
+              <div className="flex shrink-0 flex-col gap-1.5">
+                <a
+                  href={`tel:${driver?.phone ?? ''}`}
+                  className={`press-scale flex items-center justify-center gap-1.5 rounded-2xl bg-royal px-4 py-2 text-sm font-bold text-white ${driver?.phone ? '' : 'pointer-events-none opacity-40'}`}
+                >
+                  <Phone className="h-4 w-4" strokeWidth={2} />
+                  اتصال
+                </a>
+                {rideId && profile?.id && (
+                  <RideChat
+                    rideId={rideId}
+                    myId={profile.id}
+                    role="customer"
+                    otherName={driver?.full_name ?? 'سائق قريب'}
+                  />
+                )}
+              </div>
             </div>
 
             {/* المركبة والوجهة + الدفع */}

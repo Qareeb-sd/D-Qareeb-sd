@@ -22,6 +22,7 @@ import type {
   VipRequest,
   Withdrawal,
   ScheduledRide,
+  RideMessage,
 } from './types'
 import { services as seedServices, type Service, type VehicleArt } from '@/data/services'
 
@@ -1291,6 +1292,37 @@ export async function getMyReferralCode(): Promise<string | null> {
 export async function applyReferralCode(code: string): Promise<{ error?: string }> {
   if (!isSupabaseConfigured) return {}
   const { error } = await supabase.rpc('apply_referral_code', { p_code: code })
+  return error ? { error: error.message } : {}
+}
+
+// ---------- المحادثة داخل الرحلة ----------
+/** رسائل رحلة محدّدة مرتّبة زمنياً. */
+export async function listRideMessages(rideId: string): Promise<RideMessage[]> {
+  if (!isSupabaseConfigured || !rideId) return []
+  const { data } = await supabase
+    .from('ride_messages')
+    .select('*')
+    .eq('ride_id', rideId)
+    .order('created_at', { ascending: true })
+  return (data as RideMessage[]) ?? []
+}
+
+/** إرسال رسالة داخل الرحلة (يحدّد الدور من طرف الرحلة). */
+export async function sendRideMessage(
+  rideId: string,
+  senderId: string,
+  role: 'customer' | 'driver',
+  body: string,
+): Promise<{ error?: string }> {
+  const text = body.trim()
+  if (!text) return { error: 'رسالة فارغة' }
+  if (!isSupabaseConfigured) return {}
+  const { error } = await supabase.from('ride_messages').insert({
+    ride_id: rideId,
+    sender_id: senderId,
+    sender_role: role,
+    body: text.slice(0, 500),
+  })
   return error ? { error: error.message } : {}
 }
 

@@ -1,5 +1,5 @@
 import { supabase, isSupabaseConfigured } from './supabase'
-import type { Ride } from './types'
+import type { Ride, RideMessage } from './types'
 
 export type Unsubscribe = () => void
 
@@ -21,6 +21,25 @@ export function subscribeToRide(
       'postgres_changes',
       { event: 'UPDATE', schema: 'public', table: 'rides', filter: `id=eq.${rideId}` },
       (payload) => onChange(payload.new as Ride),
+    )
+    .subscribe()
+  return () => {
+    void supabase.removeChannel(channel)
+  }
+}
+
+/** يستمع لرسائل المحادثة الجديدة داخل رحلة محدّدة. */
+export function subscribeToRideMessages(
+  rideId: string,
+  onInsert: (msg: RideMessage) => void,
+): Unsubscribe {
+  if (!isSupabaseConfigured || !rideId) return () => {}
+  const channel = supabase
+    .channel(`ride-chat:${rideId}`)
+    .on(
+      'postgres_changes',
+      { event: 'INSERT', schema: 'public', table: 'ride_messages', filter: `ride_id=eq.${rideId}` },
+      (payload) => onInsert(payload.new as RideMessage),
     )
     .subscribe()
   return () => {

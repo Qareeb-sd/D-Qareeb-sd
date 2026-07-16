@@ -5,6 +5,7 @@ import Screen from '@/components/Screen'
 import MapView from '@/components/MapView'
 import SosButton from '@/components/SosButton'
 import ShareRideButton from '@/components/ShareRideButton'
+import RideChat from '@/components/RideChat'
 import { useDriver } from '@/store/DriverContext'
 import { useAuth } from '@/store/AuthContext'
 import {
@@ -370,15 +371,25 @@ export default function DriverTrip() {
                   </p>
                 )}
               </div>
-              {customer?.phone && (
-                <a
-                  href={`tel:${customer.phone}`}
-                  className="flex items-center gap-1.5 rounded-xl bg-royal px-3 py-2 text-sm font-bold text-white"
-                >
-                  <Phone className="h-4 w-4" strokeWidth={2} />
-                  اتصال
-                </a>
-              )}
+              <div className="flex shrink-0 flex-col gap-1.5">
+                {customer?.phone && (
+                  <a
+                    href={`tel:${customer.phone}`}
+                    className="flex items-center justify-center gap-1.5 rounded-xl bg-royal px-3 py-2 text-sm font-bold text-white"
+                  >
+                    <Phone className="h-4 w-4" strokeWidth={2} />
+                    اتصال
+                  </a>
+                )}
+                {profile?.id && (
+                  <RideChat
+                    rideId={activeRide.id}
+                    myId={profile.id}
+                    role="driver"
+                    otherName={customer?.full_name ?? 'الراكب'}
+                  />
+                )}
+              </div>
             </div>
 
             {/* تفصيل الأرباح */}

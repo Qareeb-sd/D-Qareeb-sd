@@ -3258,3 +3258,45 @@ end $$;
 drop trigger if exists trg_reward_referral on public.rides;
 create trigger trg_reward_referral after update on public.rides
   for each row execute function public.reward_referral();
+
+-- ============================================================
+--  المحادثة داخل الرحلة: رسائل نصّية قصيرة بين العميل والسائق المعيَّن.
+--  القراءة/الكتابة مقصورة على طرفَي الرحلة (RLS)، مع بثّ Realtime.
+-- ============================================================
+create table if not exists public.ride_messages (
+  id          uuid primary key default gen_random_uuid(),
+  ride_id     uuid not null references public.rides(id) on delete cascade,
+  sender_id   uuid not null references public.users(id) on delete cascade,
+  sender_role text not null check (sender_role in ('customer','driver')),
+  body        text not null check (char_length(btrim(body)) between 1 and 500),
+  created_at  timestamptz not null default now()
+);
+create index if not exists ride_messages_ride_idx on public.ride_messages(ride_id, created_at);
+
+alter table public.ride_messages enable row level security;
+
+-- طرفا الرحلة فقط يقرآن الرسائل.
+drop policy if exists ride_messages_read on public.ride_messages;
+create policy ride_messages_read on public.ride_messages for select
+  using (exists (
+    select 1 from public.rides r
+    where r.id = ride_messages.ride_id
+      and (r.customer_id = auth.uid() or r.driver_id = auth.uid())
+  ));
+
+-- المُرسِل طرف في الرحلة، ويكتب باسمه هو فقط.
+drop policy if exists ride_messages_insert on public.ride_messages;
+create policy ride_messages_insert on public.ride_messages for insert
+  with check (
+    sender_id = auth.uid()
+    and exists (
+      select 1 from public.rides r
+      where r.id = ride_messages.ride_id
+        and (r.customer_id = auth.uid() or r.driver_id = auth.uid())
+    )
+  );
+
+-- بثّ فوري لرسائل الرحلة.
+do $$ begin
+  alter publication supabase_realtime add table public.ride_messages;
+exception when duplicate_object then null; when others then null; end $$;
