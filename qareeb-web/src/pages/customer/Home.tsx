@@ -44,7 +44,7 @@ export default function Home() {
   const [selected, setSelected] = useState('standard')
   const [activeRide, setActiveRide] = useState<Ride | null>(null)
   const [mapCenter, setMapCenter] = useState(loadLastPos() ?? KHARTOUM)
-  const [nearby, setNearby] = useState<{ lat: number; lng: number; art?: string }[]>([])
+  const [nearby, setNearby] = useState<{ lat: number; lng: number; icon?: string }[]>([])
 
   // تسجيل رمز الإشعارات عند فتح الرئيسية (محاولة موثوقة بعد جهوز التطبيق).
   useEffect(() => {
@@ -72,11 +72,14 @@ export default function Home() {
   useEffect(() => {
     let alive = true
     let center = mapCenter
-    const artFor = (vt: string) => allServices.find((s) => s.id === vt)?.art
+    const iconFor = (vt: string) => {
+      const s = allServices.find((x) => x.id === vt)
+      return s?.imageUrl || s?.image
+    }
     const loadDrivers = (c: { lat: number; lng: number }) =>
       nearbyOnlineDrivers(c.lat, c.lng).then((ds) => {
         if (alive)
-          setNearby(ds.map((d) => ({ lat: d.lat, lng: d.lng, art: artFor(d.vehicle_type) })))
+          setNearby(ds.map((d) => ({ lat: d.lat, lng: d.lng, icon: iconFor(d.vehicle_type) })))
       })
     void getCurrentPos().then((p) => {
       if (!alive || !p) return void loadDrivers(center)

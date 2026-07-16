@@ -24,8 +24,8 @@ interface MapViewProps {
   driver?: google.maps.LatLngLiteral
   /** علامات متعددة (نقاط انطلاق الرحلات في لوحة الأدمن). */
   markers?: google.maps.LatLngLiteral[]
-  /** مواقع سائقين متعددة (مع نوع المركبة art اختيارياً لاختيار الأيقونة). */
-  driverMarkers?: (google.maps.LatLngLiteral & { art?: string })[]
+  /** مواقع سائقين متعددة (icon = صورة المركبة، أو art لاختيار رمز بديل). */
+  driverMarkers?: (google.maps.LatLngLiteral & { art?: string; icon?: string })[]
   /** خطّ مسار القيادة (للملاحة الحيّة أثناء الرحلة). */
   route?: google.maps.LatLngLiteral[]
   zoom?: number
