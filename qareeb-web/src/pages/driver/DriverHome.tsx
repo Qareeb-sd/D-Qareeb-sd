@@ -15,6 +15,7 @@ import {
   acceptRide,
   getWallet,
   listDriverTransactions,
+  updateMyLocation,
 } from '@/lib/api'
 import { subscribeToRides } from '@/lib/realtime'
 import {
@@ -25,7 +26,7 @@ import {
 } from '@/lib/notifications'
 import { startCaptainBg, stopCaptainBg } from '@/lib/captainBg'
 import { registerPush } from '@/lib/pushNative'
-import { ensureGeoPermission } from '@/lib/geo'
+import { ensureGeoPermission, watchPos, getCurrentPos } from '@/lib/geo'
 import { getService } from '@/data/services'
 import { money } from '@/lib/format'
 import type { Driver, Ride } from '@/lib/types'
@@ -125,6 +126,44 @@ export default function DriverHome() {
     return () => {
       alive = false
       unsub()
+      clearInterval(iv)
+    }
+  }, [online])
+
+  // بثّ موقع السائق أثناء الاتصال — ليراه العملاء القريبون على الخريطة قبل الطلب.
+  useEffect(() => {
+    if (!online) return
+    let alive = true
+    let last = 0
+    const report = (lat: number, lng: number) => {
+      const now = Date.now()
+      if (now - last < 10000) return // خنق: مرّة كل ١٠ ثوانٍ على الأكثر
+      last = now
+      void updateMyLocation(lat, lng)
+    }
+    // أوّل تقرير فوري + متابعة الحركة + استطلاع احتياطي (لو GPS واقف).
+    void getCurrentPos().then((p) => {
+      if (alive && p) {
+        last = 0
+        report(p.lat, p.lng)
+      }
+    })
+    let stop = () => {}
+    void watchPos((p) => alive && report(p.lat, p.lng)).then((fn) => {
+      if (alive) stop = fn
+      else fn()
+    })
+    const iv = setInterval(() => {
+      void getCurrentPos().then((p) => {
+        if (alive && p) {
+          last = 0
+          report(p.lat, p.lng)
+        }
+      })
+    }, 20000)
+    return () => {
+      alive = false
+      stop()
       clearInterval(iv)
     }
   }, [online])

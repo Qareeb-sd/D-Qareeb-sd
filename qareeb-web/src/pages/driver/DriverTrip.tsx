@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useNavigate, Navigate } from 'react-router-dom'
-import { Navigation, MapPin, User, Phone, Star } from 'lucide-react'
+import { Navigation, Navigation2, MapPin, User, Phone, Star } from 'lucide-react'
 import Screen from '@/components/Screen'
 import MapView from '@/components/MapView'
 import SosButton from '@/components/SosButton'
@@ -22,7 +22,8 @@ import type { Driver } from '@/lib/types'
 import { subscribeToRide } from '@/lib/realtime'
 import { getService } from '@/data/services'
 import { money } from '@/lib/format'
-import { fetchRoutePath } from '@/lib/maps'
+import { haversineKm } from '@/lib/pricing'
+import { fetchRouteNav, type NavStep } from '@/lib/maps'
 import { watchPos, getCurrentPos } from '@/lib/geo'
 
 const paymentLabels: Record<string, string> = {
@@ -63,6 +64,7 @@ export default function DriverTrip() {
   const [pos, setPos] = useState<google.maps.LatLngLiteral | null>(null)
   const [routePts, setRoutePts] = useState<google.maps.LatLngLiteral[]>([])
   const [eta, setEta] = useState<{ km: number; min: number } | null>(null)
+  const [navSteps, setNavSteps] = useState<NavStep[]>([])
 
   useEffect(() => {
     void getSettings().then((s) => setRate(s.commission_rate))
@@ -181,10 +183,11 @@ export default function DriverTrip() {
       return
     }
     let alive = true
-    void fetchRoutePath(rOrigin, rDest).then((r) => {
+    void fetchRouteNav(rOrigin, rDest).then((r) => {
       if (alive && r) {
         setRoutePts(r.points)
         setEta({ km: r.distanceKm, min: r.durationMin })
+        setNavSteps(r.steps)
       }
     })
     return () => {
@@ -192,6 +195,21 @@ export default function DriverTrip() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [rOrigin?.lat, rOrigin?.lng, rDest?.lat, rDest?.lng])
+
+  // المناورة التالية للملاحة داخل التطبيق: أقرب خطوة أمام السائق.
+  const nextStep = (() => {
+    if (!pos || navSteps.length === 0) return null
+    const distM = (a: google.maps.LatLngLiteral, b: google.maps.LatLngLiteral) =>
+      haversineKm(a, b) * 1000
+    let best: { step: NavStep; d: number } | null = null
+    for (const s of navSteps) {
+      // نتخطّى «ابدأ»؛ ونبحث عن أقرب مناورة متبقّية أمام السائق.
+      if (s.instruction.startsWith('ابدأ')) continue
+      const d = distM(pos, s.location)
+      if (!best || d < best.d) best = { step: s, d }
+    }
+    return best
+  })()
 
   if (recovering) {
     return (
@@ -280,33 +298,50 @@ export default function DriverTrip() {
             className="absolute inset-0"
           />
 
-          {/* لافتة الهدف الحالي + المسافة/الزمن أعلى الخريطة */}
-          <div className="absolute inset-x-3 top-3 flex items-center gap-3 rounded-2xl bg-white/95 p-3 shadow-float backdrop-blur">
-            <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-royal-soft text-royal">
-              <MapPin className="h-5 w-5" strokeWidth={2} />
-            </span>
-            <div className="min-w-0 flex-1">
-              <p className="text-[11px] font-bold text-sand-ink">{headingLabel}</p>
-              <p className="truncate text-sm font-semibold text-royal">{headingAddress}</p>
-            </div>
-            {eta && (
-              <div className="shrink-0 text-center">
-                <p className="text-base font-extrabold leading-none text-royal">
-                  {Math.max(1, Math.round(eta.min))}
-                  <span className="text-[10px] font-bold"> د</span>
-                </p>
-                <p className="text-[10px] text-ink-muted">{eta.km.toFixed(1)} كم</p>
+          {/* لافتة الملاحة داخل التطبيق: المناورة التالية + المسافة إليها */}
+          <div className="absolute inset-x-3 top-3 rounded-2xl bg-white/95 shadow-float backdrop-blur">
+            {nextStep && (
+              <div className="flex items-center gap-3 border-b border-hairline p-3">
+                <span className="grid h-11 w-11 shrink-0 place-items-center rounded-full bg-green text-white">
+                  <Navigation2 className="h-6 w-6" strokeWidth={2.2} />
+                </span>
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-[15px] font-extrabold text-royal">
+                    {nextStep.step.instruction}
+                  </p>
+                  <p className="text-[11px] font-bold text-green">
+                    بعد {nextStep.d < 950 ? `${Math.round(nextStep.d / 10) * 10} م` : `${(nextStep.d / 1000).toFixed(1)} كم`}
+                  </p>
+                </div>
               </div>
             )}
+            <div className="flex items-center gap-3 p-3">
+              <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-royal-soft text-royal">
+                <MapPin className="h-5 w-5" strokeWidth={2} />
+              </span>
+              <div className="min-w-0 flex-1">
+                <p className="text-[11px] font-bold text-sand-ink">{headingLabel}</p>
+                <p className="truncate text-sm font-semibold text-royal">{headingAddress}</p>
+              </div>
+              {eta && (
+                <div className="shrink-0 text-center">
+                  <p className="text-base font-extrabold leading-none text-royal">
+                    {Math.max(1, Math.round(eta.min))}
+                    <span className="text-[10px] font-bold"> د</span>
+                  </p>
+                  <p className="text-[10px] text-ink-muted">{eta.km.toFixed(1)} كم</p>
+                </div>
+              )}
+            </div>
           </div>
 
-          {/* ملاحة خارجية (Google Maps) نحو الهدف الحالي — الراكب ثم الوجهة */}
+          {/* بديل اختياري: فتح خرائط قوقل خارجياً (الملاحة الأساسية داخل التطبيق) */}
           <button
             onClick={openNav}
-            className="press-scale absolute bottom-4 left-4 flex items-center gap-1.5 rounded-full bg-royal px-3.5 py-2 text-[12px] font-bold text-white shadow-float"
+            className="press-scale absolute bottom-4 left-4 flex items-center gap-1.5 rounded-full bg-white/95 px-3 py-2 text-[11px] font-bold text-royal shadow-float backdrop-blur"
           >
             <Navigation className="h-3.5 w-3.5" strokeWidth={2.2} />
-            {heading === 'pickup' ? 'ملاحة إلى الراكب' : 'ملاحة إلى الوجهة'}
+            خرائط قوقل
           </button>
         </div>
 
