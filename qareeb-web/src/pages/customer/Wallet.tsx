@@ -43,13 +43,11 @@ export default function Wallet() {
 
   const topupMut = useMutation({
     mutationFn: async () => {
-      // ارفع إثبات التحويل (إن وُجد) إلى Storage ثم أرسل طلب التعبئة بمساره.
-      let proofPath: string | null = null
-      if (proof) {
-        const up = await uploadTopupProof(userId, proof)
-        if (up.error) throw new Error(`تعذّر رفع الإثبات: ${up.error}`)
-        proofPath = up.path ?? null
-      }
+      // إرفاق صورة الإيصال إلزامي — لا يُقبل الطلب بدونها.
+      if (!proof) throw new Error('يجب إرفاق صورة إيصال التحويل قبل الإرسال')
+      const up = await uploadTopupProof(userId, proof)
+      if (up.error) throw new Error(`تعذّر رفع الإثبات: ${up.error}`)
+      const proofPath = up.path ?? null
       const { error } = await createTopup(wallet!.id, Number(amount), proofPath)
       if (error) throw new Error(error)
     },
@@ -128,11 +126,20 @@ export default function Wallet() {
                   />
                 </div>
                 <div>
-                  <label className="label">إثبات التحويل</label>
+                  <label className="label">إثبات التحويل (إلزامي)</label>
                   <ReceiptUpload value={proof} onChange={setProof} />
+                  {!proof && (
+                    <p className="mt-1 text-[11px] text-ink-muted">
+                      أرفق صورة إيصال التحويل لتفعيل زرّ الإرسال.
+                    </p>
+                  )}
                 </div>
                 {error && <p className="text-sm text-danger">{error}</p>}
-                <button className="btn-gold w-full" type="submit" disabled={submitting}>
+                <button
+                  className="btn-gold w-full"
+                  type="submit"
+                  disabled={submitting || !proof}
+                >
                   {submitting ? '…' : 'إرسال للمراجعة'}
                 </button>
               </form>

@@ -385,16 +385,14 @@ function TopupForm({
     const value = Math.round(Number(amount))
     if (!walletId) return setErr('المحفظة غير جاهزة')
     if (!value || value <= 0) return setErr('أدخل مبلغاً صحيحاً')
+    if (!proof) return setErr('يجب إرفاق صورة إيصال التحويل')
     setBusy(true)
-    let proofPath: string | null = null
-    if (proof) {
-      const up = await uploadTopupProof(userId, proof)
-      if (up.error) {
-        setBusy(false)
-        return setErr(`تعذّر رفع الإثبات: ${up.error}`)
-      }
-      proofPath = up.path ?? null
+    const up = await uploadTopupProof(userId, proof)
+    if (up.error) {
+      setBusy(false)
+      return setErr(`تعذّر رفع الإثبات: ${up.error}`)
     }
+    const proofPath = up.path ?? null
     const { error } = await createTopup(walletId, value, proofPath)
     setBusy(false)
     if (error) return setErr(error)
@@ -439,13 +437,18 @@ function TopupForm({
             />
           </div>
           <div>
-            <label className="mb-1 block text-xs text-ink-muted">إثبات التحويل</label>
+            <label className="mb-1 block text-xs text-ink-muted">إثبات التحويل (إلزامي)</label>
             <ReceiptUpload value={proof} onChange={setProof} />
+            {!proof && (
+              <p className="mt-1 text-[11px] text-ink-muted">
+                أرفق صورة إيصال التحويل لتفعيل زرّ الإرسال.
+              </p>
+            )}
           </div>
           {err && <p className="text-sm text-danger">{err}</p>}
           <button
             type="submit"
-            disabled={busy}
+            disabled={busy || !proof}
             className="w-full rounded-2xl bg-royal px-4 py-3 text-sm font-bold text-ivory disabled:opacity-60"
           >
             {busy ? '…' : 'إرسال للمراجعة'}
