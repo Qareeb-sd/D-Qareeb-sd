@@ -120,6 +120,10 @@ export default function SelectLocation() {
   const [promoCode, setPromoCode] = useState('')
   const [promo, setPromo] = useState<PromoResult | null>(null)
   const [promoBusy, setPromoBusy] = useState(false)
+  // الرحلة لشخص آخر (اختياري).
+  const [forOther, setForOther] = useState(false)
+  const [riderName, setRiderName] = useState('')
+  const [riderPhone, setRiderPhone] = useState('')
 
   // دَيْن رسوم إلغاء سابق (يُضاف لأجرة هذه الرحلة).
   const [debt, setDebt] = useState(0)
@@ -434,6 +438,10 @@ export default function SelectLocation() {
       // حقول الخصم تُرسَل فقط عند تطبيق كود صالح (حتى تعمل الرحلة العادية
       // قبل تنفيذ مخطّط قاعدة البيانات المحدّث).
       ...(promo?.valid ? { promo_code: promoCode.trim(), discount: promo.discount } : {}),
+      // الرحلة لشخص آخر: اسم/رقم الراكب الفعلي (يراهما السائق ويتصل به).
+      ...(forOther && riderName.trim()
+        ? { rider_name: riderName.trim(), rider_phone: riderPhone.trim() || null }
+        : {}),
     })
     if (error || !id) {
       setBusy(false)
@@ -811,6 +819,42 @@ export default function SelectLocation() {
                     ? `${promo.message} — خصم ${money(promo.discount)} · السعر ${money(promo.final)}`
                     : promo.message}
                 </p>
+              )}
+            </div>
+          )}
+
+          {/* الرحلة لشخص آخر — اسم ورقم الراكب الفعلي (اختياري) */}
+          {quote && destChosen && (
+            <div className="mt-3 rounded-2xl border border-hairline p-3">
+              <label className="flex items-center gap-2 text-[13px] font-bold text-royal">
+                <input
+                  type="checkbox"
+                  className="h-4 w-4 accent-green"
+                  checked={forOther}
+                  onChange={(e) => setForOther(e.target.checked)}
+                />
+                هذه الرحلة لشخص آخر
+              </label>
+              {forOther && (
+                <div className="mt-2 space-y-2">
+                  <p className="text-[11px] text-ink-muted">
+                    يتواصل السائق مع الراكب الفعلي بهذه البيانات.
+                  </p>
+                  <input
+                    className="w-full rounded-2xl border border-hairline bg-white px-4 py-2.5 text-[13px] text-ink outline-none focus:border-royal"
+                    placeholder="اسم الراكب"
+                    value={riderName}
+                    onChange={(e) => setRiderName(e.target.value)}
+                  />
+                  <input
+                    className="w-full rounded-2xl border border-hairline bg-white px-4 py-2.5 text-left text-[13px] text-ink outline-none focus:border-royal"
+                    dir="ltr"
+                    inputMode="tel"
+                    placeholder="رقم هاتف الراكب"
+                    value={riderPhone}
+                    onChange={(e) => setRiderPhone(e.target.value)}
+                  />
+                </div>
               )}
             </div>
           )}

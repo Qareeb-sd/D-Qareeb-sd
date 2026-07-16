@@ -398,18 +398,26 @@ export default function DriverTrip() {
                 <User className="h-5 w-5 text-royal" strokeWidth={2} />
               </span>
               <div className="min-w-0 flex-1">
-                <p className="truncate font-bold text-royal">{customer?.full_name ?? 'الراكب'}</p>
-                {customer?.rating != null && (
-                  <p className="flex items-center gap-1 text-xs text-ink-soft">
-                    <Star className="h-3.5 w-3.5 text-sand" fill="currentColor" strokeWidth={2} />
-                    {customer.rating}
-                  </p>
+                <p className="truncate font-bold text-royal">
+                  {activeRide.rider_name || customer?.full_name || 'الراكب'}
+                </p>
+                {activeRide.rider_name ? (
+                  <span className="mt-0.5 inline-block rounded-md bg-sand-soft px-1.5 py-0.5 text-[10px] font-bold text-sand-ink">
+                    رحلة لشخص آخر
+                  </span>
+                ) : (
+                  customer?.rating != null && (
+                    <p className="flex items-center gap-1 text-xs text-ink-soft">
+                      <Star className="h-3.5 w-3.5 text-sand" fill="currentColor" strokeWidth={2} />
+                      {customer.rating}
+                    </p>
+                  )
                 )}
               </div>
               <div className="flex shrink-0 flex-col gap-1.5">
-                {customer?.phone && (
+                {(activeRide.rider_phone || customer?.phone) && (
                   <a
-                    href={`tel:${customer.phone}`}
+                    href={`tel:${activeRide.rider_phone || customer?.phone}`}
                     className="flex items-center justify-center gap-1.5 rounded-xl bg-royal px-3 py-2 text-sm font-bold text-white"
                   >
                     <Phone className="h-4 w-4" strokeWidth={2} />
@@ -421,7 +429,7 @@ export default function DriverTrip() {
                     rideId={activeRide.id}
                     myId={profile.id}
                     role="driver"
-                    otherName={customer?.full_name ?? 'الراكب'}
+                    otherName={activeRide.rider_name || customer?.full_name || 'الراكب'}
                   />
                 )}
               </div>

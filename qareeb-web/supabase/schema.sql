@@ -3543,3 +3543,9 @@ language sql security definer set search_path = public stable as $$
   limit 60;
 $$;
 grant execute on function public.nearby_online_drivers(double precision, double precision, double precision) to authenticated;
+
+-- ============================================================
+--  طلب رحلة لشخص آخر: اسم/رقم الراكب الفعلي (يراهما السائق ويتصل به).
+-- ============================================================
+alter table public.rides add column if not exists rider_name  text;
+alter table public.rides add column if not exists rider_phone text;

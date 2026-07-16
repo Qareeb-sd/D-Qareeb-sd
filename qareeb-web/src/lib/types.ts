@@ -76,6 +76,8 @@ export interface Ride {
   rating: number | null
   promo_code?: string | null
   discount?: number
+  rider_name?: string | null // راكب فعليّ مختلف عن صاحب الحساب (رحلة لشخص آخر)
+  rider_phone?: string | null
   created_at: string
   // تظهر فقط في قائمة الطلبات المتاحة للسائق (من list_available_rides).
   customer_name?: string | null
