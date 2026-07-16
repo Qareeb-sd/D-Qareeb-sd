@@ -135,15 +135,23 @@ export default function Home() {
         />
         {/* تدرّج علوي لوضوح الهيدر */}
         <div className="pointer-events-none absolute inset-x-0 top-0 h-36 bg-gradient-to-b from-ivory via-ivory/70 to-transparent" />
-        {/* عدّاد السيارات المتصلة القريبة */}
-        <div className="pointer-events-none absolute inset-x-0 bottom-3 flex justify-center">
+        {/* عدّاد السيارات المتصلة القريبة — أعلى الخريطة كي لا تحجبه البطاقة السفلية */}
+        <div
+          className="pointer-events-none absolute inset-x-0 flex justify-center px-4"
+          style={{ top: 'max(env(safe-area-inset-top), 16px)', marginTop: 60 }}
+        >
           <span
-            className={`rounded-full px-3.5 py-1.5 text-xs font-bold shadow-card ${
-              nearby.length > 0 ? 'bg-green text-white' : 'bg-white text-ink-muted'
+            className={`flex items-center gap-1.5 rounded-full px-4 py-2 text-xs font-bold shadow-float ${
+              nearby.length > 0 ? 'bg-green text-white' : 'bg-white/95 text-ink-soft'
             }`}
           >
+            <span
+              className={`inline-block h-2 w-2 rounded-full ${
+                nearby.length > 0 ? 'animate-pulse bg-sand' : 'bg-ink-muted'
+              }`}
+            />
             {nearby.length > 0
-              ? `🚗 ${nearby.length} سيارة متصلة قريبة`
+              ? `${nearby.length} سيارة متصلة قريبة منك`
               : 'لا سيارات متصلة قريبة الآن'}
           </span>
         </div>
