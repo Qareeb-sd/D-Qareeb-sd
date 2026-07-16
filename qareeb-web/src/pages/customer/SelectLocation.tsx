@@ -47,7 +47,7 @@ import {
   type PeriodRate,
 } from '@/lib/pricing'
 import FareReceipt from '@/components/FareReceipt'
-import { fetchRoute, GOOGLE_MAPS_API_KEY } from '@/lib/maps'
+import { fetchRoute } from '@/lib/maps'
 import { getCurrentPos, loadLastPos } from '@/lib/geo'
 import { reverseGeocode } from '@/lib/geocode'
 import {
@@ -176,11 +176,9 @@ export default function SelectLocation() {
     if (myId !== gpsReqId.current) return // محاولة أحدث سبقتها — تجاهل هذه
     if (!pos) {
       setGpsBusy(false)
-      setGpsErr('تعذّر تحديد الموقع بدقّة — حدّد نقطتك على الخريطة')
-      // ننقل المستخدم لوضع الخريطة فوراً (يعمل بسرعة ودقّة) بدل تركه عالقاً.
-      setPickupMode('map')
+      setGpsErr('تعذّر تحديد موقعك تلقائياً — اكتب اسم المكان أو حدّده على الخريطة')
+      // نُبقي البطاقة ظاهرة (فيها: اكتب/الخريطة/موقعي) بدل حبس المستخدم في الدبوس.
       setActive('pickup')
-      setPicking(true)
       return
     }
     setPickupPos(pos)
@@ -189,8 +187,8 @@ export default function SelectLocation() {
     setPickupSet(true)
     setActive('dropoff')
     setGpsBusy(false)
-    // عنوان حقيقي لموقع العميل الحالي (يستبدل «موقعي الحالي»).
-    if (GOOGLE_MAPS_API_KEY) void reverseGeocode(pos).then((a) => a && setPickupAddr(a))
+    // عنوان حقيقي لموقع العميل الحالي (Google ثم Photon المجاني كبديل).
+    void reverseGeocode(pos).then((a) => a && setPickupAddr(a))
   }
 
   // أول دخول: حاول تحديد الموقع تلقائياً.
@@ -368,7 +366,7 @@ export default function SelectLocation() {
   // وجهة قبل اختيارها)، ولا يعمل أثناء الكتابة اليدوية للانطلاق. يحدّث النصّ فقط.
   const activeSet = active === 'pickup' ? pickupSet : dropoffSet
   useEffect(() => {
-    if (!GOOGLE_MAPS_API_KEY || !activeSet) return
+    if (!activeSet) return
     if (active === 'pickup' && pickupMode === 'type') return
     const t = setTimeout(() => {
       void reverseGeocode(activePos).then((addr) => {
@@ -604,6 +602,31 @@ export default function SelectLocation() {
             <p className="mb-3 truncate text-[15px] font-semibold text-royal">
               {(active === 'pickup' ? pickupAddr : dropoffAddr) || 'حرّك الخريطة لتحديد الموقع'}
             </p>
+            {/* بدائل: بحث بالاسم أو الموقع الحالي — كي لا يعلق المستخدم على الدبوس */}
+            <div className="mb-2 flex gap-2">
+              <button
+                onClick={() => {
+                  setPicking(false)
+                  setSearching(active)
+                }}
+                className="flex flex-1 items-center justify-center gap-1.5 rounded-2xl border border-hairline py-2.5 text-[13px] font-bold text-royal"
+              >
+                <Keyboard className="h-4 w-4" strokeWidth={2} />
+                بحث بالاسم
+              </button>
+              {active === 'pickup' && (
+                <button
+                  onClick={() => {
+                    setPicking(false)
+                    useMyLocation()
+                  }}
+                  className="flex flex-1 items-center justify-center gap-1.5 rounded-2xl border border-hairline py-2.5 text-[13px] font-bold text-royal"
+                >
+                  <Navigation className="h-4 w-4" strokeWidth={2} />
+                  موقعي الحالي
+                </button>
+              )}
+            </div>
             <button
               onClick={() => {
                 if (active === 'pickup') setPickupSet(true)
