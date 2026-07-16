@@ -33,6 +33,20 @@ const CAR_SVG =
   `<circle cx="6.9" cy="14.6" r="1.7" fill="#0E3B2E"/><circle cx="17.1" cy="14.6" r="1.7" fill="#0E3B2E"/>` +
   `</g></svg>`
 
+// أيقونة سيارة متصلة قريبة (منظور علوي أنيق على قرص أبيض) — تُميّزها عن دبوس الوجهة.
+const NEARBY_CAR_SVG =
+  `<svg xmlns="http://www.w3.org/2000/svg" width="44" height="44" viewBox="0 0 44 44">` +
+  `<defs><filter id="ncs" x="-40%" y="-40%" width="180%" height="180%">` +
+  `<feDropShadow dx="0" dy="2" stdDeviation="2" flood-color="#0E3B2E" flood-opacity="0.4"/></filter></defs>` +
+  `<circle cx="22" cy="22" r="16" fill="#fff" stroke="#1B6B3F" stroke-width="2.5" filter="url(#ncs)"/>` +
+  `<g transform="translate(22,22)">` +
+  `<rect x="-7.5" y="-10.5" width="15" height="21" rx="5.5" fill="#1B6B3F"/>` +
+  `<path d="M-5.2 -6.5 L5.2 -6.5 L3.8 -2.6 L-3.8 -2.6 Z" fill="#CFE9D8"/>` +
+  `<path d="M-3.8 4.6 L3.8 4.6 L5.2 8.2 L-5.2 8.2 Z" fill="#CFE9D8"/>` +
+  `<rect x="-4.6" y="-2" width="9.2" height="6.4" rx="2" fill="#12572F"/>` +
+  `<circle cx="0" cy="-8.4" r="1.1" fill="#F4E9C9"/>` +
+  `</g></svg>`
+
 const PIN_SVG =
   `<svg xmlns="http://www.w3.org/2000/svg" width="30" height="42" viewBox="0 0 30 42">` +
   `<path d="M15 0C6.7 0 0 6.6 0 14.8 0 25.9 15 42 15 42s15-16.1 15-27.2C30 6.6 23.3 0 15 0Z" fill="#E11D48"/>` +
@@ -162,13 +176,18 @@ export default function GoogleJsMap({
       scaledSize: new maps.Size(56, 56),
       anchor: new maps.Point(28, 28),
     }
+    const nearbyCarIcon = {
+      url: svgUrl(NEARBY_CAR_SVG),
+      scaledSize: new maps.Size(44, 44),
+      anchor: new maps.Point(22, 22),
+    }
 
     const add = (pos: google.maps.LatLngLiteral, icon: google.maps.Icon, z: number) =>
       overlays.current.markers.push(new maps.Marker({ position: pos, map, icon, zIndex: z }))
 
     if (marker) add(marker, pinIcon, 10)
     markers?.forEach((m) => add(m, pinIcon, 10))
-    driverMarkers?.forEach((d) => add(d, carIcon, 500))
+    driverMarkers?.forEach((d) => add(d, nearbyCarIcon, 500))
     if (driver) add(driver, carIcon, 1000)
   }
 
