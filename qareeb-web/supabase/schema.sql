@@ -3601,3 +3601,8 @@ language sql security definer set search_path = public stable as $$
   limit 500;
 $$;
 grant execute on function public.demand_hotspots(int) to authenticated;
+
+-- ============================================================
+--  نقاط توقّف متوسّطة في الرحلة (بين الانطلاق والوجهة) — مصفوفة JSON.
+-- ============================================================
+alter table public.rides add column if not exists stops jsonb;

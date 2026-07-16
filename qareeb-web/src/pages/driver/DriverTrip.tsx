@@ -292,7 +292,13 @@ export default function DriverTrip() {
           <MapView
             center={pos ?? target ?? { lat: activeRide.pickup_lat, lng: activeRide.pickup_lng }}
             driver={pos ?? undefined}
-            markers={[pickupPt, dropoffPt].filter(Boolean) as google.maps.LatLngLiteral[]}
+            markers={
+              [
+                pickupPt,
+                ...(activeRide.stops?.map((s) => ({ lat: s.lat, lng: s.lng })) ?? []),
+                dropoffPt,
+              ].filter(Boolean) as google.maps.LatLngLiteral[]
+            }
             route={routePts}
             zoom={15}
             className="absolute inset-0"
@@ -389,8 +395,17 @@ export default function DriverTrip() {
               </span>
             </div>
             <p className="mt-1 text-sm text-ink-soft">
-              {activeRide.pickup_address} ← {activeRide.dropoff_address}
+              {activeRide.pickup_address}
+              {activeRide.stops?.length
+                ? activeRide.stops.map((s) => ` ← ${s.address ?? 'توقّف'}`).join('')
+                : ''}{' '}
+              ← {activeRide.dropoff_address}
             </p>
+            {activeRide.stops?.length ? (
+              <p className="mt-0.5 text-[11px] font-bold text-sand-ink">
+                تتضمّن {activeRide.stops.length} نقطة توقّف
+              </p>
+            ) : null}
 
             {/* الراكب — اسم/تقييم + زر اتصال */}
             <div className="mt-3 flex items-center gap-3 rounded-2xl border border-hairline bg-ivory/60 p-3">

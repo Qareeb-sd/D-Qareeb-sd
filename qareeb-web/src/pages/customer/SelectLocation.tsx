@@ -14,6 +14,8 @@ import {
   Banknote,
   Landmark,
   Wallet,
+  Plus,
+  X,
   type LucideIcon,
 } from 'lucide-react'
 import MapView from '@/components/MapView'
@@ -124,6 +126,9 @@ export default function SelectLocation() {
   const [forOther, setForOther] = useState(false)
   const [riderName, setRiderName] = useState('')
   const [riderPhone, setRiderPhone] = useState('')
+  // نقاط توقّف متوسّطة (اختياري) — بين الانطلاق والوجهة.
+  const [stops, setStops] = useState<{ pos: google.maps.LatLngLiteral; address: string }[]>([])
+  const [stopSearch, setStopSearch] = useState<number | null>(null) // فهرس النقطة قيد البحث
 
   // دَيْن رسوم إلغاء سابق (يُضاف لأجرة هذه الرحلة).
   const [debt, setDebt] = useState(0)
@@ -306,25 +311,31 @@ export default function SelectLocation() {
     let alive = true
     const bothPlaced = pickupSet && dropoffSet
     const t = setTimeout(async () => {
-      const real = bothPlaced ? await fetchRoute(pickupPos, dropoffPos) : null
-      const route = real ?? estimateRoute(pickupPos, dropoffPos)
+      // المسار عبر نقاط التوقّف: انطلاق → توقّف₁ → … → وجهة (جمع المسافات والأزمنة).
+      const pts = [pickupPos, ...stops.map((s) => s.pos), dropoffPos]
+      let km = 0
+      let min = 0
+      let anyReal = false
+      for (let i = 0; i < pts.length - 1; i++) {
+        const real = bothPlaced ? await fetchRoute(pts[i], pts[i + 1]) : null
+        const leg = real ?? estimateRoute(pts[i], pts[i + 1])
+        km += leg.distanceKm
+        min += leg.durationMin
+        if (real) anyReal = true
+      }
       if (!alive) return
       // النموذج الجديد (فترات) إن توفّر، وإلا التسعير القديم (شرائح).
       const fare = periodRate
-        ? computeFare(route.distanceKm, route.durationMin, periodRate)
-        : estimateFare({
-            distanceKm: route.distanceKm,
-            durationMin: route.durationMin,
-            pricing,
-            settings,
-          }).total
-      setQuote({ ...route, fare, real: Boolean(real) })
+        ? computeFare(km, min, periodRate)
+        : estimateFare({ distanceKm: km, durationMin: min, pricing, settings }).total
+      setQuote({ distanceKm: km, durationMin: min, fare, real: anyReal })
     }, 700)
     return () => {
       alive = false
       clearTimeout(t)
     }
-  }, [pickupPos, dropoffPos, pickupSet, dropoffSet, pricing, settings, periodRate])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pickupPos, dropoffPos, pickupSet, dropoffSet, pricing, settings, periodRate, JSON.stringify(stops)])
 
   const activePos = active === 'pickup' ? pickupPos : dropoffPos
   const setActivePos = active === 'pickup' ? setPickupPos : setDropoffPos
@@ -379,6 +390,11 @@ export default function SelectLocation() {
     (Math.abs(otherRaw.lat - activePos.lat) > 3e-4 || Math.abs(otherRaw.lng - activePos.lng) > 3e-4)
       ? otherRaw
       : null
+
+  // علامات الخريطة الثابتة: النقطة الأخرى + نقاط التوقّف.
+  const staticMarkers = [otherMarker, ...stops.map((s) => s.pos)].filter(
+    Boolean,
+  ) as google.maps.LatLngLiteral[]
 
   // جدولة لوقت لاحق
   const [showSchedule, setShowSchedule] = useState(false)
@@ -442,6 +458,10 @@ export default function SelectLocation() {
       ...(forOther && riderName.trim()
         ? { rider_name: riderName.trim(), rider_phone: riderPhone.trim() || null }
         : {}),
+      // نقاط التوقّف المتوسّطة (إن وُجدت).
+      ...(stops.length
+        ? { stops: stops.map((s) => ({ lat: s.pos.lat, lng: s.pos.lng, address: s.address })) }
+        : {}),
     })
     if (error || !id) {
       setBusy(false)
@@ -488,7 +508,7 @@ export default function SelectLocation() {
               if (!dropoffAddr.trim()) setDropoffAddr('موقع محدّد من الخريطة')
             }
           }}
-          markers={otherMarker ? [otherMarker] : undefined}
+          markers={staticMarkers.length ? staticMarkers : undefined}
           driverMarkers={nearby}
           zoom={16}
           className="absolute inset-0"
@@ -646,6 +666,37 @@ export default function SelectLocation() {
                 <ArrowUpDown className="h-3.5 w-3.5" strokeWidth={2} />
               </button>
             </div>
+
+            {/* نقاط التوقّف المتوسّطة */}
+            {stops.map((s, i) => (
+              <div key={i} className="mb-1 flex items-center gap-3">
+                <MapPinIcon className="h-[20px] w-[20px] shrink-0 text-royal/60" strokeWidth={2} />
+                <button
+                  onClick={() => setStopSearch(i)}
+                  className="min-w-0 flex-1 truncate text-right text-[14px] font-semibold text-royal"
+                >
+                  {s.address || `توقّف ${i + 1}`}
+                </button>
+                <button
+                  onClick={() => setStops((cur) => cur.filter((_, j) => j !== i))}
+                  className="grid h-7 w-7 shrink-0 place-items-center rounded-full text-danger"
+                  aria-label="حذف التوقّف"
+                >
+                  <X className="h-4 w-4" strokeWidth={2.4} />
+                </button>
+              </div>
+            ))}
+            {stops.length < 3 && (
+              <button
+                onClick={() => setStopSearch(stops.length)}
+                className="mb-1 flex items-center gap-2 text-[12px] font-bold text-green"
+              >
+                <span className="grid h-[22px] w-[22px] place-items-center">
+                  <Plus className="h-4 w-4" strokeWidth={2.4} />
+                </span>
+                إضافة نقطة توقّف
+              </button>
+            )}
 
             {/* الوجهة */}
             <button onClick={() => setSearching('dropoff')} className="flex w-full items-center gap-3 text-right">
@@ -946,6 +997,36 @@ export default function SelectLocation() {
           )}
         </div>
       </section>
+      )}
+
+      {/* بحث نقطة توقّف */}
+      {stopSearch !== null && (
+        <LocationSearchPanel
+          field="dropoff"
+          initial={stops[stopSearch]?.address ?? ''}
+          saved={savedEntries}
+          onPick={({ pos, address }) => {
+            setStops((cur) => {
+              const next = [...cur]
+              if (stopSearch < next.length) next[stopSearch] = { pos, address }
+              else next.push({ pos, address })
+              return next
+            })
+            setStopSearch(null)
+          }}
+          onChooseOnMap={() => {
+            const idx = stopSearch
+            setStops((cur) => {
+              const next = [...cur]
+              const entry = { pos: activePos, address: 'موقع محدّد من الخريطة' }
+              if (idx < next.length) next[idx] = entry
+              else next.push(entry)
+              return next
+            })
+            setStopSearch(null)
+          }}
+          onClose={() => setStopSearch(null)}
+        />
       )}
 
       {/* شاشة البحث الكاملة — تُخفي الخريطة وتستغلّ المساحة (مثل أوبر) */}
