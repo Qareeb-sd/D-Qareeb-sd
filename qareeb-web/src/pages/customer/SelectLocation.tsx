@@ -449,7 +449,8 @@ export default function SelectLocation() {
     void notifyDriversOfRide(id)
     setRideId(id)
     setBusy(false)
-    navigate('/find-driver')
+    // استبدال بدل الإضافة: بعد إنشاء الطلب لا يجوز الرجوع لتحديد الخريطة.
+    navigate('/find-driver', { replace: true })
   }
 
   const canConfirm = !busy && quote && (destOptional || destChosen)

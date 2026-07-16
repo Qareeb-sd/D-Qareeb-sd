@@ -43,7 +43,8 @@ export default function Rate() {
       }
     }
     reset()
-    navigate('/home')
+    // استبدال: بعد التقييم لا يجوز الرجوع لصفحة التقييم بزرّ الرجوع.
+    navigate('/home', { replace: true })
   }
 
   return (

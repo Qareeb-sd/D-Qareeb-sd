@@ -32,12 +32,12 @@ export default function FindDriver() {
     // قبل قبول السائق لا رسوم إطلاقاً.
     if (rideId) await cancelRide(rideId, reason.label, reason.code)
     reset()
-    navigate('/home')
+    navigate('/home', { replace: true })
   }
 
   const backHome = () => {
     reset()
-    navigate('/home')
+    navigate('/home', { replace: true })
   }
 
   useEffect(() => {
@@ -46,7 +46,7 @@ export default function FindDriver() {
       if (done.current) return
       done.current = true
       void notify('تم قبول رحلتك', 'السائق في الطريق إليك — تابع وصوله على الخريطة')
-      navigate('/trip')
+      navigate('/trip', { replace: true })
     }
 
     // Realtime (فوري إن عمل).
@@ -82,7 +82,9 @@ export default function FindDriver() {
       : undefined
 
     // بديل المعاينة: انتقال تلقائي.
-    const t = !isSupabaseConfigured ? setTimeout(() => navigate('/trip'), 2500) : undefined
+    const t = !isSupabaseConfigured
+      ? setTimeout(() => navigate('/trip', { replace: true }), 2500)
+      : undefined
 
     return () => {
       unsub()

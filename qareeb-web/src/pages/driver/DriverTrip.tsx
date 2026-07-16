@@ -148,7 +148,7 @@ export default function DriverTrip() {
       if (ride.status === 'cancelled') {
         setActiveRide(null)
         alert('ألغى الراكب الرحلة.')
-        navigate('/driver')
+        navigate('/driver', { replace: true })
       }
     })
     return unsub
@@ -256,7 +256,7 @@ export default function DriverTrip() {
     const rideId = activeRide.id
     setActiveRide(null)
     // تقييم العميل قبل العودة للمحفظة.
-    navigate('/driver/rate', { state: { rideId } })
+    navigate('/driver/rate', { state: { rideId }, replace: true })
   }
 
   const release = async () => {
@@ -266,7 +266,7 @@ export default function DriverTrip() {
     setBusy(false)
     if (error) return alert(error)
     setActiveRide(null)
-    navigate('/driver')
+    navigate('/driver', { replace: true })
   }
 
   // يفتح ملاحة قوقل خارجياً نحو الهدف الحالي (يفتح التطبيق على الجهاز).
