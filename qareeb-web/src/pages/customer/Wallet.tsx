@@ -3,7 +3,6 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import BottomNav from '@/components/BottomNav'
 import Logo from '@/components/Logo'
 import ReceiptUpload from '@/components/ReceiptUpload'
-import PushStatus from '@/components/PushStatus'
 import { money } from '@/lib/format'
 import { useAuth } from '@/store/AuthContext'
 import {
@@ -92,8 +91,6 @@ export default function Wallet() {
             تعبئة الرصيد
           </button>
         </div>
-
-        <PushStatus />
 
         {/* نموذج التعبئة */}
         {showTopup && (
