@@ -23,7 +23,7 @@ export default function DriverRate() {
     const { error } = await submitReview(rideId, stars, complaint)
     setBusy(false)
     if (error) return alert(error)
-    navigate('/driver/wallet')
+    navigate('/driver/wallet', { replace: true })
   }
 
   return (

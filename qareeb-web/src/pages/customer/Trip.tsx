@@ -76,7 +76,7 @@ export default function Trip() {
       if (ride) {
         restore(ride)
         setStatus(ride.status)
-      } else navigate('/home')
+      } else navigate('/home', { replace: true })
     })
   }, [rideId, profile?.id, restore, navigate])
 
@@ -114,11 +114,11 @@ export default function Trip() {
         notified.current = true
         void notify('تم قبول رحلتك', 'السائق في الطريق إليك — تابع وصوله على الخريطة')
       }
-      if (ride.status === 'completed') navigate('/rate')
-      else if (ride.status === 'searching') navigate('/find-driver') // تخلّى السائق → إعادة البحث
+      if (ride.status === 'completed') navigate('/rate', { replace: true })
+      else if (ride.status === 'searching') navigate('/find-driver', { replace: true }) // تخلّى السائق → إعادة البحث
       else if (ride.status === 'cancelled') {
         reset()
-        navigate('/home')
+        navigate('/home', { replace: true })
       }
     })
     return unsub
@@ -135,10 +135,10 @@ export default function Trip() {
       setStatus(ride.status)
       if (ride.driver_lat != null && ride.driver_lng != null)
         setDriverPos({ lat: ride.driver_lat, lng: ride.driver_lng })
-      if (ride.status === 'completed') navigate('/rate')
+      if (ride.status === 'completed') navigate('/rate', { replace: true })
       else if (ride.status === 'cancelled') {
         reset()
-        navigate('/home')
+        navigate('/home', { replace: true })
       }
     }, 3000)
     return () => clearInterval(iv)
@@ -197,12 +197,12 @@ export default function Trip() {
       }
     }
     reset()
-    navigate('/home')
+    navigate('/home', { replace: true })
   }
 
   const finishCancel = () => {
     reset()
-    navigate('/home')
+    navigate('/home', { replace: true })
   }
 
   const banner = status ? statusInfo[status] : undefined
@@ -325,7 +325,7 @@ export default function Trip() {
                   : 'السائق في طريقه — يمكنك الإلغاء قبل بدء الرحلة.'}
               </p>
             ) : (
-              <button className="btn-primary w-full" onClick={() => navigate('/rate')}>
+              <button className="btn-primary w-full" onClick={() => navigate('/rate', { replace: true })}>
                 إنهاء الرحلة (معاينة)
               </button>
             )}
