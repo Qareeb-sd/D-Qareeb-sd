@@ -10,6 +10,9 @@ import {
   Wallet,
   Coins,
   Settings as SettingsIcon,
+  Crown,
+  CreditCard,
+  BadgePercent,
   ShieldCheck,
   ScrollText,
   Bell,
@@ -99,7 +102,6 @@ import {
   deletePromo,
   setDriverVip,
   setDriverCommissionFree,
-  chargeVipSubscriptions,
   listServicePeriods,
   upsertServicePeriod,
   type ServicePeriod,
@@ -147,7 +149,12 @@ type Tab =
   | 'complaints'
   | 'finance'
   | 'hr'
-  | 'settings'
+  | 'pricing'
+  | 'vehicles'
+  | 'captain'
+  | 'subs'
+  | 'topup'
+  | 'promo'
   | 'staff'
   | 'audit'
 
@@ -162,7 +169,12 @@ const tabs: { id: Tab; label: string; perm: StaffPerm | null; ownerOnly?: boolea
   { id: 'complaints', label: 'الشكاوى', perm: 'requests', Icon: Flag },
   { id: 'finance', label: 'المالية', perm: null, ownerOnly: true, Icon: Wallet },
   { id: 'hr', label: 'المنصرفات والرواتب', perm: null, ownerOnly: true, Icon: Coins },
-  { id: 'settings', label: 'الإعدادات', perm: 'settings', Icon: SettingsIcon },
+  { id: 'pricing', label: 'الأسعار والأزمان', perm: 'settings', Icon: Coins },
+  { id: 'vehicles', label: 'المركبات', perm: 'settings', Icon: Car },
+  { id: 'captain', label: 'إعدادات الكابتن', perm: 'settings', Icon: SettingsIcon },
+  { id: 'subs', label: 'الاشتراكات', perm: 'settings', Icon: Crown },
+  { id: 'topup', label: 'تعبئة العملاء', perm: 'settings', Icon: CreditCard },
+  { id: 'promo', label: 'البريمو كود', perm: 'settings', Icon: BadgePercent },
   { id: 'staff', label: 'الموظفون', perm: null, ownerOnly: true, Icon: ShieldCheck },
   { id: 'audit', label: 'سجلّ النشاط', perm: null, ownerOnly: true, Icon: ScrollText },
 ]
@@ -388,7 +400,10 @@ export default function AdminDashboard() {
       prevPending = total
     }
     void refreshPending()
-    const iv = setInterval(() => {
+    // الطلبات المعلّقة: استقصاء سريع (٤ ثوانٍ) ليظهر الطلب الجديد فوراً تقريباً.
+    const ivFast = setInterval(() => void refreshPending(), 4000)
+    // الإحصاءات والملخّص المالي أثقل → استقصاء أبطأ (٣٠ ثانية).
+    const ivSlow = setInterval(() => {
       void getAdminStats()
         .then((x) => alive && setStats(x))
         .catch(() => {})
@@ -398,14 +413,14 @@ export default function AdminDashboard() {
       void getAdminAnalytics()
         .then((x) => alive && x && setAnalyticsRaw(x))
         .catch(() => {})
-      void refreshPending()
-    }, 12000)
+    }, 30000)
     // Realtime عند توفّره = تحديث فوري (يمرّ عبر نفس refreshPending فلا تنبيه مكرّر).
     const unTopup = subscribeToTopups(() => void refreshPending())
     const unApp = subscribeToDriverApplications(() => void refreshPending())
     return () => {
       alive = false
-      clearInterval(iv)
+      clearInterval(ivFast)
+      clearInterval(ivSlow)
       unTopup()
       unApp()
     }
@@ -422,10 +437,8 @@ export default function AdminDashboard() {
       void listAdminCustomers().then((c) => setCustomers(c as AdminCustomer[]))
     if (tab === 'complaints' && complaints === null)
       void listComplaints().then((c) => setComplaints(c as Complaint[]))
-    if (tab === 'settings') {
-      void listPromos().then(setPromos)
-      void listServicePeriods().then(setPeriods)
-    }
+    if (tab === 'promo') void listPromos().then(setPromos)
+    if (tab === 'pricing') void listServicePeriods().then(setPeriods)
   }, [tab, drivers, customers, complaints])
 
   // صلاحياتي + قائمة الموظفين (للمالك).
@@ -1138,18 +1151,6 @@ export default function AdminDashboard() {
       referral_reward: settings.referral_reward,
     })
     setSavedMsg(error ? `خطأ: ${error}` : 'تم حفظ الإعدادات ✓')
-  }
-
-  // تحصيل اشتراكات VIP المستحقّة الآن
-  const [vipCharging, setVipCharging] = useState(false)
-  const runVipCharge = async () => {
-    if (!window.confirm('تحصيل رسوم اشتراك VIP الشهري من محافظ السائقين المستحقّين الآن؟')) return
-    setVipCharging(true)
-    const { charged, failed, error } = await chargeVipSubscriptions()
-    setVipCharging(false)
-    if (error) return alert(error)
-    reloadDrivers()
-    alert(`تم التحصيل: ${charged} سائق. متعذّر (رصيد غير كافٍ): ${failed}.`)
   }
 
   const setPrice = (id: string, field: keyof ServicePricing, value: number) =>
@@ -2548,9 +2549,9 @@ export default function AdminDashboard() {
           </>
         )}
 
-        {tab === 'settings' && (
+        {tab === 'vehicles' && (
           <>
-            {/* المركبات والخدمات — تسعير + حالة + صورة + إضافة/حذف */}
+            {/* المركبات والخدمات — إدارة المركبة (الاسم/الوصف/الحالة/الصورة/المقاعد/العمولة) */}
             <div className="card p-4">
               <div className="mb-1 flex items-center justify-between">
                 <p className="font-bold">المركبات والخدمات</p>
@@ -2563,8 +2564,7 @@ export default function AdminDashboard() {
               </div>
               <p className="mb-3 text-xs text-ink-muted">
                 أضِف أو عدّل المركبات (الاسم، الوصف، الحالة، الصورة، المقاعد، العمولة) بلا تحديث
-                للتطبيق. أمّا أسعار الأجرة المعتمدة فتُضبط من «التسعير حسب الفترة الزمنية» أدناه؛
-                والقيم هنا تُستخدم كتسعير احتياطي فقط.
+                للتطبيق. أمّا أسعار الأجرة فتُضبط بالكامل من تبويب «الأسعار والأزمان».
               </p>
 
               {/* نموذج إضافة مركبة جديدة */}
@@ -2729,26 +2729,6 @@ export default function AdminDashboard() {
                           }
                         />
                       </label>
-                      <NumField
-                        label="فتح العداد"
-                        value={p.base_fare}
-                        onChange={(v) => setPrice(p.service_id, 'base_fare', v)}
-                      />
-                      <NumField
-                        label="داخل المدينة / كم"
-                        value={p.per_km_urban}
-                        onChange={(v) => setPrice(p.service_id, 'per_km_urban', v)}
-                      />
-                      <NumField
-                        label="خارج المدينة / كم"
-                        value={p.per_km_far}
-                        onChange={(v) => setPrice(p.service_id, 'per_km_far', v)}
-                      />
-                      <NumField
-                        label="سعر الدقيقة"
-                        value={p.per_minute}
-                        onChange={(v) => setPrice(p.service_id, 'per_minute', v)}
-                      />
                       <label className="block">
                         <span className="mb-1 block text-xs text-ink-soft">
                           نسبة العمولة % (فارغ = العامة)
@@ -2819,6 +2799,40 @@ export default function AdminDashboard() {
               {priceMsg && <p className="mt-3 text-sm text-green">{priceMsg}</p>}
             </div>
 
+          </>
+        )}
+
+        {tab === 'pricing' && (
+          <>
+            {/* مضاعف الذروة وحدود المسافة */}
+            {settings && (
+              <form onSubmit={saveSettings} className="card space-y-3 p-4">
+                <p className="font-bold">مضاعف الذروة وحدود المسافة</p>
+                <div className="grid grid-cols-3 gap-2">
+                  <NumField
+                    label="Surge (معامل)"
+                    step={0.1}
+                    value={settings.surge_multiplier}
+                    onChange={(v) => setSettings({ ...settings, surge_multiplier: v })}
+                  />
+                  <NumField
+                    label="نهاية فتح العداد (كم)"
+                    value={settings.tier1_max_km}
+                    onChange={(v) => setSettings({ ...settings, tier1_max_km: v })}
+                  />
+                  <NumField
+                    label="نهاية داخل المدينة (كم)"
+                    value={settings.tier2_max_km}
+                    onChange={(v) => setSettings({ ...settings, tier2_max_km: v })}
+                  />
+                </div>
+                {savedMsg && <p className="text-sm text-green">{savedMsg}</p>}
+                <button className="btn-primary w-full" type="submit">
+                  حفظ
+                </button>
+              </form>
+            )}
+
             {/* التسعير حسب الفترة الزمنية — الأسعار المعتمدة فعلياً للعميل */}
             <div className="card border-2 border-green/30 p-4">
               <div className="mb-1 flex items-center gap-2">
@@ -2857,6 +2871,43 @@ export default function AdminDashboard() {
                           {busyId === `svc-${sid}` ? '…' : 'حفظ كل الفترات'}
                         </button>
                       </div>
+
+                      {/* التسعير الأساسي — يُستخدم أساساً واحتياطياً عند غياب فترة */}
+                      <div className="mb-2 rounded-xl bg-ivory p-2.5">
+                        <div className="mb-1.5 flex items-center gap-2">
+                          <span className="text-sm font-bold text-ink">التسعير الأساسي</span>
+                          <button
+                            onClick={() => savePrice(svc)}
+                            disabled={busyId === sid}
+                            className="ms-auto rounded-lg border border-hairline px-3 py-1 text-xs font-bold text-royal disabled:opacity-60"
+                          >
+                            {busyId === sid ? '…' : 'حفظ الأساسي'}
+                          </button>
+                        </div>
+                        <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+                          <NumField
+                            label="فتح العداد"
+                            value={svc.base_fare}
+                            onChange={(v) => setPrice(sid, 'base_fare', v)}
+                          />
+                          <NumField
+                            label="داخل المدينة / كم"
+                            value={svc.per_km_urban}
+                            onChange={(v) => setPrice(sid, 'per_km_urban', v)}
+                          />
+                          <NumField
+                            label="خارج المدينة / كم"
+                            value={svc.per_km_far}
+                            onChange={(v) => setPrice(sid, 'per_km_far', v)}
+                          />
+                          <NumField
+                            label="سعر الدقيقة"
+                            value={svc.per_minute}
+                            onChange={(v) => setPrice(sid, 'per_minute', v)}
+                          />
+                        </div>
+                      </div>
+
                       <div className="space-y-2">
                         {PERIOD_ORDER.map((pk) => {
                           const row = periodRowFor(sid, pk)
@@ -2919,85 +2970,29 @@ export default function AdminDashboard() {
               {periodMsg && <p className="mt-3 text-sm text-green">{periodMsg}</p>}
             </div>
 
-            {/* إعدادات المنصة */}
-            {settings && (
-              <form onSubmit={saveSettings} className="card space-y-4 p-4">
-                <div>
-                  <p className="font-bold">عمولة المنصة</p>
-                  <input
-                    type="range"
-                    min={0}
-                    max={40}
-                    value={commissionPct}
-                    onChange={(e) =>
-                      setSettings({ ...settings, commission_rate: Number(e.target.value) / 100 })
-                    }
-                    className="mt-2 w-full accent-green"
-                  />
-                  <p className="text-sm text-ink-soft">
-                    النسبة: <span className="font-bold text-green">{commissionPct}%</span> — تُخصم
-                    من أرباح السائق تلقائياً.
-                  </p>
-                </div>
+          </>
+        )}
 
-                <div className="grid grid-cols-3 gap-2">
-                  <NumField
-                    label="Surge (معامل)"
-                    step={0.1}
-                    value={settings.surge_multiplier}
-                    onChange={(v) => setSettings({ ...settings, surge_multiplier: v })}
-                  />
-                  <NumField
-                    label="نهاية فتح العداد (كم)"
-                    value={settings.tier1_max_km}
-                    onChange={(v) => setSettings({ ...settings, tier1_max_km: v })}
-                  />
-                  <NumField
-                    label="نهاية داخل المدينة (كم)"
-                    value={settings.tier2_max_km}
-                    onChange={(v) => setSettings({ ...settings, tier2_max_km: v })}
-                  />
-                </div>
-
-                <div className="rounded-2xl border border-sand/40 bg-sand-soft/40 p-3">
-                  <p className="font-bold text-royal">اشتراك VIP الشهري</p>
-                  <p className="mb-2 text-xs text-ink-muted">
-                    السائق VIP بلا عمولة على الرحلات مقابل اشتراك شهري يُخصم من محفظته. اضبط
-                    الرسم ثم استخدم زر التحصيل لخصم المستحقّين.
-                  </p>
-                  <div className="flex items-end gap-2">
-                    <div className="flex-1">
-                      <NumField
-                        label="رسم الاشتراك الشهري (ج.س)"
-                        step={500}
-                        value={settings.vip_subscription_fee}
-                        onChange={(v) => setSettings({ ...settings, vip_subscription_fee: v })}
-                      />
-                    </div>
-                    <button
-                      type="button"
-                      onClick={runVipCharge}
-                      disabled={vipCharging}
-                      className="shrink-0 rounded-xl border border-sand bg-sand px-4 py-2.5 text-sm font-bold text-white hover:bg-sand-ink disabled:opacity-60"
-                    >
-                      {vipCharging ? 'جارٍ التحصيل…' : 'تحصيل المستحقّ الآن'}
-                    </button>
-                  </div>
-                </div>
-
-                <div className="rounded-2xl border border-sand/40 bg-sand-soft/40 p-3">
-                  <p className="font-bold text-royal">مكافأة دعوة صديق</p>
-                  <p className="mb-2 text-xs text-ink-muted">
-                    تُمنح للطرفين (الداعي والمدعوّ) عند إكمال المدعوّ أوّل رحلة. اضبطها على 0
-                    لتعطيل الإحالة.
-                  </p>
-                  <NumField
-                    label="قيمة المكافأة (ج.س)"
-                    step={500}
-                    value={settings.referral_reward}
-                    onChange={(v) => setSettings({ ...settings, referral_reward: v })}
-                  />
-                </div>
+        {tab === 'captain' && settings && (
+          <>
+            <form onSubmit={saveSettings} className="card space-y-4 p-4">
+              <div>
+                <p className="font-bold">عمولة المنصة</p>
+                <input
+                  type="range"
+                  min={0}
+                  max={40}
+                  value={commissionPct}
+                  onChange={(e) =>
+                    setSettings({ ...settings, commission_rate: Number(e.target.value) / 100 })
+                  }
+                  className="mt-2 w-full accent-green"
+                />
+                <p className="text-sm text-ink-soft">
+                  النسبة: <span className="font-bold text-green">{commissionPct}%</span> — تُخصم من
+                  أرباح السائق تلقائياً.
+                </p>
+              </div>
 
                 <div className="rounded-2xl border border-sand/40 bg-sand-soft/40 p-3">
                   <p className="font-bold text-royal">أدنى رصيد لاتصال السائق</p>
@@ -3042,41 +3037,90 @@ export default function AdminDashboard() {
                   </div>
                 </div>
 
-                <div className="space-y-2">
-                  <p className="font-bold">الحساب البنكي لاستقبال التحويلات</p>
-                  <input
-                    className="field"
-                    placeholder="اسم البنك"
-                    value={settings.bank_name ?? ''}
-                    onChange={(e) => setSettings({ ...settings, bank_name: e.target.value })}
-                  />
-                  <input
-                    className="field"
-                    placeholder="اسم الحساب"
-                    value={settings.bank_account_name ?? ''}
-                    onChange={(e) => setSettings({ ...settings, bank_account_name: e.target.value })}
-                  />
-                  <input
-                    className="field text-left"
-                    dir="ltr"
-                    placeholder="رقم الحساب"
-                    value={settings.bank_account_number ?? ''}
-                    onChange={(e) =>
-                      setSettings({ ...settings, bank_account_number: e.target.value })
-                    }
-                  />
-                </div>
-
-                {savedMsg && <p className="text-sm text-green">{savedMsg}</p>}
-                <button className="btn-primary w-full" type="submit">
-                  حفظ الإعدادات
-                </button>
-              </form>
-            )}
+              {savedMsg && <p className="text-sm text-green">{savedMsg}</p>}
+              <button className="btn-primary w-full" type="submit">
+                حفظ إعدادات الكابتن
+              </button>
+            </form>
 
             {/* حوافز ومكافآت السائق */}
             <IncentivesManager />
+          </>
+        )}
 
+        {tab === 'subs' && settings && (
+          <form onSubmit={saveSettings} className="card space-y-4 p-4">
+            <div className="rounded-2xl border border-sand/40 bg-sand-soft/40 p-3">
+              <p className="font-bold text-royal">اشتراك VIP الشهري (دفع مقدّم)</p>
+              <p className="mb-2 text-xs text-ink-muted">
+                السائق VIP بلا عمولة على الرحلات مقابل اشتراك شهري يدفعه مقدّماً من محفظته أو
+                بتحويل بنكي يعتمده الأدمن. عند انتهاء الشهر تعود العمولة تلقائياً حتى يجدّد بنفسه —
+                بلا خصم تلقائي من المحفظة.
+              </p>
+              <NumField
+                label="رسم الاشتراك الشهري (ج.س)"
+                step={500}
+                value={settings.vip_subscription_fee}
+                onChange={(v) => setSettings({ ...settings, vip_subscription_fee: v })}
+              />
+            </div>
+            {savedMsg && <p className="text-sm text-green">{savedMsg}</p>}
+            <button className="btn-primary w-full" type="submit">
+              حفظ
+            </button>
+          </form>
+        )}
+
+        {tab === 'topup' && settings && (
+          <form onSubmit={saveSettings} className="card space-y-4 p-4">
+            <div className="space-y-2">
+              <p className="font-bold">الحساب البنكي لاستقبال التحويلات</p>
+              <p className="text-xs text-ink-muted">
+                يُعرض للعملاء والسائقين عند طلب تعبئة الرصيد بتحويل بنكي.
+              </p>
+              <input
+                className="field"
+                placeholder="اسم البنك"
+                value={settings.bank_name ?? ''}
+                onChange={(e) => setSettings({ ...settings, bank_name: e.target.value })}
+              />
+              <input
+                className="field"
+                placeholder="اسم الحساب"
+                value={settings.bank_account_name ?? ''}
+                onChange={(e) => setSettings({ ...settings, bank_account_name: e.target.value })}
+              />
+              <input
+                className="field text-left"
+                dir="ltr"
+                placeholder="رقم الحساب"
+                value={settings.bank_account_number ?? ''}
+                onChange={(e) => setSettings({ ...settings, bank_account_number: e.target.value })}
+              />
+            </div>
+
+            <div className="rounded-2xl border border-sand/40 bg-sand-soft/40 p-3">
+              <p className="font-bold text-royal">مكافأة دعوة صديق</p>
+              <p className="mb-2 text-xs text-ink-muted">
+                تُمنح للطرفين (الداعي والمدعوّ) عند إكمال المدعوّ أوّل رحلة. اضبطها على 0 لتعطيل
+                الإحالة.
+              </p>
+              <NumField
+                label="قيمة المكافأة (ج.س)"
+                step={500}
+                value={settings.referral_reward}
+                onChange={(v) => setSettings({ ...settings, referral_reward: v })}
+              />
+            </div>
+            {savedMsg && <p className="text-sm text-green">{savedMsg}</p>}
+            <button className="btn-primary w-full" type="submit">
+              حفظ
+            </button>
+          </form>
+        )}
+
+        {tab === 'promo' && (
+          <>
             {/* أكواد الخصم (برومو) */}
             <div className="card space-y-3 p-4">
               <p className="font-bold">أكواد الخصم (برومو)</p>

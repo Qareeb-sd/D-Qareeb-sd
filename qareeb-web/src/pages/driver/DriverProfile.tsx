@@ -155,16 +155,16 @@ function CommissionStatus({ driver }: { driver: import('@/lib/types').Driver }) 
     )
   }
   if (driver.vip) {
-    // VIP لكن الاشتراك مستحقّ (غير مدفوع) → العمولة تُطبَّق مؤقّتاً.
+    // VIP لكن انتهى الاشتراك (دفع مقدّم) → العمولة تعود حتى يجدّد بنفسه.
     return (
       <div className="mt-4 rounded-2xl border border-danger/40 bg-danger/5 p-4">
         <div className="flex items-center gap-2">
           <Crown className="h-5 w-5 text-danger" strokeWidth={2} />
-          <p className="font-bold text-royal">اشتراك VIP مستحقّ</p>
+          <p className="font-bold text-royal">انتهى اشتراك VIP</p>
         </div>
         <p className="mt-1 text-sm text-ink-soft">
-          اشتراكك الشهري غير مدفوع حالياً، لذا تُطبَّق العمولة حتى السداد. يُخصم تلقائياً من محفظتك
-          عند توفّر الرصيد.
+          اشتراكك الشهري (المدفوع مقدّماً) انتهى، لذا تُطبَّق العمولة على رحلاتك. جدّد الاشتراك من
+          الزرّ أدناه لاستعادة الإعفاء — بلا أيّ خصم تلقائي من محفظتك.
         </p>
       </div>
     )
