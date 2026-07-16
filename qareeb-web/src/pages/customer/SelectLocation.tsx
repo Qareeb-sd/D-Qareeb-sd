@@ -33,6 +33,7 @@ import {
   getSettings,
   validatePromo,
   listServicePeriods,
+  nearbyOnlineDrivers,
   type PromoResult,
 } from '@/lib/api'
 import {
@@ -120,6 +121,9 @@ export default function SelectLocation() {
   useEffect(() => {
     if (profile?.id) void getCancellationDebt(profile.id).then(setDebt)
   }, [profile?.id])
+
+  // السيارات المتصلة القريبة (تُعبّأ أدناه بعد تعريف activePos).
+  const [nearby, setNearby] = useState<{ lat: number; lng: number; icon?: string }[]>([])
 
   // السعر الفعّال بعد الخصم (إن طُبّق كود صالح).
   const baseFare = quote?.fare ?? 0
@@ -316,6 +320,29 @@ export default function SelectLocation() {
   const activePos = active === 'pickup' ? pickupPos : dropoffPos
   const setActivePos = active === 'pickup' ? setPickupPos : setDropoffPos
 
+  // جلب السيارات المتصلة القريبة حول الدبوس (دوري، بلا إعادة تشغيل عند كل سحب).
+  const activePosRef = useRef(activePos)
+  useEffect(() => {
+    activePosRef.current = activePos
+  }, [activePos])
+  useEffect(() => {
+    let alive = true
+    const iconFor = (vt: string) => getService(vt)?.imageUrl || getService(vt)?.image
+    const load = () => {
+      const c = activePosRef.current
+      void nearbyOnlineDrivers(c.lat, c.lng).then((ds) => {
+        if (alive)
+          setNearby(ds.map((d) => ({ lat: d.lat, lng: d.lng, icon: iconFor(d.vehicle_type) })))
+      })
+    }
+    load()
+    const iv = setInterval(load, 15000)
+    return () => {
+      alive = false
+      clearInterval(iv)
+    }
+  }, [])
+
   // عنوان حقيقي للنقطة النشطة عبر Google (بعد استقرار الدبوس) — يستبدل
   // «موقع محدّد من الخريطة». يعمل فقط بعد أن يُختار الحقل فعلاً (تجنّباً لتعيين
   // وجهة قبل اختيارها)، ولا يعمل أثناء الكتابة اليدوية للانطلاق. يحدّث النصّ فقط.
@@ -448,6 +475,7 @@ export default function SelectLocation() {
             }
           }}
           markers={otherMarker ? [otherMarker] : undefined}
+          driverMarkers={nearby}
           zoom={16}
           className="absolute inset-0"
         />
