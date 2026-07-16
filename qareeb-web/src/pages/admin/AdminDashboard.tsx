@@ -215,6 +215,19 @@ const permLabels: { id: StaffPerm; label: string; desc: string }[] = [
   { id: 'settings', label: 'الإعدادات', desc: 'التسعير والعمولة والحساب البنكي' },
 ]
 
+/** ألوان مميّزة لكل مركبة في محرّر التسعير — كي لا تختلط المركبات على المشرف. */
+const VEHICLE_COLORS = [
+  '#1B6B3F', // أخضر
+  '#E85C9E', // وردي
+  '#3A6FB0', // أزرق
+  '#A8642B', // بنّي
+  '#7A3FB0', // بنفسجي
+  '#B0392B', // أحمر
+  '#2B7A78', // فيروزي
+  '#A88528', // ذهبي
+  '#2B2F2C', // فحمي
+]
+
 /** مدّة الرحلة من بدئها (أو إنشائها) حتى اكتمالها — للتقرير. */
 function rideDuration(r: AdminRideRow): string | null {
   if (!r.completed_at) return null
@@ -2672,10 +2685,22 @@ export default function AdminDashboard() {
               )}
 
               <div className="space-y-3">
-                {pricing.map((p) => (
-                  <div key={p.service_id} className="rounded-2xl border border-hairline p-3">
+                {pricing.map((p, vi) => (
+                  <div
+                    key={p.service_id}
+                    className="overflow-hidden rounded-2xl border border-hairline p-3"
+                    style={{
+                      borderRightWidth: 5,
+                      borderRightColor: VEHICLE_COLORS[vi % VEHICLE_COLORS.length],
+                    }}
+                  >
                     <div className="mb-2 flex items-center justify-between">
-                      <p className="font-bold">{p.name}</p>
+                      <p
+                        className="text-base font-extrabold"
+                        style={{ color: VEHICLE_COLORS[vi % VEHICLE_COLORS.length] }}
+                      >
+                        {p.name}
+                      </p>
                       <div className="flex items-center gap-2">
                         <button
                           onClick={() => removeVehicle(p)}
@@ -2808,9 +2833,25 @@ export default function AdminDashboard() {
             {settings && (
               <form onSubmit={saveSettings} className="card space-y-3 p-4">
                 <p className="font-bold">مضاعف الذروة وحدود المسافة</p>
+                <div className="rounded-xl bg-sand-soft/50 p-3 text-xs leading-relaxed text-ink-soft">
+                  <p>
+                    <span className="font-bold text-royal">مضاعف الذروة (Surge):</span> رقم يُضرب في
+                    الأجرة كاملة وقت الزحام. <span className="font-bold">١ = السعر العادي</span> (بلا
+                    زيادة)، <span className="font-bold">١٫٥</span> = زيادة ٥٠٪، <span className="font-bold">٢</span>{' '}
+                    = الضعف. اتركه ١ إن لم ترغب برفع الأسعار.
+                  </p>
+                  <p className="mt-1">
+                    <span className="font-bold text-royal">نهاية فتح العداد (كم):</span> المسافة التي
+                    يُحسب ضمنها «فتح العداد» فقط قبل بدء احتساب سعر الكيلومتر.
+                  </p>
+                  <p className="mt-1">
+                    <span className="font-bold text-royal">نهاية داخل المدينة (كم):</span> بعدها يتحوّل
+                    الحساب إلى سعر «خارج المدينة/كم».
+                  </p>
+                </div>
                 <div className="grid grid-cols-3 gap-2">
                   <NumField
-                    label="Surge (معامل)"
+                    label="مضاعف الذروة (١ = عادي)"
                     step={0.1}
                     value={settings.surge_multiplier}
                     onChange={(v) => setSettings({ ...settings, surge_multiplier: v })}
@@ -2856,17 +2897,28 @@ export default function AdminDashboard() {
               </button>
 
               <div className="space-y-4">
-                {pricing.map((svc) => {
+                {pricing.map((svc, vi) => {
                   const sid = svc.service_id
                   const nowPeriod = currentPeriod()
+                  const color = VEHICLE_COLORS[vi % VEHICLE_COLORS.length]
                   return (
-                    <div key={sid} className="rounded-2xl border border-hairline p-3">
-                      <div className="mb-2 flex items-center justify-between gap-2">
-                        <p className="font-bold text-green">{svc.name}</p>
+                    <div
+                      key={sid}
+                      className="overflow-hidden rounded-2xl border border-hairline p-3"
+                      style={{ borderRightWidth: 5, borderRightColor: color }}
+                    >
+                      <div
+                        className="mb-2 flex items-center justify-between gap-2 rounded-xl px-3 py-2"
+                        style={{ backgroundColor: `${color}18` }}
+                      >
+                        <p className="text-base font-extrabold" style={{ color }}>
+                          {svc.name}
+                        </p>
                         <button
                           onClick={() => saveServicePeriods(sid, svc.name)}
                           disabled={busyId === `svc-${sid}`}
-                          className="rounded-lg border border-green px-3 py-1 text-xs font-bold text-green hover:bg-green-soft disabled:opacity-60"
+                          className="rounded-lg border px-3 py-1 text-xs font-bold hover:opacity-80 disabled:opacity-60"
+                          style={{ color, borderColor: color }}
                         >
                           {busyId === `svc-${sid}` ? '…' : 'حفظ كل الفترات'}
                         </button>
