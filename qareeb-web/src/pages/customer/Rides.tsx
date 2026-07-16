@@ -1,12 +1,13 @@
 import { useQuery } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
-import { Star, RotateCcw } from 'lucide-react'
+import { Star, RotateCcw, Share2 } from 'lucide-react'
 import Screen from '@/components/Screen'
 import { useAuth } from '@/store/AuthContext'
 import { useRide } from '@/store/RideContext'
 import { listRides } from '@/lib/api'
 import { getService } from '@/data/services'
 import { money } from '@/lib/format'
+import { shareRideReceipt } from '@/lib/receipt'
 import type { Ride } from '@/lib/types'
 
 /** رحلاتي السابقة. */
@@ -64,15 +65,24 @@ export default function Rides() {
                     </span>
                   )}
                 </div>
-                {(r.dropoff_lat != null || r.dropoff_address) && (
+                <div className="mt-3 flex gap-2">
+                  {(r.dropoff_lat != null || r.dropoff_address) && (
+                    <button
+                      onClick={() => rebook(r)}
+                      className="flex flex-1 items-center justify-center gap-1.5 rounded-xl border border-green/40 bg-green-mint py-2.5 text-sm font-bold text-green"
+                    >
+                      <RotateCcw className="h-4 w-4" strokeWidth={2.2} />
+                      إعادة الطلب
+                    </button>
+                  )}
                   <button
-                    onClick={() => rebook(r)}
-                    className="mt-3 flex w-full items-center justify-center gap-1.5 rounded-xl border border-green/40 bg-green-mint py-2.5 text-sm font-bold text-green"
+                    onClick={() => void shareRideReceipt(r, service?.name ?? r.service_id)}
+                    className="flex items-center justify-center gap-1.5 rounded-xl border border-hairline px-4 py-2.5 text-sm font-bold text-royal"
                   >
-                    <RotateCcw className="h-4 w-4" strokeWidth={2.2} />
-                    إعادة الطلب لنفس الوجهة
+                    <Share2 className="h-4 w-4" strokeWidth={2} />
+                    الإيصال
                   </button>
-                )}
+                </div>
               </div>
             )
           })}
