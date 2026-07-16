@@ -24,8 +24,8 @@ interface MapViewProps {
   driver?: google.maps.LatLngLiteral
   /** علامات متعددة (نقاط انطلاق الرحلات في لوحة الأدمن). */
   markers?: google.maps.LatLngLiteral[]
-  /** مواقع سائقين متعددة. */
-  driverMarkers?: google.maps.LatLngLiteral[]
+  /** مواقع سائقين متعددة (مع نوع المركبة art اختيارياً لاختيار الأيقونة). */
+  driverMarkers?: (google.maps.LatLngLiteral & { art?: string })[]
   /** خطّ مسار القيادة (للملاحة الحيّة أثناء الرحلة). */
   route?: google.maps.LatLngLiteral[]
   zoom?: number
@@ -226,7 +226,9 @@ function NativeGoogleMap({
     const toAdd: import('@capacitor/google-maps').Marker[] = []
     if (marker) toAdd.push({ coordinate: marker })
     markers?.forEach((m) => toAdd.push({ coordinate: m }))
-    driverMarkers?.forEach((d) => toAdd.push({ coordinate: d, tintColor: DRIVER_TINT }))
+    driverMarkers?.forEach((d) =>
+      toAdd.push({ coordinate: { lat: d.lat, lng: d.lng }, tintColor: DRIVER_TINT }),
+    )
     if (driver) toAdd.push({ coordinate: driver, tintColor: DRIVER_TINT })
     if (toAdd.length) {
       try {
