@@ -6,6 +6,7 @@ import {
   Car,
   Receipt,
   MapPin,
+  Clock,
   Siren,
   LifeBuoy,
   Info,
@@ -61,6 +62,7 @@ export default function Profile() {
 
   const menu: { icon: LucideIcon; label: string; badge?: string; onClick: () => void }[] = [
     { icon: Receipt, label: 'رحلاتي السابقة', onClick: () => navigate('/rides') },
+    { icon: Clock, label: 'رحلاتي المجدولة', onClick: () => navigate('/scheduled') },
     { icon: MapPin, label: 'العناوين المحفوظة', onClick: () => navigate('/addresses') },
     { icon: Siren, label: 'جهات الطوارئ ومشاركة الرحلة', badge: 'مهم', onClick: () => setShowSos((v) => !v) },
     { icon: LifeBuoy, label: 'المساعدة والدعم', onClick: () => navigate('/help') },

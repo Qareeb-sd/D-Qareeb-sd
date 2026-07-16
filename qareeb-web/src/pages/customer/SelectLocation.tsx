@@ -23,6 +23,7 @@ import { useAuth } from '@/store/AuthContext'
 import { DEFAULT_SERVICE_ID, getService } from '@/data/services'
 import {
   createRide,
+  createScheduledRide,
   notifyDriversOfRide,
   prepayRide,
   cancelRide,
@@ -342,6 +343,26 @@ export default function SelectLocation() {
     (Math.abs(otherRaw.lat - activePos.lat) > 3e-4 || Math.abs(otherRaw.lng - activePos.lng) > 3e-4)
       ? otherRaw
       : null
+
+  // جدولة لوقت لاحق
+  const [showSchedule, setShowSchedule] = useState(false)
+  const [scheduleAt, setScheduleAt] = useState('')
+  const schedule = async () => {
+    if (!scheduleAt || !quote) return
+    setBusy(true)
+    const { id, error } = await createScheduledRide({
+      serviceId: sid,
+      scheduledAt: new Date(scheduleAt).toISOString(),
+      pickup: { lat: pickupPos.lat, lng: pickupPos.lng, address: pickupAddr || 'نقطة الإقلاع' },
+      dropoff: { lat: dropoffPos.lat, lng: dropoffPos.lng, address: dropoffAddr || 'الوجهة' },
+      payment,
+      fare: effectiveFare,
+    })
+    setBusy(false)
+    if (error || !id) return alert(error ?? 'تعذّر جدولة الرحلة، حاول مجدداً.')
+    alert('تمت جدولة رحلتك — سنبحث لك عن سائق في الموعد ونُشعرك.')
+    navigate('/scheduled')
+  }
 
   const confirm = async () => {
     setBusy(true)
@@ -801,6 +822,50 @@ export default function SelectLocation() {
             {busy ? 'جارٍ التأكيد…' : 'تأكيد الرحلة'}
             {!busy && <ArrowLeft className="h-4 w-4" strokeWidth={2.2} />}
           </button>
+
+          {/* جدولة لوقت لاحق */}
+          {canConfirm && (
+            <div className="mt-2">
+              {!showSchedule ? (
+                <button
+                  onClick={() => setShowSchedule(true)}
+                  className="press-scale flex w-full items-center justify-center gap-1.5 text-[13px] font-bold text-sand-ink"
+                >
+                  <Clock4 className="h-4 w-4" strokeWidth={2} />
+                  جدولة لوقت لاحق
+                </button>
+              ) : (
+                <div className="animate-fade-up space-y-2 rounded-2xl border border-hairline bg-ivory/60 p-3">
+                  <p className="text-[13px] font-bold text-royal">اختر موعد الرحلة</p>
+                  <input
+                    type="datetime-local"
+                    className="field w-full text-left"
+                    dir="ltr"
+                    value={scheduleAt}
+                    onChange={(e) => setScheduleAt(e.target.value)}
+                  />
+                  <div className="flex gap-2">
+                    <button
+                      onClick={schedule}
+                      disabled={busy || !scheduleAt}
+                      className="flex-1 rounded-xl bg-royal px-3 py-2.5 text-sm font-bold text-white disabled:opacity-50"
+                    >
+                      {busy ? '…' : 'أكّد الجدولة'}
+                    </button>
+                    <button
+                      onClick={() => setShowSchedule(false)}
+                      className="flex-1 rounded-xl border border-hairline bg-white px-3 py-2.5 text-sm font-bold text-ink-soft"
+                    >
+                      إلغاء
+                    </button>
+                  </div>
+                  <p className="text-[11px] text-ink-muted">
+                    عند حلول الموعد نبحث لك عن سائق تلقائياً ونُشعرك.
+                  </p>
+                </div>
+              )}
+            </div>
+          )}
         </div>
       </section>
       )}

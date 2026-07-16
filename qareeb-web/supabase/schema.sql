@@ -3077,3 +3077,108 @@ begin
   exception when others then null;
   end;
 end $$;
+
+-- ============================================================
+--  جدولة الرحلات: يحجز العميل رحلة لوقت لاحق. عند حلول الموعد (± دقيقتين)
+--  تُنشأ الرحلة الحقيقية تلقائياً ويُشعَر السائقون، ويُذكَّر العميل. عبر pg_cron.
+-- ============================================================
+create table if not exists public.scheduled_rides (
+  id              uuid primary key default gen_random_uuid(),
+  customer_id     uuid not null references public.users(id) on delete cascade,
+  service_id      text not null,
+  pickup_lat      double precision not null,
+  pickup_lng      double precision not null,
+  pickup_address  text,
+  dropoff_lat     double precision,
+  dropoff_lng     double precision,
+  dropoff_address text,
+  payment_method  payment_method not null default 'cash',
+  fare            numeric(12,2),
+  scheduled_at    timestamptz not null,
+  status          text not null default 'pending' check (status in ('pending','dispatched','cancelled')),
+  ride_id         uuid references public.rides(id) on delete set null,
+  created_at      timestamptz not null default now()
+);
+create index if not exists scheduled_rides_due_idx on public.scheduled_rides(status, scheduled_at);
+create index if not exists scheduled_rides_customer_idx on public.scheduled_rides(customer_id);
+alter table public.scheduled_rides enable row level security;
+
+drop policy if exists "own scheduled rides" on public.scheduled_rides;
+create policy "own scheduled rides" on public.scheduled_rides
+  for select using (auth.uid() = customer_id or public.is_staff_or_admin());
+-- الإدخال/الإلغاء عبر دوال SECURITY DEFINER فقط.
+
+-- إنشاء حجز مجدول (يتحقّق أنّ الموعد مستقبلي بهامش دقيقتين).
+create or replace function public.create_scheduled_ride(
+  p_service text, p_scheduled_at timestamptz,
+  p_pickup_lat double precision, p_pickup_lng double precision, p_pickup_address text,
+  p_dropoff_lat double precision, p_dropoff_lng double precision, p_dropoff_address text,
+  p_payment payment_method, p_fare numeric
+) returns uuid language plpgsql security definer set search_path = public as $$
+declare v_id uuid; v_uid uuid := auth.uid();
+begin
+  if v_uid is null then raise exception 'غير مصرّح'; end if;
+  if p_scheduled_at < now() + interval '2 minutes' then
+    raise exception 'اختر موعداً بعد دقيقتين على الأقل';
+  end if;
+  insert into public.scheduled_rides (customer_id, service_id, scheduled_at,
+    pickup_lat, pickup_lng, pickup_address, dropoff_lat, dropoff_lng, dropoff_address,
+    payment_method, fare)
+  values (v_uid, p_service, p_scheduled_at,
+    p_pickup_lat, p_pickup_lng, p_pickup_address, p_dropoff_lat, p_dropoff_lng, p_dropoff_address,
+    p_payment, p_fare)
+  returning id into v_id;
+  return v_id;
+end $$;
+grant execute on function public.create_scheduled_ride(text, timestamptz, double precision, double precision, text, double precision, double precision, text, payment_method, numeric) to authenticated;
+
+-- إلغاء حجز مجدول (صاحبه فقط، وقبل الإرسال).
+create or replace function public.cancel_scheduled_ride(p_id uuid)
+returns void language plpgsql security definer set search_path = public as $$
+begin
+  update public.scheduled_rides set status = 'cancelled'
+   where id = p_id and customer_id = auth.uid() and status = 'pending';
+end $$;
+grant execute on function public.cancel_scheduled_ride(uuid) to authenticated;
+
+-- إرسال الحجوزات المستحقّة: تُنشئ الرحلة وتُشعِر السائقين والعميل. يشغّلها pg_cron.
+create or replace function public.dispatch_due_scheduled_rides()
+returns int language plpgsql security definer set search_path = public as $$
+declare r record; v_ride uuid; v_count int := 0;
+begin
+  for r in
+    select * from public.scheduled_rides
+     where status = 'pending' and scheduled_at <= now() + interval '2 minutes'
+     for update skip locked
+  loop
+    insert into public.rides (customer_id, service_id, status, payment_method,
+      pickup_lat, pickup_lng, pickup_address, dropoff_lat, dropoff_lng, dropoff_address, fare)
+    values (r.customer_id, r.service_id, 'searching', r.payment_method,
+      r.pickup_lat, r.pickup_lng, r.pickup_address, r.dropoff_lat, r.dropoff_lng, r.dropoff_address, r.fare)
+    returning id into v_ride;
+
+    update public.scheduled_rides set status = 'dispatched', ride_id = v_ride where id = r.id;
+    v_count := v_count + 1;
+
+    -- إشعار السائقين المتصلين بالطلب الجديد + تذكير العميل.
+    begin
+      perform net.http_post(
+        url := 'https://yjdidwnnlyeisaahfmlr.supabase.co/functions/v1/notify-ride-fcm',
+        headers := '{"Content-Type": "application/json"}'::jsonb,
+        body := jsonb_build_object('ride_id', v_ride));
+      perform net.http_post(
+        url := 'https://yjdidwnnlyeisaahfmlr.supabase.co/functions/v1/notify-user-fcm',
+        headers := '{"Content-Type": "application/json"}'::jsonb,
+        body := jsonb_build_object('user_id', r.customer_id::text,
+          'title', 'حان موعد رحلتك المجدولة', 'body', 'نبحث لك عن سائق الآن'));
+    exception when others then null; end;
+  end loop;
+  return v_count;
+end $$;
+
+-- جدولة التشغيل كل دقيقة عبر pg_cron.
+create extension if not exists pg_cron;
+select cron.unschedule('dispatch-scheduled-rides')
+  where exists (select 1 from cron.job where jobname = 'dispatch-scheduled-rides');
+select cron.schedule('dispatch-scheduled-rides', '* * * * *',
+  $cron$ select public.dispatch_due_scheduled_rides() $cron$);

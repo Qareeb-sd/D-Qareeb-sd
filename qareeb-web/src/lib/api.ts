@@ -21,6 +21,7 @@ import type {
   PromoCode,
   VipRequest,
   Withdrawal,
+  ScheduledRide,
 } from './types'
 import { services as seedServices, type Service, type VehicleArt } from '@/data/services'
 
@@ -1275,6 +1276,48 @@ export async function cancelRide(
   })
   if (error) return { error: error.message }
   return { result: (data as CancelResult) ?? { fee: 0, charged: 0, debt: 0, excused: true } }
+}
+
+// ---------- الرحلات المجدولة ----------
+export async function createScheduledRide(params: {
+  serviceId: string
+  scheduledAt: string // ISO
+  pickup: { lat: number; lng: number; address: string }
+  dropoff: { lat: number; lng: number; address: string }
+  payment: PaymentMethod
+  fare: number
+}): Promise<{ id?: string; error?: string }> {
+  if (!isSupabaseConfigured) return { id: 'demo-scheduled' }
+  const { data, error } = await supabase.rpc('create_scheduled_ride', {
+    p_service: params.serviceId,
+    p_scheduled_at: params.scheduledAt,
+    p_pickup_lat: params.pickup.lat,
+    p_pickup_lng: params.pickup.lng,
+    p_pickup_address: params.pickup.address,
+    p_dropoff_lat: params.dropoff.lat,
+    p_dropoff_lng: params.dropoff.lng,
+    p_dropoff_address: params.dropoff.address,
+    p_payment: params.payment,
+    p_fare: params.fare,
+  })
+  if (error) return { error: error.message }
+  return { id: data as string }
+}
+
+export async function listScheduledRides(userId: string): Promise<ScheduledRide[]> {
+  if (!isSupabaseConfigured) return []
+  const { data } = await supabase
+    .from('scheduled_rides')
+    .select('*')
+    .eq('customer_id', userId)
+    .order('scheduled_at', { ascending: true })
+  return (data as ScheduledRide[]) ?? []
+}
+
+export async function cancelScheduledRide(id: string): Promise<{ error?: string }> {
+  if (!isSupabaseConfigured) return {}
+  const { error } = await supabase.rpc('cancel_scheduled_ride', { p_id: id })
+  return error ? { error: error.message } : {}
 }
 
 /** دَيْن رسوم الإلغاء المعلّق على العميل (يُضاف لأجرة الرحلة القادمة). */

@@ -159,6 +159,21 @@ export interface Withdrawal {
   users?: { full_name: string | null; phone: string } | null
 }
 
+/** رحلة مجدولة لوقت لاحق (تُرسَل تلقائياً عند الموعد). */
+export interface ScheduledRide {
+  id: string
+  customer_id: string
+  service_id: string
+  pickup_address: string | null
+  dropoff_address: string | null
+  payment_method: PaymentMethod
+  fare: number | null
+  scheduled_at: string
+  status: 'pending' | 'dispatched' | 'cancelled'
+  ride_id: string | null
+  created_at: string
+}
+
 /** كود خصم للعملاء (يُدار من لوحة الأدمن). */
 export interface PromoCode {
   code: string

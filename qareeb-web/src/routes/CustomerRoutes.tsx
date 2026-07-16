@@ -18,6 +18,7 @@ import CommuteJoin from '@/pages/customer/CommuteJoin'
 import Rides from '@/pages/customer/Rides'
 import Profile from '@/pages/customer/Profile'
 import Addresses from '@/pages/customer/Addresses'
+import ScheduledRides from '@/pages/customer/ScheduledRides'
 import Help from '@/pages/customer/Help'
 import About from '@/pages/customer/About'
 import TrackRide from '@/pages/shared/TrackRide'
@@ -51,6 +52,7 @@ export default function CustomerRoutes() {
       <Route path="/rides" element={guard(<Rides />)} />
       <Route path="/profile" element={guard(<Profile />)} />
       <Route path="/addresses" element={guard(<Addresses />)} />
+      <Route path="/scheduled" element={guard(<ScheduledRides />)} />
       <Route path="/help" element={guard(<Help />)} />
       <Route path="/about" element={guard(<About />)} />
 
