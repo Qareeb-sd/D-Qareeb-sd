@@ -6,9 +6,15 @@ import MapView from '@/components/MapView'
 import VehicleImage from '@/components/VehicleImage'
 import ServiceStateOverlay from '@/components/ServiceStateOverlay'
 import Logo from '@/components/Logo'
-import { listServicePricing, listServicePeriods, getActiveCustomerRide } from '@/lib/api'
+import {
+  listServicePricing,
+  listServicePeriods,
+  getActiveCustomerRide,
+  nearbyOnlineDrivers,
+} from '@/lib/api'
 import { currentPeriod } from '@/lib/pricing'
 import { money } from '@/lib/format'
+import { getCurrentPos, loadLastPos } from '@/lib/geo'
 import { KHARTOUM } from '@/theme'
 import { useRide } from '@/store/RideContext'
 import { useAuth } from '@/store/AuthContext'
@@ -37,6 +43,8 @@ export default function Home() {
   const [prices, setPrices] = useState<Record<string, number>>({})
   const [selected, setSelected] = useState('standard')
   const [activeRide, setActiveRide] = useState<Ride | null>(null)
+  const [mapCenter, setMapCenter] = useState(loadLastPos() ?? KHARTOUM)
+  const [nearby, setNearby] = useState<{ lat: number; lng: number }[]>([])
 
   // تسجيل رمز الإشعارات عند فتح الرئيسية (محاولة موثوقة بعد جهوز التطبيق).
   useEffect(() => {
@@ -59,6 +67,28 @@ export default function Home() {
     if (!profile?.id) return
     void getActiveCustomerRide(profile.id).then(setActiveRide)
   }, [profile?.id])
+
+  // موقع العميل + السيارات المتصلة القريبة على الخريطة (تحديث دوري).
+  useEffect(() => {
+    let alive = true
+    let center = mapCenter
+    const loadDrivers = (c: { lat: number; lng: number }) =>
+      nearbyOnlineDrivers(c.lat, c.lng).then((ds) => {
+        if (alive) setNearby(ds.map((d) => ({ lat: d.lat, lng: d.lng })))
+      })
+    void getCurrentPos().then((p) => {
+      if (!alive || !p) return void loadDrivers(center)
+      center = p
+      setMapCenter(p)
+      void loadDrivers(p)
+    })
+    const iv = setInterval(() => void loadDrivers(center), 15000)
+    return () => {
+      alive = false
+      clearInterval(iv)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   // العودة لمتابعة الرحلة النشطة.
   const resumeRide = () => {
@@ -97,9 +127,26 @@ export default function Home() {
 
       {/* منطقة الخريطة — تملأ المساحة المرئية والدبوس في وسطها */}
       <div className="relative z-0 flex-1">
-        <MapView center={KHARTOUM} zoom={15} className="absolute inset-0" />
+        <MapView
+          center={mapCenter}
+          driverMarkers={nearby}
+          zoom={15}
+          className="absolute inset-0"
+        />
         {/* تدرّج علوي لوضوح الهيدر */}
         <div className="pointer-events-none absolute inset-x-0 top-0 h-36 bg-gradient-to-b from-ivory via-ivory/70 to-transparent" />
+        {/* عدّاد السيارات المتصلة القريبة */}
+        <div className="pointer-events-none absolute inset-x-0 bottom-3 flex justify-center">
+          <span
+            className={`rounded-full px-3.5 py-1.5 text-xs font-bold shadow-card ${
+              nearby.length > 0 ? 'bg-green text-white' : 'bg-white text-ink-muted'
+            }`}
+          >
+            {nearby.length > 0
+              ? `🚗 ${nearby.length} سيارة متصلة قريبة`
+              : 'لا سيارات متصلة قريبة الآن'}
+          </span>
+        </div>
         {/* نبضة موقعي — في وسط منطقة الخريطة المرئية */}
         <div className="pointer-events-none absolute inset-0 grid place-items-center">
           <span className="relative grid h-6 w-6 place-items-center">

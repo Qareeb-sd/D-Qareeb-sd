@@ -111,3 +111,125 @@ export async function fetchRoutePath(
     return null
   }
 }
+
+/** خطوة ملاحة واحدة: تعليمة عربية + موقع المناورة + مسافتها. */
+export type NavStep = {
+  instruction: string
+  location: google.maps.LatLngLiteral
+  distanceM: number
+}
+export type RouteNav = {
+  points: google.maps.LatLngLiteral[]
+  steps: NavStep[]
+  distanceKm: number
+  durationMin: number
+}
+
+/** ترجمة مناورة OSRM إلى تعليمة عربية مختصرة. */
+function maneuverAr(
+  type: string,
+  modifier: string | undefined,
+  name: string,
+): string {
+  const road = name ? ` إلى ${name}` : ''
+  const dir = (() => {
+    switch (modifier) {
+      case 'left':
+        return 'يساراً'
+      case 'right':
+        return 'يميناً'
+      case 'sharp left':
+        return 'يساراً بحدّة'
+      case 'sharp right':
+        return 'يميناً بحدّة'
+      case 'slight left':
+        return 'يساراً قليلاً'
+      case 'slight right':
+        return 'يميناً قليلاً'
+      case 'straight':
+        return 'مستقيماً'
+      case 'uturn':
+        return 'دوران كامل (U)'
+      default:
+        return ''
+    }
+  })()
+  switch (type) {
+    case 'depart':
+      return `ابدأ${road}`
+    case 'arrive':
+      return 'وصلت إلى الوجهة'
+    case 'turn':
+      return `انعطف ${dir}${road}`
+    case 'new name':
+    case 'continue':
+      return `استمر ${dir || 'مستقيماً'}${road}`
+    case 'merge':
+      return `اندمج ${dir}${road}`
+    case 'on ramp':
+      return `اسلك المدخل ${dir}${road}`
+    case 'off ramp':
+      return `اسلك المخرج ${dir}${road}`
+    case 'fork':
+      return `عند التفرّع خذ ${dir}${road}`
+    case 'roundabout':
+    case 'rotary':
+      return `ادخل الدوّار${road}`
+    case 'end of road':
+      return `في نهاية الطريق انعطف ${dir}${road}`
+    default:
+      return `تابع ${dir || 'مستقيماً'}${road}`
+  }
+}
+
+/**
+ * مسار قيادة مع خطوات الملاحة (turn-by-turn) عبر OSRM — للملاحة داخل التطبيق
+ * دون فتح خرائط قوقل خارجياً.
+ */
+export async function fetchRouteNav(
+  origin: google.maps.LatLngLiteral,
+  destination: google.maps.LatLngLiteral,
+): Promise<RouteNav | null> {
+  try {
+    const url =
+      `https://router.project-osrm.org/route/v1/driving/` +
+      `${origin.lng},${origin.lat};${destination.lng},${destination.lat}` +
+      `?overview=full&geometries=geojson&steps=true`
+    const res = await fetch(url)
+    if (!res.ok) return null
+    const data = (await res.json()) as {
+      routes?: {
+        distance: number
+        duration: number
+        geometry: { coordinates: [number, number][] }
+        legs?: {
+          steps?: {
+            name: string
+            distance: number
+            maneuver: { type: string; modifier?: string; location: [number, number] }
+          }[]
+        }[]
+      }[]
+    }
+    const route = data.routes?.[0]
+    if (!route) return null
+    const steps: NavStep[] = []
+    for (const leg of route.legs ?? []) {
+      for (const s of leg.steps ?? []) {
+        steps.push({
+          instruction: maneuverAr(s.maneuver.type, s.maneuver.modifier, s.name),
+          location: { lat: s.maneuver.location[1], lng: s.maneuver.location[0] },
+          distanceM: s.distance,
+        })
+      }
+    }
+    return {
+      points: route.geometry.coordinates.map(([lng, lat]) => ({ lat, lng })),
+      steps,
+      distanceKm: route.distance / 1000,
+      durationMin: route.duration / 60,
+    }
+  } catch {
+    return null
+  }
+}

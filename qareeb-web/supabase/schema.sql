@@ -3502,3 +3502,44 @@ begin
     end if;
   end if;
 end $$;
+
+-- ============================================================
+--  موقع السائق الحيّ أثناء الاتصال + استعلام السيارات القريبة للعميل
+--  (يعرضها العميل على الخريطة قبل بدء الطلب). يُعاد الإحداثيّ فقط بلا هوية.
+-- ============================================================
+alter table public.drivers add column if not exists last_lat    double precision;
+alter table public.drivers add column if not exists last_lng    double precision;
+alter table public.drivers add column if not exists last_loc_at  timestamptz;
+create index if not exists drivers_online_loc_idx
+  on public.drivers (is_online, last_loc_at) where is_online;
+
+-- السائق يحدّث موقعه هو (أثناء الاتصال).
+create or replace function public.update_my_location(p_lat double precision, p_lng double precision)
+returns void language plpgsql security definer set search_path = public as $$
+begin
+  update public.drivers
+    set last_lat = p_lat, last_lng = p_lng, last_loc_at = now()
+    where user_id = auth.uid();
+end $$;
+grant execute on function public.update_my_location(double precision, double precision) to authenticated;
+
+-- سائقون متصلون قريبون (إحداثيات ونوع المركبة فقط — بلا أي هوية) لخريطة العميل.
+create or replace function public.nearby_online_drivers(
+  p_lat double precision, p_lng double precision, p_radius_km double precision default 6
+)
+returns table (lat double precision, lng double precision, vehicle_type text)
+language sql security definer set search_path = public stable as $$
+  select d.last_lat, d.last_lng, d.vehicle_type
+  from public.drivers d
+  where d.is_online
+    and d.last_lat is not null and d.last_lng is not null
+    and d.last_loc_at > now() - interval '3 minutes'
+    and d.last_lat between p_lat - p_radius_km / 111.0 and p_lat + p_radius_km / 111.0
+    and d.last_lng between p_lng - p_radius_km / (111.0 * cos(radians(p_lat)))
+                      and p_lng + p_radius_km / (111.0 * cos(radians(p_lat)))
+    and 6371 * acos(least(1,
+          cos(radians(p_lat)) * cos(radians(d.last_lat)) * cos(radians(d.last_lng) - radians(p_lng))
+          + sin(radians(p_lat)) * sin(radians(d.last_lat)))) <= p_radius_km
+  limit 60;
+$$;
+grant execute on function public.nearby_online_drivers(double precision, double precision, double precision) to authenticated;

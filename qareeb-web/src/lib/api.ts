@@ -1184,6 +1184,27 @@ export async function setDriverOnline(
   return error ? { error: error.message } : {}
 }
 
+/** يحدّث موقع السائق الحالي (أثناء الاتصال) لعرضه للعملاء القريبين. */
+export async function updateMyLocation(lat: number, lng: number): Promise<void> {
+  if (!isSupabaseConfigured) return
+  await supabase.rpc('update_my_location', { p_lat: lat, p_lng: lng })
+}
+
+/** سائقون متصلون قريبون (إحداثيات فقط) لعرضهم على خريطة العميل قبل الطلب. */
+export async function nearbyOnlineDrivers(
+  lat: number,
+  lng: number,
+  radiusKm = 6,
+): Promise<{ lat: number; lng: number; vehicle_type: string }[]> {
+  if (!isSupabaseConfigured) return []
+  const { data } = await supabase.rpc('nearby_online_drivers', {
+    p_lat: lat,
+    p_lng: lng,
+    p_radius_km: radiusKm,
+  })
+  return (data as { lat: number; lng: number; vehicle_type: string }[]) ?? []
+}
+
 const demoAvailableRide: Ride = {
   id: 'open-1',
   customer_id: 'c-88',
