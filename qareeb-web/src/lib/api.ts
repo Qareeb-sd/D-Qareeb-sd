@@ -1,4 +1,4 @@
-import { supabase, isSupabaseConfigured, supabaseAnonKey } from './supabase'
+import { supabase, isSupabaseConfigured, supabaseAnonKey, supabaseUrl } from './supabase'
 import type {
   Settings,
   Wallet,
@@ -503,34 +503,33 @@ export async function notifyDriversOfRide(rideId: string): Promise<void> {
   }
 }
 
-// نمرّر مفتاح anon صراحةً كـ Authorization ليتجاوز فحص «Verify JWT» في الدالة
-// (بدل رمز جلسة الأدمن الذي قد لا يرضي الفحص).
-const fnAuthHeaders = { Authorization: `Bearer ${supabaseAnonKey}` }
-
-/** يُشعر صاحب التعبئة باعتمادها (أفضل جهد — يتحمّل غياب الدالة/الرمز). */
-export async function notifyTopupApproved(topupId: string): Promise<void> {
+// استدعاء دالة الإشعار عبر fetch مباشر بمفتاح anon — يضمن ترويسة Authorization
+// (يتجاوز فحص «Verify JWT») بلا أي تجاوز من مكتبة supabase-js.
+async function callNotifyUser(body: Record<string, string>): Promise<void> {
   if (!isSupabaseConfigured) return
   try {
-    await supabase.functions.invoke('notify-user-fcm', {
-      body: { topup_id: topupId },
-      headers: fnAuthHeaders,
+    await fetch(`${supabaseUrl}/functions/v1/notify-user-fcm`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        apikey: supabaseAnonKey,
+        Authorization: `Bearer ${supabaseAnonKey}`,
+      },
+      body: JSON.stringify(body),
     })
   } catch {
-    /* أفضل جهد */
+    /* أفضل جهد — لا يوقف الاعتماد */
   }
+}
+
+/** يُشعر صاحب التعبئة باعتمادها (أفضل جهد). */
+export async function notifyTopupApproved(topupId: string): Promise<void> {
+  await callNotifyUser({ topup_id: topupId })
 }
 
 /** يُشعر السائق باعتماد سحبه (أفضل جهد). */
 export async function notifyWithdrawalApproved(withdrawalId: string): Promise<void> {
-  if (!isSupabaseConfigured) return
-  try {
-    await supabase.functions.invoke('notify-user-fcm', {
-      body: { withdrawal_id: withdrawalId },
-      headers: fnAuthHeaders,
-    })
-  } catch {
-    /* أفضل جهد */
-  }
+  await callNotifyUser({ withdrawal_id: withdrawalId })
 }
 
 // ---------- الطوارئ (SOS) ----------

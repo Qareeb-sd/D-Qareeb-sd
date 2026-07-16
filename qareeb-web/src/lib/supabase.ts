@@ -26,6 +26,8 @@ export const supabase = createClient(
 
 export const isSupabaseConfigured = Boolean(url && anonKey)
 
-// مفتاح anon — يُمرَّر صراحةً في استدعاءات Edge Functions التي تُفعِّل «Verify JWT»
-// (المفتاح مُوقَّع بالسرّ القديم فيرضي الفحص بلا اعتماد على جلسة المستخدم).
+// مفتاح anon + الرابط — يُمرَّران في استدعاء fetch مباشر لدوال Edge التي تُفعِّل
+// «Verify JWT» (المفتاح مُوقَّع بالسرّ القديم فيرضي الفحص، واستدعاء fetch يضمن
+// الترويسة بلا أي تجاوز من مكتبة supabase).
 export const supabaseAnonKey = anonKey ?? 'public-anon-key'
+export const supabaseUrl = url ?? 'http://localhost:54321'
