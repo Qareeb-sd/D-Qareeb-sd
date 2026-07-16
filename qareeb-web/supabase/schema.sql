@@ -3002,3 +3002,78 @@ returns table (
    order by r.created_at desc
    limit p_limit;
 $$;
+
+-- ============================================================
+--  إشعار الاعتماد من القاعدة مباشرة (pg_net) — يُطلَق عند اعتماد التعبئة/السحب
+--  بلا اعتماد على عميل الأدمن/Cloudflare/JWT. الدالة notify-user-fcm عليها
+--  «Verify JWT» مُطفأ، فتُستدعى بلا مصادقة.
+-- ============================================================
+create extension if not exists pg_net;
+
+create or replace function public.approve_topup(p_topup uuid)
+returns void language plpgsql security definer set search_path = public as $$
+declare
+  v_wallet uuid;
+  v_amount numeric;
+  v_status topup_status;
+begin
+  if not public.has_perm('requests') then
+    raise exception 'غير مصرّح';
+  end if;
+
+  select wallet_id, amount, status
+    into v_wallet, v_amount, v_status
+    from public.topups where id = p_topup for update;
+
+  if v_wallet is null then raise exception 'التعبئة غير موجودة'; end if;
+  if v_status <> 'pending' then raise exception 'التعبئة روجعت مسبقاً'; end if;
+
+  update public.topups
+    set status = 'approved', reviewed_by = auth.uid()
+    where id = p_topup;
+
+  update public.wallets
+    set balance = balance + v_amount, updated_at = now()
+    where id = v_wallet;
+
+  insert into public.transactions (wallet_id, type, amount, note)
+    values (v_wallet, 'topup', v_amount, 'تعبئة رصيد (معتمدة)');
+
+  perform public.log_action('اعتماد تعبئة', v_amount::text || ' ج.س');
+
+  -- إشعار صاحب التعبئة (أفضل جهد — لا يُفشل الاعتماد إن تعذّر).
+  begin
+    perform net.http_post(
+      url := 'https://yjdidwnnlyeisaahfmlr.supabase.co/functions/v1/notify-user-fcm',
+      headers := '{"Content-Type": "application/json"}'::jsonb,
+      body := jsonb_build_object('topup_id', p_topup)
+    );
+  exception when others then null;
+  end;
+end $$;
+
+create or replace function public.approve_withdrawal(p_id uuid)
+returns void language plpgsql security definer set search_path = public as $$
+declare v_driver uuid; v_status topup_status;
+begin
+  if not public.has_perm('requests') and not public.has_perm('drivers') then
+    raise exception 'غير مصرّح';
+  end if;
+  select driver_id, status into v_driver, v_status
+    from public.withdrawals where id = p_id for update;
+  if v_driver is null then raise exception 'الطلب غير موجود'; end if;
+  if v_status <> 'pending' then raise exception 'الطلب روجع مسبقاً'; end if;
+  update public.withdrawals set status = 'approved', reviewed_by = auth.uid() where id = p_id;
+  perform public.log_action('اعتماد سحب أرباح',
+    (select full_name from public.users where id = v_driver));
+
+  -- إشعار السائق باعتماد سحبه.
+  begin
+    perform net.http_post(
+      url := 'https://yjdidwnnlyeisaahfmlr.supabase.co/functions/v1/notify-user-fcm',
+      headers := '{"Content-Type": "application/json"}'::jsonb,
+      body := jsonb_build_object('withdrawal_id', p_id)
+    );
+  exception when others then null;
+  end;
+end $$;
