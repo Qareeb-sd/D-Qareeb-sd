@@ -33,18 +33,14 @@ const CAR_SVG =
   `<circle cx="6.9" cy="14.6" r="1.7" fill="#0E3B2E"/><circle cx="17.1" cy="14.6" r="1.7" fill="#0E3B2E"/>` +
   `</g></svg>`
 
-// أيقونة سيارة متصلة قريبة (منظور علوي أنيق على قرص أبيض) — تُميّزها عن دبوس الوجهة.
+// أيقونة سيارة متصلة قريبة: سيارة بيضاء واضحة على قرص أخضر بإطار أبيض.
 const NEARBY_CAR_SVG =
-  `<svg xmlns="http://www.w3.org/2000/svg" width="44" height="44" viewBox="0 0 44 44">` +
+  `<svg xmlns="http://www.w3.org/2000/svg" width="46" height="46" viewBox="0 0 46 46">` +
   `<defs><filter id="ncs" x="-40%" y="-40%" width="180%" height="180%">` +
-  `<feDropShadow dx="0" dy="2" stdDeviation="2" flood-color="#0E3B2E" flood-opacity="0.4"/></filter></defs>` +
-  `<circle cx="22" cy="22" r="16" fill="#fff" stroke="#1B6B3F" stroke-width="2.5" filter="url(#ncs)"/>` +
-  `<g transform="translate(22,22)">` +
-  `<rect x="-7.5" y="-10.5" width="15" height="21" rx="5.5" fill="#1B6B3F"/>` +
-  `<path d="M-5.2 -6.5 L5.2 -6.5 L3.8 -2.6 L-3.8 -2.6 Z" fill="#CFE9D8"/>` +
-  `<path d="M-3.8 4.6 L3.8 4.6 L5.2 8.2 L-5.2 8.2 Z" fill="#CFE9D8"/>` +
-  `<rect x="-4.6" y="-2" width="9.2" height="6.4" rx="2" fill="#12572F"/>` +
-  `<circle cx="0" cy="-8.4" r="1.1" fill="#F4E9C9"/>` +
+  `<feDropShadow dx="0" dy="2" stdDeviation="2.2" flood-color="#0E3B2E" flood-opacity="0.4"/></filter></defs>` +
+  `<circle cx="23" cy="23" r="17.5" fill="#1B6B3F" stroke="#fff" stroke-width="3" filter="url(#ncs)"/>` +
+  `<g transform="translate(11,11)" fill="#fff">` +
+  `<path d="M18.92 6.01C18.72 5.42 18.16 5 17.5 5h-11c-.66 0-1.21.42-1.42 1.01L3 12v8c0 .55.45 1 1 1h1c.55 0 1-.45 1-1v-1h12v1c0 .55.45 1 1 1h1c.55 0 1-.45 1-1v-8l-2.08-5.99zM6.5 16c-.83 0-1.5-.67-1.5-1.5S5.67 13 6.5 13s1.5.67 1.5 1.5S7.33 16 6.5 16zm11 0c-.83 0-1.5-.67-1.5-1.5s.67-1.5 1.5-1.5 1.5.67 1.5 1.5-.67 1.5-1.5 1.5zM5 11l1.5-4.5h11L19 11H5z"/>` +
   `</g></svg>`
 
 const PIN_SVG =
