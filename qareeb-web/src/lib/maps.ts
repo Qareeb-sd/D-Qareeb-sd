@@ -6,6 +6,18 @@ import type { Libraries } from '@react-google-maps/api'
  */
 export const GOOGLE_MAPS_API_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY ?? ''
 
+/**
+ * خادم توجيه المسارات (OSRM). الافتراضي هو الخادم العام المجاني — ممتاز للاختبار
+ * وأوّل الإطلاق، لكنه بلا ضمان توفّر وقد يُبطئ/يحظر مع الاستخدام الكثيف.
+ *
+ * ⚠️ قبل الإطلاق الكثيف (راجع docs/PRE_LAUNCH.md): استضِف OSRM على خادمك الخاص
+ * ثم اضبط المتغيّر البيئي VITE_OSRM_URL في ملف .env — بلا أيّ تعديل على الكود:
+ *   VITE_OSRM_URL=https://osrm.your-domain.com
+ */
+export const OSRM_BASE_URL = (
+  import.meta.env.VITE_OSRM_URL ?? 'https://router.project-osrm.org'
+).replace(/\/+$/, '')
+
 // نحمّل places للبحث عن العناوين لاحقاً.
 export const MAPS_LIBRARIES: Libraries = ['places']
 
@@ -54,7 +66,7 @@ export async function fetchRoute(
   // السودان (بديل Google Directions الذي يتطلّب مفتاحاً مُصرّحاً للـJS).
   try {
     const url =
-      `https://router.project-osrm.org/route/v1/driving/` +
+      `${OSRM_BASE_URL}/route/v1/driving/` +
       `${origin.lng},${origin.lat};${destination.lng},${destination.lat}?overview=false`
     const res = await fetch(url)
     if (!res.ok) return null
@@ -90,7 +102,7 @@ export async function fetchRoutePath(
   if (cached) return cached
   try {
     const url =
-      `https://router.project-osrm.org/route/v1/driving/` +
+      `${OSRM_BASE_URL}/route/v1/driving/` +
       `${origin.lng},${origin.lat};${destination.lng},${destination.lat}` +
       `?overview=full&geometries=geojson`
     const res = await fetch(url)
@@ -192,7 +204,7 @@ export async function fetchRouteNav(
 ): Promise<RouteNav | null> {
   try {
     const url =
-      `https://router.project-osrm.org/route/v1/driving/` +
+      `${OSRM_BASE_URL}/route/v1/driving/` +
       `${origin.lng},${origin.lat};${destination.lng},${destination.lat}` +
       `?overview=full&geometries=geojson&steps=true`
     const res = await fetch(url)
