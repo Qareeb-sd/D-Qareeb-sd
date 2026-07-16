@@ -3549,3 +3549,55 @@ grant execute on function public.nearby_online_drivers(double precision, double 
 -- ============================================================
 alter table public.rides add column if not exists rider_name  text;
 alter table public.rides add column if not exists rider_phone text;
+
+-- ============================================================
+--  تذكير بالرحلة المجدولة قبل موعدها (~15 دقيقة) عبر إشعار FCM للعميل.
+-- ============================================================
+alter table public.scheduled_rides add column if not exists reminded boolean not null default false;
+
+create or replace function public.remind_due_scheduled_rides()
+returns int language plpgsql security definer set search_path = public as $$
+declare r record; v_count int := 0; v_mins int;
+begin
+  for r in
+    select * from public.scheduled_rides
+     where status = 'pending' and not reminded
+       and scheduled_at > now()
+       and scheduled_at <= now() + interval '15 minutes'
+     for update skip locked
+  loop
+    update public.scheduled_rides set reminded = true where id = r.id;
+    v_count := v_count + 1;
+    v_mins := greatest(1, round(extract(epoch from (r.scheduled_at - now())) / 60)::int);
+    begin
+      perform net.http_post(
+        url := 'https://yjdidwnnlyeisaahfmlr.supabase.co/functions/v1/notify-user-fcm',
+        headers := '{"Content-Type": "application/json"}'::jsonb,
+        body := jsonb_build_object('user_id', r.customer_id::text,
+          'title', 'تذكير برحلتك المجدولة',
+          'body', 'رحلتك بعد ' || v_mins || ' دقيقة تقريباً — سنبحث لك عن سائق في موعدها.'));
+    exception when others then null; end;
+  end loop;
+  return v_count;
+end $$;
+
+-- جدولة التذكير كل دقيقة عبر pg_cron.
+create extension if not exists pg_cron;
+select cron.unschedule('remind-scheduled-rides')
+  where exists (select 1 from cron.job where jobname = 'remind-scheduled-rides');
+select cron.schedule('remind-scheduled-rides', '* * * * *',
+  $cron$ select public.remind_due_scheduled_rides() $cron$);
+
+-- ============================================================
+--  خريطة الطلب للسائق: نقاط انطلاق الطلبات الأخيرة (بلا هوية) لعرضها كطبقة حرارية.
+-- ============================================================
+create or replace function public.demand_hotspots(p_hours int default 3)
+returns table (lat double precision, lng double precision)
+language sql security definer set search_path = public stable as $$
+  select pickup_lat, pickup_lng from public.rides
+  where created_at > now() - make_interval(hours => p_hours)
+    and pickup_lat is not null and pickup_lng is not null
+  order by created_at desc
+  limit 500;
+$$;
+grant execute on function public.demand_hotspots(int) to authenticated;

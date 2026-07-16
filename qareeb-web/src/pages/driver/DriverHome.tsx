@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
-import { Bell, BellOff, LifeBuoy, Eye, Star, ChevronLeft, Route, Coins, Power, User } from 'lucide-react'
+import { Bell, BellOff, LifeBuoy, Eye, Star, ChevronLeft, Route, Coins, Power, User, Flame } from 'lucide-react'
 import { haversineKm } from '@/lib/pricing'
 import Logo from '@/components/Logo'
 import DriverNav from '@/components/DriverNav'
@@ -268,6 +268,20 @@ export default function DriverHome() {
           <div className="flex-1">
             <p className="font-bold text-royal">اطلب مشوار أو مساعدة</p>
             <p className="text-xs text-ink-soft">تعطّلت سيارتك؟ اطلب سائقاً أو سحّابة كأي راكب.</p>
+          </div>
+          <ChevronLeft className="h-5 w-5 text-ink-muted" />
+        </button>
+
+        <button
+          onClick={() => navigate('/driver/demand')}
+          className="mb-3 flex w-full items-center gap-3 rounded-2xl border border-orange-200 bg-orange-50 p-3.5 text-right"
+        >
+          <span className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-orange-500/15 text-orange-600">
+            <Flame className="h-5 w-5" strokeWidth={2.2} />
+          </span>
+          <div className="flex-1">
+            <p className="font-bold text-royal">خريطة الطلب</p>
+            <p className="text-xs text-ink-soft">شاهد أين يكثر الطلب الآن وتوجّه إليه.</p>
           </div>
           <ChevronLeft className="h-5 w-5 text-ink-muted" />
         </button>
