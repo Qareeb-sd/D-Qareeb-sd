@@ -1,6 +1,16 @@
 import { useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { Clock, CheckCircle2, XCircle, Plus, Landmark, ArrowDownToLine } from 'lucide-react'
+import {
+  Clock,
+  CheckCircle2,
+  XCircle,
+  Plus,
+  Landmark,
+  ArrowDownToLine,
+  Trophy,
+  ChevronLeft,
+} from 'lucide-react'
 import Logo from '@/components/Logo'
 import DriverNav from '@/components/DriverNav'
 import { useAuth } from '@/store/AuthContext'
@@ -22,6 +32,7 @@ import type { Settings } from '@/lib/types'
 /** محفظة السائق: الرصيد (فلوت) + قيمة المشاوير + مدفوعات العملاء (سحب/تحويل للرصيد). */
 export default function DriverWallet() {
   const { profile } = useAuth()
+  const navigate = useNavigate()
   const userId = profile?.id ?? 'demo-user'
   const qc = useQueryClient()
 
@@ -161,6 +172,21 @@ export default function DriverWallet() {
         <p className="mt-2 text-center text-[11px] text-ink-muted">
           إجمالي رحلاتك المكتملة: {stats?.count ?? 0}
         </p>
+
+        {/* حوافز ومكافآت */}
+        <button
+          onClick={() => navigate('/driver/incentives')}
+          className="mt-5 flex w-full items-center gap-3 rounded-2xl border border-sand/50 bg-sand-soft/40 px-4 py-3.5 text-right"
+        >
+          <span className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-sand/30">
+            <Trophy className="h-5 w-5 text-sand-ink" strokeWidth={2} />
+          </span>
+          <span className="flex-1">
+            <span className="block font-bold text-royal">حوافزي ومكافآتي</span>
+            <span className="block text-xs text-ink-muted">أكمل الأهداف واربح مكافآت على رصيدك</span>
+          </span>
+          <ChevronLeft className="h-5 w-5 text-ink-muted" strokeWidth={2} />
+        </button>
 
         {/* سجل المعاملات */}
         <h2 className="mb-2 mt-6 font-bold">سجل المعاملات</h2>

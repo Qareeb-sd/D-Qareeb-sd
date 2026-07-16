@@ -23,6 +23,8 @@ import type {
   Withdrawal,
   ScheduledRide,
   RideMessage,
+  DriverIncentive,
+  MyIncentive,
 } from './types'
 import { services as seedServices, type Service, type VehicleArt } from '@/data/services'
 
@@ -1292,6 +1294,53 @@ export async function getMyReferralCode(): Promise<string | null> {
 export async function applyReferralCode(code: string): Promise<{ error?: string }> {
   if (!isSupabaseConfigured) return {}
   const { error } = await supabase.rpc('apply_referral_code', { p_code: code })
+  return error ? { error: error.message } : {}
+}
+
+// ---------- حوافز السائق ----------
+/** حوافز السائق الحالي مع تقدّمه. */
+export async function getMyIncentives(): Promise<MyIncentive[]> {
+  if (!isSupabaseConfigured) return []
+  const { data } = await supabase.rpc('my_incentives')
+  return (data as MyIncentive[]) ?? []
+}
+
+/** أدمن: قائمة كل الحوافز (الفعّالة والمعطّلة). */
+export async function listIncentives(): Promise<DriverIncentive[]> {
+  if (!isSupabaseConfigured) return []
+  const { data } = await supabase
+    .from('driver_incentives')
+    .select('*')
+    .order('period', { ascending: true })
+    .order('target_rides', { ascending: true })
+  return (data as DriverIncentive[]) ?? []
+}
+
+/** أدمن: إضافة/تعديل حافز. */
+export async function upsertIncentive(inc: {
+  id?: string | null
+  title: string
+  period: 'daily' | 'weekly'
+  target_rides: number
+  reward: number
+  active: boolean
+}): Promise<{ error?: string }> {
+  if (!isSupabaseConfigured) return {}
+  const { error } = await supabase.rpc('admin_upsert_incentive', {
+    p_id: inc.id ?? null,
+    p_title: inc.title,
+    p_period: inc.period,
+    p_target: inc.target_rides,
+    p_reward: inc.reward,
+    p_active: inc.active,
+  })
+  return error ? { error: error.message } : {}
+}
+
+/** أدمن: حذف حافز. */
+export async function deleteIncentive(id: string): Promise<{ error?: string }> {
+  if (!isSupabaseConfigured) return {}
+  const { error } = await supabase.rpc('admin_delete_incentive', { p_id: id })
   return error ? { error: error.message } : {}
 }
 

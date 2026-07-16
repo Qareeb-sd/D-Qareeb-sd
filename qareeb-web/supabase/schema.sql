@@ -3300,3 +3300,138 @@ create policy ride_messages_insert on public.ride_messages for insert
 do $$ begin
   alter publication supabase_realtime add table public.ride_messages;
 exception when duplicate_object then null; when others then null; end $$;
+
+-- ============================================================
+--  حوافز ومكافآت السائق: أهداف يومية/أسبوعية يضبطها الأدمن (عدد رحلات → مكافأة).
+--  عند بلوغ السائق الهدف في الفترة تُضاف المكافأة لرصيده تلقائياً (مرّة لكل فترة).
+-- ============================================================
+create table if not exists public.driver_incentives (
+  id           uuid primary key default gen_random_uuid(),
+  title        text not null,
+  period       text not null check (period in ('daily','weekly')),
+  target_rides int  not null check (target_rides > 0),
+  reward       numeric(12,2) not null check (reward >= 0),
+  active       boolean not null default true,
+  created_at   timestamptz not null default now()
+);
+alter table public.driver_incentives enable row level security;
+-- السائق يرى الفعّالة فقط، والأدمن يرى الكل.
+drop policy if exists driver_incentives_read on public.driver_incentives;
+create policy driver_incentives_read on public.driver_incentives for select
+  using (active or public.is_admin());
+
+create table if not exists public.driver_incentive_claims (
+  id           uuid primary key default gen_random_uuid(),
+  driver_id    uuid not null references public.users(id) on delete cascade,
+  incentive_id uuid not null references public.driver_incentives(id) on delete cascade,
+  period_key   text not null,
+  reward       numeric(12,2) not null,
+  created_at   timestamptz not null default now(),
+  unique (driver_id, incentive_id, period_key)
+);
+alter table public.driver_incentive_claims enable row level security;
+drop policy if exists dic_read on public.driver_incentive_claims;
+create policy dic_read on public.driver_incentive_claims for select
+  using (driver_id = auth.uid() or public.is_admin());
+
+-- مفتاح فترة الحافز (اليوم أو أسبوع ISO).
+create or replace function public.incentive_period_key(p_period text)
+returns text language sql immutable as $$
+  select case when p_period = 'daily' then to_char(now(), 'YYYY-MM-DD')
+              else to_char(now(), 'IYYY"W"IW') end;
+$$;
+
+create or replace function public.incentive_period_start(p_period text)
+returns timestamptz language sql stable as $$
+  select case when p_period = 'daily' then date_trunc('day', now())
+              else date_trunc('week', now()) end;
+$$;
+
+-- منح الحوافز عند إكمال رحلة.
+create or replace function public.award_driver_incentives()
+returns trigger language plpgsql security definer set search_path = public as $$
+declare r record; v_count int; v_wallet uuid; v_key text;
+begin
+  if new.status = 'completed' and old.status is distinct from 'completed'
+     and new.driver_id is not null then
+    for r in select * from public.driver_incentives where active loop
+      v_key := public.incentive_period_key(r.period);
+      select count(*) into v_count from public.rides
+        where driver_id = new.driver_id and status = 'completed'
+          and created_at >= public.incentive_period_start(r.period);
+      if v_count >= r.target_rides then
+        begin
+          insert into public.driver_incentive_claims (driver_id, incentive_id, period_key, reward)
+            values (new.driver_id, r.id, v_key, r.reward);
+        exception when unique_violation then continue; end;
+        if r.reward > 0 then
+          select id into v_wallet from public.wallets where user_id = new.driver_id for update;
+          if v_wallet is not null then
+            update public.wallets set balance = balance + r.reward, updated_at = now() where id = v_wallet;
+            insert into public.transactions (wallet_id, type, amount, ride_id, note)
+              values (v_wallet, 'topup', r.reward, new.id, 'مكافأة حافز: ' || r.title);
+          end if;
+        end if;
+      end if;
+    end loop;
+  end if;
+  return new;
+end $$;
+drop trigger if exists trg_award_incentives on public.rides;
+create trigger trg_award_incentives after update on public.rides
+  for each row execute function public.award_driver_incentives();
+
+-- حوافز السائق الحالي مع تقدّمه وحالة المنح لهذه الفترة.
+create or replace function public.my_incentives()
+returns table (
+  id uuid, title text, period text, target_rides int, reward numeric,
+  progress int, claimed boolean
+) language plpgsql security definer set search_path = public as $$
+declare v_uid uuid := auth.uid();
+begin
+  if v_uid is null then raise exception 'غير مصرّح'; end if;
+  return query
+    select i.id, i.title, i.period, i.target_rides, i.reward,
+      (select count(*)::int from public.rides r
+         where r.driver_id = v_uid and r.status = 'completed'
+           and r.created_at >= public.incentive_period_start(i.period)) as progress,
+      exists (select 1 from public.driver_incentive_claims c
+         where c.driver_id = v_uid and c.incentive_id = i.id
+           and c.period_key = public.incentive_period_key(i.period)) as claimed
+    from public.driver_incentives i
+    where i.active
+    order by i.period, i.target_rides;
+end $$;
+grant execute on function public.my_incentives() to authenticated;
+
+-- أدمن: إضافة/تعديل حافز.
+create or replace function public.admin_upsert_incentive(
+  p_id uuid, p_title text, p_period text, p_target int, p_reward numeric, p_active boolean
+) returns uuid language plpgsql security definer set search_path = public as $$
+declare v_id uuid;
+begin
+  if not public.is_admin() then raise exception 'غير مصرّح'; end if;
+  if p_id is null then
+    insert into public.driver_incentives (title, period, target_rides, reward, active)
+      values (p_title, p_period, p_target, p_reward, coalesce(p_active, true))
+      returning id into v_id;
+  else
+    update public.driver_incentives
+      set title = p_title, period = p_period, target_rides = p_target,
+          reward = p_reward, active = coalesce(p_active, true)
+      where id = p_id returning id into v_id;
+  end if;
+  perform public.log_action('حافز سائق', coalesce(p_title,'') || ' — ' || coalesce(p_reward,0)::text || ' ج.س');
+  return v_id;
+end $$;
+grant execute on function public.admin_upsert_incentive(uuid, text, text, int, numeric, boolean) to authenticated;
+
+-- أدمن: حذف حافز.
+create or replace function public.admin_delete_incentive(p_id uuid)
+returns void language plpgsql security definer set search_path = public as $$
+begin
+  if not public.is_admin() then raise exception 'غير مصرّح'; end if;
+  delete from public.driver_incentives where id = p_id;
+  perform public.log_action('حذف حافز سائق', p_id::text);
+end $$;
+grant execute on function public.admin_delete_incentive(uuid) to authenticated;

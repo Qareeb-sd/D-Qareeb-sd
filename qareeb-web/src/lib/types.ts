@@ -297,6 +297,28 @@ export interface DriverApplication {
 /** صلاحيات لوحة الإدارة المتاحة للموظفين. */
 export type StaffPerm = 'requests' | 'drivers' | 'rides' | 'settings'
 
+/** حافز سائق كما يضبطه الأدمن. */
+export interface DriverIncentive {
+  id: string
+  title: string
+  period: 'daily' | 'weekly'
+  target_rides: number
+  reward: number
+  active: boolean
+  created_at?: string
+}
+
+/** حافز السائق مع تقدّمه (نتيجة my_incentives). */
+export interface MyIncentive {
+  id: string
+  title: string
+  period: 'daily' | 'weekly'
+  target_rides: number
+  reward: number
+  progress: number
+  claimed: boolean
+}
+
 /** رسالة محادثة داخل الرحلة بين العميل والسائق. */
 export interface RideMessage {
   id: string

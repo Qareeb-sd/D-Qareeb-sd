@@ -30,6 +30,7 @@ import {
 import Logo from '@/components/Logo'
 import MapView from '@/components/MapView'
 import { StatCard, ChartCard, StatusBadge, BarChart, DonutChart } from '@/components/admin/AdminUI'
+import IncentivesManager from '@/components/admin/IncentivesManager'
 import { services } from '@/data/services'
 import { money, num } from '@/lib/format'
 import { useAuth } from '@/store/AuthContext'
@@ -3068,6 +3069,9 @@ export default function AdminDashboard() {
                 </button>
               </form>
             )}
+
+            {/* حوافز ومكافآت السائق */}
+            <IncentivesManager />
 
             {/* أكواد الخصم (برومو) */}
             <div className="card space-y-3 p-4">
