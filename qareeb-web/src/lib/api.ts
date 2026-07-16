@@ -21,6 +21,10 @@ import type {
   PromoCode,
   VipRequest,
   Withdrawal,
+  ScheduledRide,
+  RideMessage,
+  DriverIncentive,
+  MyIncentive,
 } from './types'
 import { services as seedServices, type Service, type VehicleArt } from '@/data/services'
 
@@ -45,6 +49,7 @@ const demoSettings: Settings = {
   cancellation_far_km: 5,
   cancellation_far_min: 15,
   min_driver_balance: 0,
+  referral_reward: 0,
   updated_at: new Date().toISOString(),
 }
 
@@ -1275,6 +1280,141 @@ export async function cancelRide(
   })
   if (error) return { error: error.message }
   return { result: (data as CancelResult) ?? { fee: 0, charged: 0, debt: 0, excused: true } }
+}
+
+// ---------- دعوة صديق (إحالة) ----------
+/** رمز الإحالة للمستخدم الحالي (يولّده الخادم إن لم يوجد). */
+export async function getMyReferralCode(): Promise<string | null> {
+  if (!isSupabaseConfigured) return 'QAREEB'
+  const { data } = await supabase.rpc('get_my_referral_code')
+  return (data as string) ?? null
+}
+
+/** إدخال رمز دعوة صديق (مرّة واحدة). */
+export async function applyReferralCode(code: string): Promise<{ error?: string }> {
+  if (!isSupabaseConfigured) return {}
+  const { error } = await supabase.rpc('apply_referral_code', { p_code: code })
+  return error ? { error: error.message } : {}
+}
+
+// ---------- حوافز السائق ----------
+/** حوافز السائق الحالي مع تقدّمه. */
+export async function getMyIncentives(): Promise<MyIncentive[]> {
+  if (!isSupabaseConfigured) return []
+  const { data } = await supabase.rpc('my_incentives')
+  return (data as MyIncentive[]) ?? []
+}
+
+/** أدمن: قائمة كل الحوافز (الفعّالة والمعطّلة). */
+export async function listIncentives(): Promise<DriverIncentive[]> {
+  if (!isSupabaseConfigured) return []
+  const { data } = await supabase
+    .from('driver_incentives')
+    .select('*')
+    .order('period', { ascending: true })
+    .order('target_rides', { ascending: true })
+  return (data as DriverIncentive[]) ?? []
+}
+
+/** أدمن: إضافة/تعديل حافز. */
+export async function upsertIncentive(inc: {
+  id?: string | null
+  title: string
+  period: 'daily' | 'weekly'
+  target_rides: number
+  reward: number
+  active: boolean
+}): Promise<{ error?: string }> {
+  if (!isSupabaseConfigured) return {}
+  const { error } = await supabase.rpc('admin_upsert_incentive', {
+    p_id: inc.id ?? null,
+    p_title: inc.title,
+    p_period: inc.period,
+    p_target: inc.target_rides,
+    p_reward: inc.reward,
+    p_active: inc.active,
+  })
+  return error ? { error: error.message } : {}
+}
+
+/** أدمن: حذف حافز. */
+export async function deleteIncentive(id: string): Promise<{ error?: string }> {
+  if (!isSupabaseConfigured) return {}
+  const { error } = await supabase.rpc('admin_delete_incentive', { p_id: id })
+  return error ? { error: error.message } : {}
+}
+
+// ---------- المحادثة داخل الرحلة ----------
+/** رسائل رحلة محدّدة مرتّبة زمنياً. */
+export async function listRideMessages(rideId: string): Promise<RideMessage[]> {
+  if (!isSupabaseConfigured || !rideId) return []
+  const { data } = await supabase
+    .from('ride_messages')
+    .select('*')
+    .eq('ride_id', rideId)
+    .order('created_at', { ascending: true })
+  return (data as RideMessage[]) ?? []
+}
+
+/** إرسال رسالة داخل الرحلة (يحدّد الدور من طرف الرحلة). */
+export async function sendRideMessage(
+  rideId: string,
+  senderId: string,
+  role: 'customer' | 'driver',
+  body: string,
+): Promise<{ error?: string }> {
+  const text = body.trim()
+  if (!text) return { error: 'رسالة فارغة' }
+  if (!isSupabaseConfigured) return {}
+  const { error } = await supabase.from('ride_messages').insert({
+    ride_id: rideId,
+    sender_id: senderId,
+    sender_role: role,
+    body: text.slice(0, 500),
+  })
+  return error ? { error: error.message } : {}
+}
+
+// ---------- الرحلات المجدولة ----------
+export async function createScheduledRide(params: {
+  serviceId: string
+  scheduledAt: string // ISO
+  pickup: { lat: number; lng: number; address: string }
+  dropoff: { lat: number; lng: number; address: string }
+  payment: PaymentMethod
+  fare: number
+}): Promise<{ id?: string; error?: string }> {
+  if (!isSupabaseConfigured) return { id: 'demo-scheduled' }
+  const { data, error } = await supabase.rpc('create_scheduled_ride', {
+    p_service: params.serviceId,
+    p_scheduled_at: params.scheduledAt,
+    p_pickup_lat: params.pickup.lat,
+    p_pickup_lng: params.pickup.lng,
+    p_pickup_address: params.pickup.address,
+    p_dropoff_lat: params.dropoff.lat,
+    p_dropoff_lng: params.dropoff.lng,
+    p_dropoff_address: params.dropoff.address,
+    p_payment: params.payment,
+    p_fare: params.fare,
+  })
+  if (error) return { error: error.message }
+  return { id: data as string }
+}
+
+export async function listScheduledRides(userId: string): Promise<ScheduledRide[]> {
+  if (!isSupabaseConfigured) return []
+  const { data } = await supabase
+    .from('scheduled_rides')
+    .select('*')
+    .eq('customer_id', userId)
+    .order('scheduled_at', { ascending: true })
+  return (data as ScheduledRide[]) ?? []
+}
+
+export async function cancelScheduledRide(id: string): Promise<{ error?: string }> {
+  if (!isSupabaseConfigured) return {}
+  const { error } = await supabase.rpc('cancel_scheduled_ride', { p_id: id })
+  return error ? { error: error.message } : {}
 }
 
 /** دَيْن رسوم الإلغاء المعلّق على العميل (يُضاف لأجرة الرحلة القادمة). */

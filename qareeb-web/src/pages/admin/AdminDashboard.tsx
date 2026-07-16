@@ -30,6 +30,7 @@ import {
 import Logo from '@/components/Logo'
 import MapView from '@/components/MapView'
 import { StatCard, ChartCard, StatusBadge, BarChart, DonutChart } from '@/components/admin/AdminUI'
+import IncentivesManager from '@/components/admin/IncentivesManager'
 import { services } from '@/data/services'
 import { money, num } from '@/lib/format'
 import { useAuth } from '@/store/AuthContext'
@@ -342,7 +343,51 @@ export default function AdminDashboard() {
       )
     }
     void load()
-    // تحديث دوري خفيف للإحصاءات والملخّص المالي (يتجنّب تجمّد الأرقام).
+    // تحديث دوري خفيف — يشمل قوائم الطلبات المعلّقة (تعبئة/سحب/انضمام/VIP)
+    // كبديل موثوق عن Realtime، فتظهر الطلبات الجديدة دون الحاجة لتحديث الصفحة.
+    // كما يصدر تنبيهاً عند ازدياد عدد الطلبات المعلّقة (طلب جديد وصل).
+    let prevPending = -1 // -1 = لم يُهيّأ بعد (أول قياس لا يُنبّه)
+    const beep = () => {
+      try {
+        const AC =
+          window.AudioContext ||
+          (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext
+        const ctx = new AC()
+        const osc = ctx.createOscillator()
+        const gain = ctx.createGain()
+        osc.connect(gain)
+        gain.connect(ctx.destination)
+        osc.frequency.value = 880
+        gain.gain.setValueAtTime(0.001, ctx.currentTime)
+        gain.gain.exponentialRampToValueAtTime(0.2, ctx.currentTime + 0.02)
+        gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.35)
+        osc.start()
+        osc.stop(ctx.currentTime + 0.36)
+      } catch {
+        /* الصوت غير متاح */
+      }
+    }
+    const refreshPending = async () => {
+      const [tp, ap, wd, vp] = await Promise.all([
+        listPendingTopups().catch(() => null),
+        listDriverApplications('pending').catch(() => null),
+        listPendingWithdrawals().catch(() => null),
+        listPendingVipRequests().catch(() => null),
+      ])
+      if (!alive) return
+      if (tp) setTopups(tp)
+      if (ap) setDriverApps(ap)
+      if (wd) setWithdrawReqs(wd)
+      if (vp) setVipReqs(vp)
+      const total =
+        (tp?.length ?? 0) + (ap?.length ?? 0) + (wd?.length ?? 0) + (vp?.length ?? 0)
+      if (prevPending >= 0 && total > prevPending) {
+        beep()
+        setToast('🔔 طلب جديد وصل — راجع قائمة الطلبات')
+      }
+      prevPending = total
+    }
+    void refreshPending()
     const iv = setInterval(() => {
       void getAdminStats()
         .then((x) => alive && setStats(x))
@@ -353,10 +398,16 @@ export default function AdminDashboard() {
       void getAdminAnalytics()
         .then((x) => alive && x && setAnalyticsRaw(x))
         .catch(() => {})
-    }, 30000)
+      void refreshPending()
+    }, 12000)
+    // Realtime عند توفّره = تحديث فوري (يمرّ عبر نفس refreshPending فلا تنبيه مكرّر).
+    const unTopup = subscribeToTopups(() => void refreshPending())
+    const unApp = subscribeToDriverApplications(() => void refreshPending())
     return () => {
       alive = false
       clearInterval(iv)
+      unTopup()
+      unApp()
     }
   }, [])
 
@@ -789,54 +840,8 @@ export default function AdminDashboard() {
     return subscribeToSos(load)
   }, [])
 
-  // إشعار الأدمن: عند طلب تعبئة/سائق جديد → حدّث القائمة + تنبيه صوتي.
-  useEffect(() => {
-    const ping = () => {
-      try {
-        // نغمة قصيرة عبر Web Audio (بلا ملفات).
-        const AC = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext
-        const ctx = new AC()
-        const osc = ctx.createOscillator()
-        const gain = ctx.createGain()
-        osc.connect(gain)
-        gain.connect(ctx.destination)
-        osc.frequency.value = 880
-        gain.gain.setValueAtTime(0.001, ctx.currentTime)
-        gain.gain.exponentialRampToValueAtTime(0.2, ctx.currentTime + 0.02)
-        gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.35)
-        osc.start()
-        osc.stop(ctx.currentTime + 0.36)
-      } catch {
-        /* الصوت غير متاح — تجاهل */
-      }
-    }
-    const reloadTopups = () => listPendingTopups().then(setTopups)
-    const reloadApps = () => listDriverApplications('pending').then(setDriverApps)
-    const primed = { current: false }
-    // أول تحميل لا يصدر صوتاً؛ التغيّرات اللاحقة تصدر.
-    const onTopup = () => {
-      reloadTopups()
-      if (primed.current) {
-        ping()
-        setToast('🔔 طلب تعبئة رصيد جديد')
-      }
-    }
-    const onApp = () => {
-      reloadApps()
-      if (primed.current) {
-        ping()
-        setToast('🔔 طلب انضمام سائق جديد')
-      }
-    }
-    const t = setTimeout(() => (primed.current = true), 3000)
-    const un1 = subscribeToTopups(onTopup)
-    const un2 = subscribeToDriverApplications(onApp)
-    return () => {
-      clearTimeout(t)
-      un1()
-      un2()
-    }
-  }, [])
+  // (تحديث الطلبات المعلّقة + التنبيه الصوتي عند طلب جديد يتمّان في تأثير التحميل
+  //  الرئيسي عبر refreshPending — استقصاء دوري + Realtime، فلا حاجة لتأثير منفصل.)
 
   // إخفاء التنبيه المنبثق تلقائياً بعد ٦ ثوانٍ.
   useEffect(() => {
@@ -1130,6 +1135,7 @@ export default function AdminDashboard() {
       cancellation_far_km: settings.cancellation_far_km,
       cancellation_far_min: settings.cancellation_far_min,
       min_driver_balance: settings.min_driver_balance,
+      referral_reward: settings.referral_reward,
     })
     setSavedMsg(error ? `خطأ: ${error}` : 'تم حفظ الإعدادات ✓')
   }
@@ -2980,6 +2986,20 @@ export default function AdminDashboard() {
                 </div>
 
                 <div className="rounded-2xl border border-sand/40 bg-sand-soft/40 p-3">
+                  <p className="font-bold text-royal">مكافأة دعوة صديق</p>
+                  <p className="mb-2 text-xs text-ink-muted">
+                    تُمنح للطرفين (الداعي والمدعوّ) عند إكمال المدعوّ أوّل رحلة. اضبطها على 0
+                    لتعطيل الإحالة.
+                  </p>
+                  <NumField
+                    label="قيمة المكافأة (ج.س)"
+                    step={500}
+                    value={settings.referral_reward}
+                    onChange={(v) => setSettings({ ...settings, referral_reward: v })}
+                  />
+                </div>
+
+                <div className="rounded-2xl border border-sand/40 bg-sand-soft/40 p-3">
                   <p className="font-bold text-royal">أدنى رصيد لاتصال السائق</p>
                   <p className="mb-2 text-xs text-ink-muted">
                     لا يستطيع السائق الضغط على «متصل» واستقبال الرحلات إن كان رصيد محفظته أقلّ
@@ -3053,6 +3073,9 @@ export default function AdminDashboard() {
                 </button>
               </form>
             )}
+
+            {/* حوافز ومكافآت السائق */}
+            <IncentivesManager />
 
             {/* أكواد الخصم (برومو) */}
             <div className="card space-y-3 p-4">

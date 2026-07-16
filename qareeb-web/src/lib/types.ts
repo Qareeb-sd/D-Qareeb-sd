@@ -34,6 +34,7 @@ export interface AppUser {
   birthdate?: string | null // تاريخ الميلاد (YYYY-MM-DD)
   rating?: number | null // متوسط تقييمه (من الطرف الآخر في الرحلات)
   ratings_count?: number // عدد التقييمات المستلمة
+  referred_by?: string | null // مُعرّف صاحب رمز الدعوة الذي انضمّ عبره
   created_at: string
 }
 
@@ -124,6 +125,7 @@ export interface Settings {
   cancellation_far_km: number // مسافة تُعفي العميل («السائق بعيد») — كم
   cancellation_far_min: number // زمن وصول مقدّر يُعفي العميل — دقيقة
   min_driver_balance: number // أدنى رصيد يسمح للسائق بالاتصال (استقبال الرحلات)
+  referral_reward: number // مكافأة دعوة صديق للطرفين عند أوّل رحلة (0 = معطّلة)
   updated_at: string
 }
 
@@ -157,6 +159,21 @@ export interface Withdrawal {
   reviewed_by: string | null
   created_at: string
   users?: { full_name: string | null; phone: string } | null
+}
+
+/** رحلة مجدولة لوقت لاحق (تُرسَل تلقائياً عند الموعد). */
+export interface ScheduledRide {
+  id: string
+  customer_id: string
+  service_id: string
+  pickup_address: string | null
+  dropoff_address: string | null
+  payment_method: PaymentMethod
+  fare: number | null
+  scheduled_at: string
+  status: 'pending' | 'dispatched' | 'cancelled'
+  ride_id: string | null
+  created_at: string
 }
 
 /** كود خصم للعملاء (يُدار من لوحة الأدمن). */
@@ -279,6 +296,38 @@ export interface DriverApplication {
 // ---------- الموظفون (وصول محدود للوحة الإدارة) ----------
 /** صلاحيات لوحة الإدارة المتاحة للموظفين. */
 export type StaffPerm = 'requests' | 'drivers' | 'rides' | 'settings'
+
+/** حافز سائق كما يضبطه الأدمن. */
+export interface DriverIncentive {
+  id: string
+  title: string
+  period: 'daily' | 'weekly'
+  target_rides: number
+  reward: number
+  active: boolean
+  created_at?: string
+}
+
+/** حافز السائق مع تقدّمه (نتيجة my_incentives). */
+export interface MyIncentive {
+  id: string
+  title: string
+  period: 'daily' | 'weekly'
+  target_rides: number
+  reward: number
+  progress: number
+  claimed: boolean
+}
+
+/** رسالة محادثة داخل الرحلة بين العميل والسائق. */
+export interface RideMessage {
+  id: string
+  ride_id: string
+  sender_id: string
+  sender_role: 'customer' | 'driver'
+  body: string
+  created_at: string
+}
 
 /** موظف لوحة الإدارة وصلاحياته. */
 export interface StaffRow {

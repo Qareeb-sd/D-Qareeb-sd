@@ -3002,3 +3002,436 @@ returns table (
    order by r.created_at desc
    limit p_limit;
 $$;
+
+-- ============================================================
+--  إشعار الاعتماد من القاعدة مباشرة (pg_net) — يُطلَق عند اعتماد التعبئة/السحب
+--  بلا اعتماد على عميل الأدمن/Cloudflare/JWT. الدالة notify-user-fcm عليها
+--  «Verify JWT» مُطفأ، فتُستدعى بلا مصادقة.
+-- ============================================================
+create extension if not exists pg_net;
+
+create or replace function public.approve_topup(p_topup uuid)
+returns void language plpgsql security definer set search_path = public as $$
+declare
+  v_wallet uuid;
+  v_amount numeric;
+  v_status topup_status;
+begin
+  if not public.has_perm('requests') then
+    raise exception 'غير مصرّح';
+  end if;
+
+  select wallet_id, amount, status
+    into v_wallet, v_amount, v_status
+    from public.topups where id = p_topup for update;
+
+  if v_wallet is null then raise exception 'التعبئة غير موجودة'; end if;
+  if v_status <> 'pending' then raise exception 'التعبئة روجعت مسبقاً'; end if;
+
+  update public.topups
+    set status = 'approved', reviewed_by = auth.uid()
+    where id = p_topup;
+
+  update public.wallets
+    set balance = balance + v_amount, updated_at = now()
+    where id = v_wallet;
+
+  insert into public.transactions (wallet_id, type, amount, note)
+    values (v_wallet, 'topup', v_amount, 'تعبئة رصيد (معتمدة)');
+
+  perform public.log_action('اعتماد تعبئة', v_amount::text || ' ج.س');
+
+  -- إشعار صاحب التعبئة (أفضل جهد — لا يُفشل الاعتماد إن تعذّر).
+  begin
+    perform net.http_post(
+      url := 'https://yjdidwnnlyeisaahfmlr.supabase.co/functions/v1/notify-user-fcm',
+      headers := '{"Content-Type": "application/json"}'::jsonb,
+      body := jsonb_build_object('topup_id', p_topup)
+    );
+  exception when others then null;
+  end;
+end $$;
+
+create or replace function public.approve_withdrawal(p_id uuid)
+returns void language plpgsql security definer set search_path = public as $$
+declare v_driver uuid; v_status topup_status;
+begin
+  if not public.has_perm('requests') and not public.has_perm('drivers') then
+    raise exception 'غير مصرّح';
+  end if;
+  select driver_id, status into v_driver, v_status
+    from public.withdrawals where id = p_id for update;
+  if v_driver is null then raise exception 'الطلب غير موجود'; end if;
+  if v_status <> 'pending' then raise exception 'الطلب روجع مسبقاً'; end if;
+  update public.withdrawals set status = 'approved', reviewed_by = auth.uid() where id = p_id;
+  perform public.log_action('اعتماد سحب أرباح',
+    (select full_name from public.users where id = v_driver));
+
+  -- إشعار السائق باعتماد سحبه.
+  begin
+    perform net.http_post(
+      url := 'https://yjdidwnnlyeisaahfmlr.supabase.co/functions/v1/notify-user-fcm',
+      headers := '{"Content-Type": "application/json"}'::jsonb,
+      body := jsonb_build_object('withdrawal_id', p_id)
+    );
+  exception when others then null;
+  end;
+end $$;
+
+-- ============================================================
+--  جدولة الرحلات: يحجز العميل رحلة لوقت لاحق. عند حلول الموعد (± دقيقتين)
+--  تُنشأ الرحلة الحقيقية تلقائياً ويُشعَر السائقون، ويُذكَّر العميل. عبر pg_cron.
+-- ============================================================
+create table if not exists public.scheduled_rides (
+  id              uuid primary key default gen_random_uuid(),
+  customer_id     uuid not null references public.users(id) on delete cascade,
+  service_id      text not null,
+  pickup_lat      double precision not null,
+  pickup_lng      double precision not null,
+  pickup_address  text,
+  dropoff_lat     double precision,
+  dropoff_lng     double precision,
+  dropoff_address text,
+  payment_method  payment_method not null default 'cash',
+  fare            numeric(12,2),
+  scheduled_at    timestamptz not null,
+  status          text not null default 'pending' check (status in ('pending','dispatched','cancelled')),
+  ride_id         uuid references public.rides(id) on delete set null,
+  created_at      timestamptz not null default now()
+);
+create index if not exists scheduled_rides_due_idx on public.scheduled_rides(status, scheduled_at);
+create index if not exists scheduled_rides_customer_idx on public.scheduled_rides(customer_id);
+alter table public.scheduled_rides enable row level security;
+
+drop policy if exists "own scheduled rides" on public.scheduled_rides;
+create policy "own scheduled rides" on public.scheduled_rides
+  for select using (auth.uid() = customer_id or public.is_staff_or_admin());
+-- الإدخال/الإلغاء عبر دوال SECURITY DEFINER فقط.
+
+-- إنشاء حجز مجدول (يتحقّق أنّ الموعد مستقبلي بهامش دقيقتين).
+create or replace function public.create_scheduled_ride(
+  p_service text, p_scheduled_at timestamptz,
+  p_pickup_lat double precision, p_pickup_lng double precision, p_pickup_address text,
+  p_dropoff_lat double precision, p_dropoff_lng double precision, p_dropoff_address text,
+  p_payment payment_method, p_fare numeric
+) returns uuid language plpgsql security definer set search_path = public as $$
+declare v_id uuid; v_uid uuid := auth.uid();
+begin
+  if v_uid is null then raise exception 'غير مصرّح'; end if;
+  if p_scheduled_at < now() + interval '2 minutes' then
+    raise exception 'اختر موعداً بعد دقيقتين على الأقل';
+  end if;
+  insert into public.scheduled_rides (customer_id, service_id, scheduled_at,
+    pickup_lat, pickup_lng, pickup_address, dropoff_lat, dropoff_lng, dropoff_address,
+    payment_method, fare)
+  values (v_uid, p_service, p_scheduled_at,
+    p_pickup_lat, p_pickup_lng, p_pickup_address, p_dropoff_lat, p_dropoff_lng, p_dropoff_address,
+    p_payment, p_fare)
+  returning id into v_id;
+  return v_id;
+end $$;
+grant execute on function public.create_scheduled_ride(text, timestamptz, double precision, double precision, text, double precision, double precision, text, payment_method, numeric) to authenticated;
+
+-- إلغاء حجز مجدول (صاحبه فقط، وقبل الإرسال).
+create or replace function public.cancel_scheduled_ride(p_id uuid)
+returns void language plpgsql security definer set search_path = public as $$
+begin
+  update public.scheduled_rides set status = 'cancelled'
+   where id = p_id and customer_id = auth.uid() and status = 'pending';
+end $$;
+grant execute on function public.cancel_scheduled_ride(uuid) to authenticated;
+
+-- إرسال الحجوزات المستحقّة: تُنشئ الرحلة وتُشعِر السائقين والعميل. يشغّلها pg_cron.
+create or replace function public.dispatch_due_scheduled_rides()
+returns int language plpgsql security definer set search_path = public as $$
+declare r record; v_ride uuid; v_count int := 0;
+begin
+  for r in
+    select * from public.scheduled_rides
+     where status = 'pending' and scheduled_at <= now() + interval '2 minutes'
+     for update skip locked
+  loop
+    insert into public.rides (customer_id, service_id, status, payment_method,
+      pickup_lat, pickup_lng, pickup_address, dropoff_lat, dropoff_lng, dropoff_address, fare)
+    values (r.customer_id, r.service_id, 'searching', r.payment_method,
+      r.pickup_lat, r.pickup_lng, r.pickup_address, r.dropoff_lat, r.dropoff_lng, r.dropoff_address, r.fare)
+    returning id into v_ride;
+
+    update public.scheduled_rides set status = 'dispatched', ride_id = v_ride where id = r.id;
+    v_count := v_count + 1;
+
+    -- إشعار السائقين المتصلين بالطلب الجديد + تذكير العميل.
+    begin
+      perform net.http_post(
+        url := 'https://yjdidwnnlyeisaahfmlr.supabase.co/functions/v1/notify-ride-fcm',
+        headers := '{"Content-Type": "application/json"}'::jsonb,
+        body := jsonb_build_object('ride_id', v_ride));
+      perform net.http_post(
+        url := 'https://yjdidwnnlyeisaahfmlr.supabase.co/functions/v1/notify-user-fcm',
+        headers := '{"Content-Type": "application/json"}'::jsonb,
+        body := jsonb_build_object('user_id', r.customer_id::text,
+          'title', 'حان موعد رحلتك المجدولة', 'body', 'نبحث لك عن سائق الآن'));
+    exception when others then null; end;
+  end loop;
+  return v_count;
+end $$;
+
+-- جدولة التشغيل كل دقيقة عبر pg_cron.
+create extension if not exists pg_cron;
+select cron.unschedule('dispatch-scheduled-rides')
+  where exists (select 1 from cron.job where jobname = 'dispatch-scheduled-rides');
+select cron.schedule('dispatch-scheduled-rides', '* * * * *',
+  $cron$ select public.dispatch_due_scheduled_rides() $cron$);
+
+-- ============================================================
+--  دعوة صديق (إحالة): لكل مستخدم رمز فريد. من يُدخل رمز صديق يُسجَّل كمُحال،
+--  وعند إكماله أوّل رحلة يُكافأ الطرفان برصيد (referral_reward من الأدمن).
+-- ============================================================
+alter table public.users add column if not exists referral_code     text unique;
+alter table public.users add column if not exists referred_by        uuid references public.users(id) on delete set null;
+alter table public.users add column if not exists referral_rewarded  boolean not null default false;
+alter table public.settings add column if not exists referral_reward numeric(12,2) not null default 0;
+
+-- رمز الإحالة للمستخدم الحالي (يولّده إن لم يوجد).
+create or replace function public.get_my_referral_code()
+returns text language plpgsql security definer set search_path = public as $$
+declare v_code text; v_uid uuid := auth.uid();
+begin
+  if v_uid is null then raise exception 'غير مصرّح'; end if;
+  select referral_code into v_code from public.users where id = v_uid;
+  if v_code is not null then return v_code; end if;
+  loop
+    v_code := upper(substr(md5(random()::text || v_uid::text), 1, 6));
+    exit when not exists (select 1 from public.users where referral_code = v_code);
+  end loop;
+  update public.users set referral_code = v_code where id = v_uid;
+  return v_code;
+end $$;
+grant execute on function public.get_my_referral_code() to authenticated;
+
+-- إدخال رمز دعوة (مرّة واحدة، قبل المكافأة).
+create or replace function public.apply_referral_code(p_code text)
+returns jsonb language plpgsql security definer set search_path = public as $$
+declare v_ref uuid; v_uid uuid := auth.uid();
+begin
+  if v_uid is null then raise exception 'غير مصرّح'; end if;
+  if exists (select 1 from public.users where id = v_uid and referred_by is not null) then
+    raise exception 'أدخلت رمز دعوة من قبل';
+  end if;
+  select id into v_ref from public.users where referral_code = upper(btrim(p_code));
+  if v_ref is null then raise exception 'رمز الدعوة غير صحيح'; end if;
+  if v_ref = v_uid then raise exception 'لا يمكنك دعوة نفسك'; end if;
+  update public.users set referred_by = v_ref where id = v_uid;
+  return jsonb_build_object('ok', true);
+end $$;
+grant execute on function public.apply_referral_code(text) to authenticated;
+
+-- مكافأة الإحالة عند أوّل رحلة مكتملة للمُحال (الطرفان).
+create or replace function public.reward_referral()
+returns trigger language plpgsql security definer set search_path = public as $$
+declare v_ref uuid; v_rewarded boolean; v_reward numeric; v_cw uuid; v_rw uuid;
+begin
+  if new.status = 'completed' and old.status is distinct from 'completed' then
+    select referred_by, referral_rewarded into v_ref, v_rewarded
+      from public.users where id = new.customer_id;
+    if v_ref is not null and not coalesce(v_rewarded, false) then
+      select referral_reward into v_reward from public.settings where id = 1;
+      if coalesce(v_reward, 0) > 0 then
+        select id into v_cw from public.wallets where user_id = new.customer_id;
+        if v_cw is not null then
+          update public.wallets set balance = balance + v_reward, updated_at = now() where id = v_cw;
+          insert into public.transactions (wallet_id, type, amount, note)
+            values (v_cw, 'topup', v_reward, 'مكافأة دعوة صديق');
+        end if;
+        select id into v_rw from public.wallets where user_id = v_ref;
+        if v_rw is not null then
+          update public.wallets set balance = balance + v_reward, updated_at = now() where id = v_rw;
+          insert into public.transactions (wallet_id, type, amount, note)
+            values (v_rw, 'topup', v_reward, 'مكافأة إحالة صديق');
+        end if;
+      end if;
+      update public.users set referral_rewarded = true where id = new.customer_id;
+    end if;
+  end if;
+  return new;
+end $$;
+drop trigger if exists trg_reward_referral on public.rides;
+create trigger trg_reward_referral after update on public.rides
+  for each row execute function public.reward_referral();
+
+-- ============================================================
+--  المحادثة داخل الرحلة: رسائل نصّية قصيرة بين العميل والسائق المعيَّن.
+--  القراءة/الكتابة مقصورة على طرفَي الرحلة (RLS)، مع بثّ Realtime.
+-- ============================================================
+create table if not exists public.ride_messages (
+  id          uuid primary key default gen_random_uuid(),
+  ride_id     uuid not null references public.rides(id) on delete cascade,
+  sender_id   uuid not null references public.users(id) on delete cascade,
+  sender_role text not null check (sender_role in ('customer','driver')),
+  body        text not null check (char_length(btrim(body)) between 1 and 500),
+  created_at  timestamptz not null default now()
+);
+create index if not exists ride_messages_ride_idx on public.ride_messages(ride_id, created_at);
+
+alter table public.ride_messages enable row level security;
+
+-- طرفا الرحلة فقط يقرآن الرسائل.
+drop policy if exists ride_messages_read on public.ride_messages;
+create policy ride_messages_read on public.ride_messages for select
+  using (exists (
+    select 1 from public.rides r
+    where r.id = ride_messages.ride_id
+      and (r.customer_id = auth.uid() or r.driver_id = auth.uid())
+  ));
+
+-- المُرسِل طرف في الرحلة، ويكتب باسمه هو فقط.
+drop policy if exists ride_messages_insert on public.ride_messages;
+create policy ride_messages_insert on public.ride_messages for insert
+  with check (
+    sender_id = auth.uid()
+    and exists (
+      select 1 from public.rides r
+      where r.id = ride_messages.ride_id
+        and (r.customer_id = auth.uid() or r.driver_id = auth.uid())
+    )
+  );
+
+-- بثّ فوري لرسائل الرحلة.
+do $$ begin
+  alter publication supabase_realtime add table public.ride_messages;
+exception when duplicate_object then null; when others then null; end $$;
+
+-- ============================================================
+--  حوافز ومكافآت السائق: أهداف يومية/أسبوعية يضبطها الأدمن (عدد رحلات → مكافأة).
+--  عند بلوغ السائق الهدف في الفترة تُضاف المكافأة لرصيده تلقائياً (مرّة لكل فترة).
+-- ============================================================
+create table if not exists public.driver_incentives (
+  id           uuid primary key default gen_random_uuid(),
+  title        text not null,
+  period       text not null check (period in ('daily','weekly')),
+  target_rides int  not null check (target_rides > 0),
+  reward       numeric(12,2) not null check (reward >= 0),
+  active       boolean not null default true,
+  created_at   timestamptz not null default now()
+);
+alter table public.driver_incentives enable row level security;
+-- السائق يرى الفعّالة فقط، والأدمن يرى الكل.
+drop policy if exists driver_incentives_read on public.driver_incentives;
+create policy driver_incentives_read on public.driver_incentives for select
+  using (active or public.is_admin());
+
+create table if not exists public.driver_incentive_claims (
+  id           uuid primary key default gen_random_uuid(),
+  driver_id    uuid not null references public.users(id) on delete cascade,
+  incentive_id uuid not null references public.driver_incentives(id) on delete cascade,
+  period_key   text not null,
+  reward       numeric(12,2) not null,
+  created_at   timestamptz not null default now(),
+  unique (driver_id, incentive_id, period_key)
+);
+alter table public.driver_incentive_claims enable row level security;
+drop policy if exists dic_read on public.driver_incentive_claims;
+create policy dic_read on public.driver_incentive_claims for select
+  using (driver_id = auth.uid() or public.is_admin());
+
+-- مفتاح فترة الحافز (اليوم أو أسبوع ISO).
+create or replace function public.incentive_period_key(p_period text)
+returns text language sql immutable as $$
+  select case when p_period = 'daily' then to_char(now(), 'YYYY-MM-DD')
+              else to_char(now(), 'IYYY"W"IW') end;
+$$;
+
+create or replace function public.incentive_period_start(p_period text)
+returns timestamptz language sql stable as $$
+  select case when p_period = 'daily' then date_trunc('day', now())
+              else date_trunc('week', now()) end;
+$$;
+
+-- منح الحوافز عند إكمال رحلة.
+create or replace function public.award_driver_incentives()
+returns trigger language plpgsql security definer set search_path = public as $$
+declare r record; v_count int; v_wallet uuid; v_key text;
+begin
+  if new.status = 'completed' and old.status is distinct from 'completed'
+     and new.driver_id is not null then
+    for r in select * from public.driver_incentives where active loop
+      v_key := public.incentive_period_key(r.period);
+      select count(*) into v_count from public.rides
+        where driver_id = new.driver_id and status = 'completed'
+          and created_at >= public.incentive_period_start(r.period);
+      if v_count >= r.target_rides then
+        begin
+          insert into public.driver_incentive_claims (driver_id, incentive_id, period_key, reward)
+            values (new.driver_id, r.id, v_key, r.reward);
+        exception when unique_violation then continue; end;
+        if r.reward > 0 then
+          select id into v_wallet from public.wallets where user_id = new.driver_id for update;
+          if v_wallet is not null then
+            update public.wallets set balance = balance + r.reward, updated_at = now() where id = v_wallet;
+            insert into public.transactions (wallet_id, type, amount, ride_id, note)
+              values (v_wallet, 'topup', r.reward, new.id, 'مكافأة حافز: ' || r.title);
+          end if;
+        end if;
+      end if;
+    end loop;
+  end if;
+  return new;
+end $$;
+drop trigger if exists trg_award_incentives on public.rides;
+create trigger trg_award_incentives after update on public.rides
+  for each row execute function public.award_driver_incentives();
+
+-- حوافز السائق الحالي مع تقدّمه وحالة المنح لهذه الفترة.
+create or replace function public.my_incentives()
+returns table (
+  id uuid, title text, period text, target_rides int, reward numeric,
+  progress int, claimed boolean
+) language plpgsql security definer set search_path = public as $$
+declare v_uid uuid := auth.uid();
+begin
+  if v_uid is null then raise exception 'غير مصرّح'; end if;
+  return query
+    select i.id, i.title, i.period, i.target_rides, i.reward,
+      (select count(*)::int from public.rides r
+         where r.driver_id = v_uid and r.status = 'completed'
+           and r.created_at >= public.incentive_period_start(i.period)) as progress,
+      exists (select 1 from public.driver_incentive_claims c
+         where c.driver_id = v_uid and c.incentive_id = i.id
+           and c.period_key = public.incentive_period_key(i.period)) as claimed
+    from public.driver_incentives i
+    where i.active
+    order by i.period, i.target_rides;
+end $$;
+grant execute on function public.my_incentives() to authenticated;
+
+-- أدمن: إضافة/تعديل حافز.
+create or replace function public.admin_upsert_incentive(
+  p_id uuid, p_title text, p_period text, p_target int, p_reward numeric, p_active boolean
+) returns uuid language plpgsql security definer set search_path = public as $$
+declare v_id uuid;
+begin
+  if not public.is_admin() then raise exception 'غير مصرّح'; end if;
+  if p_id is null then
+    insert into public.driver_incentives (title, period, target_rides, reward, active)
+      values (p_title, p_period, p_target, p_reward, coalesce(p_active, true))
+      returning id into v_id;
+  else
+    update public.driver_incentives
+      set title = p_title, period = p_period, target_rides = p_target,
+          reward = p_reward, active = coalesce(p_active, true)
+      where id = p_id returning id into v_id;
+  end if;
+  perform public.log_action('حافز سائق', coalesce(p_title,'') || ' — ' || coalesce(p_reward,0)::text || ' ج.س');
+  return v_id;
+end $$;
+grant execute on function public.admin_upsert_incentive(uuid, text, text, int, numeric, boolean) to authenticated;
+
+-- أدمن: حذف حافز.
+create or replace function public.admin_delete_incentive(p_id uuid)
+returns void language plpgsql security definer set search_path = public as $$
+begin
+  if not public.is_admin() then raise exception 'غير مصرّح'; end if;
+  delete from public.driver_incentives where id = p_id;
+  perform public.log_action('حذف حافز سائق', p_id::text);
+end $$;
+grant execute on function public.admin_delete_incentive(uuid) to authenticated;
