@@ -388,7 +388,10 @@ export default function AdminDashboard() {
       prevPending = total
     }
     void refreshPending()
-    const iv = setInterval(() => {
+    // الطلبات المعلّقة: استقصاء سريع (٤ ثوانٍ) ليظهر الطلب الجديد فوراً تقريباً.
+    const ivFast = setInterval(() => void refreshPending(), 4000)
+    // الإحصاءات والملخّص المالي أثقل → استقصاء أبطأ (٣٠ ثانية).
+    const ivSlow = setInterval(() => {
       void getAdminStats()
         .then((x) => alive && setStats(x))
         .catch(() => {})
@@ -398,14 +401,14 @@ export default function AdminDashboard() {
       void getAdminAnalytics()
         .then((x) => alive && x && setAnalyticsRaw(x))
         .catch(() => {})
-      void refreshPending()
-    }, 12000)
+    }, 30000)
     // Realtime عند توفّره = تحديث فوري (يمرّ عبر نفس refreshPending فلا تنبيه مكرّر).
     const unTopup = subscribeToTopups(() => void refreshPending())
     const unApp = subscribeToDriverApplications(() => void refreshPending())
     return () => {
       alive = false
-      clearInterval(iv)
+      clearInterval(ivFast)
+      clearInterval(ivSlow)
       unTopup()
       unApp()
     }
