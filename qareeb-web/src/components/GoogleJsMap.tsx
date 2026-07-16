@@ -13,7 +13,7 @@ interface MapViewProps {
   marker?: google.maps.LatLngLiteral
   driver?: google.maps.LatLngLiteral
   markers?: google.maps.LatLngLiteral[]
-  driverMarkers?: (google.maps.LatLngLiteral & { art?: string })[]
+  driverMarkers?: (google.maps.LatLngLiteral & { art?: string; icon?: string })[]
   route?: google.maps.LatLngLiteral[]
   zoom?: number
   onCenterChanged?: (pos: google.maps.LatLngLiteral) => void
@@ -74,6 +74,23 @@ const PIN_SVG =
   `<circle cx="15" cy="14.5" r="5.5" fill="#fff"/></svg>`
 
 const svgUrl = (svg: string) => `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(svg)}`
+
+// قياس أبعاد صورة المركبة (لحفظ نسبة الأبعاد على العلامة) — مع كاش لكل رابط.
+const imgSizeCache = new Map<string, { w: number; h: number }>()
+function measureImage(url: string): Promise<{ w: number; h: number }> {
+  const cached = imgSizeCache.get(url)
+  if (cached) return Promise.resolve(cached)
+  return new Promise((resolve) => {
+    const im = new Image()
+    im.onload = () => {
+      const s = { w: im.naturalWidth || 60, h: im.naturalHeight || 44 }
+      imgSizeCache.set(url, s)
+      resolve(s)
+    }
+    im.onerror = () => resolve({ w: 60, h: 44 })
+    im.src = url
+  })
+}
 
 export default function GoogleJsMap({
   center = KHARTOUM,
@@ -197,19 +214,37 @@ export default function GoogleJsMap({
       scaledSize: new maps.Size(56, 56),
       anchor: new maps.Point(28, 28),
     }
-    const nearbyIcon = (art?: string) => ({
-      url: svgUrl(nearbySvg(nearbyGlyph(art))),
-      scaledSize: new maps.Size(54, 54),
-      anchor: new maps.Point(27, 27),
-    })
-
     const add = (pos: google.maps.LatLngLiteral, icon: google.maps.Icon, z: number) =>
       overlays.current.markers.push(new maps.Marker({ position: pos, map, icon, zIndex: z }))
 
     if (marker) add(marker, pinIcon, 10)
     markers?.forEach((m) => add(m, pinIcon, 10))
-    driverMarkers?.forEach((d) => add(d, nearbyIcon(d.art), 500))
     if (driver) add(driver, carIcon, 1000)
+
+    // علامة السائق القريب: صورة المركبة الحقيقية بنسبة أبعادها، وإلا رمز حسب النوع.
+    const gen = overlays.current // مرجع الجيل الحالي — نتجاهل الإضافات المتأخّرة بعد إعادة رسم.
+    driverMarkers?.forEach((d) => {
+      if (!d.icon) {
+        add(d, {
+          url: svgUrl(nearbySvg(nearbyGlyph(d.art))),
+          scaledSize: new maps.Size(54, 54),
+          anchor: new maps.Point(27, 27),
+        }, 500)
+        return
+      }
+      // نُلائم الصورة داخل صندوق 64×48 مع الحفاظ على نسبتها (بلا تشويه).
+      void measureImage(d.icon).then(({ w, h }) => {
+        if (!mapRef.current || overlays.current !== gen) return
+        const scale = Math.min(64 / w, 48 / h)
+        const iw = Math.round(w * scale)
+        const ih = Math.round(h * scale)
+        add(d, {
+          url: d.icon as string,
+          scaledSize: new maps.Size(iw, ih),
+          anchor: new maps.Point(iw / 2, ih / 2),
+        }, 500)
+      })
+    })
   }
 
   return <div ref={divRef} dir="ltr" className={`overflow-hidden ${className}`} />
