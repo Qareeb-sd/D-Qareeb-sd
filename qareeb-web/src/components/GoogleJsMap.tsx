@@ -13,7 +13,7 @@ interface MapViewProps {
   marker?: google.maps.LatLngLiteral
   driver?: google.maps.LatLngLiteral
   markers?: google.maps.LatLngLiteral[]
-  driverMarkers?: google.maps.LatLngLiteral[]
+  driverMarkers?: (google.maps.LatLngLiteral & { art?: string })[]
   route?: google.maps.LatLngLiteral[]
   zoom?: number
   onCenterChanged?: (pos: google.maps.LatLngLiteral) => void
@@ -33,15 +33,35 @@ const CAR_SVG =
   `<circle cx="6.9" cy="14.6" r="1.7" fill="#0E3B2E"/><circle cx="17.1" cy="14.6" r="1.7" fill="#0E3B2E"/>` +
   `</g></svg>`
 
-// أيقونة سيارة متصلة قريبة: سيارة زمردية واضحة على قرص ذهبي بإطار أبيض (أكبر قليلاً).
-const NEARBY_CAR_SVG =
+// أيقونات السيارات القريبة حسب نوع المركبة — رمز زمرديّ على قرص ذهبي بإطار أبيض.
+// كل رمز مرسوم في مساحة 24×24 (fill=currentColor عبر الأب).
+const G_CAR =
+  `<path d="M18.92 6.01C18.72 5.42 18.16 5 17.5 5h-11c-.66 0-1.21.42-1.42 1.01L3 12v8c0 .55.45 1 1 1h1c.55 0 1-.45 1-1v-1h12v1c0 .55.45 1 1 1h1c.55 0 1-.45 1-1v-8l-2.08-5.99zM6.5 16c-.83 0-1.5-.67-1.5-1.5S5.67 13 6.5 13s1.5.67 1.5 1.5S7.33 16 6.5 16zm11 0c-.83 0-1.5-.67-1.5-1.5s.67-1.5 1.5-1.5 1.5.67 1.5 1.5-.67 1.5-1.5 1.5zM5 11l1.5-4.5h11L19 11H5z"/>`
+const G_BUS =
+  `<path d="M4 16c0 .88.39 1.67 1 2.22V20c0 .55.45 1 1 1h1c.55 0 1-.45 1-1v-1h8v1c0 .55.45 1 1 1h1c.55 0 1-.45 1-1v-1.78c.61-.55 1-1.34 1-2.22V6c0-3.5-3.58-4-8-4s-8 .5-8 4v10zm3.5 1c-.83 0-1.5-.67-1.5-1.5S6.67 14 7.5 14s1.5.67 1.5 1.5S8.33 17 7.5 17zm9 0c-.83 0-1.5-.67-1.5-1.5s.67-1.5 1.5-1.5 1.5.67 1.5 1.5-.67 1.5-1.5 1.5zm1.5-6H6V6h12v5z"/>`
+const G_TRUCK =
+  `<path d="M20 8h-3V4H3c-1.1 0-2 .9-2 2v11h2c0 1.66 1.34 3 3 3s3-1.34 3-3h6c0 1.66 1.34 3 3 3s3-1.34 3-3h2v-5l-3-4zM6 18.5c-.83 0-1.5-.67-1.5-1.5s.67-1.5 1.5-1.5 1.5.67 1.5 1.5-.67 1.5-1.5 1.5zm13.5-9L21.46 12H17V9.5h2.5zM18 18.5c-.83 0-1.5-.67-1.5-1.5s.67-1.5 1.5-1.5 1.5.67 1.5 1.5-.67 1.5-1.5 1.5z"/>`
+// ركشة (منظور جانبي): قبّة ركّاب + عجلتان + نافذة ذهبية.
+const G_RICKSHAW =
+  `<path d="M3.5 17.5V13c0-5.2 3.3-8 7.5-8s7 3 7.5 7l1.2 1.6c.5.6.8 1.3.8 2.1v1.8z"/>` +
+  `<rect x="6" y="8.5" width="8.2" height="4" rx="1" fill="#D6A93A"/>` +
+  `<circle cx="7" cy="18" r="2.4"/><circle cx="16.6" cy="18" r="2.4"/>` +
+  `<circle cx="7" cy="18" r="1" fill="#D6A93A"/><circle cx="16.6" cy="18" r="1" fill="#D6A93A"/>`
+
+const nearbySvg = (glyph: string) =>
   `<svg xmlns="http://www.w3.org/2000/svg" width="54" height="54" viewBox="0 0 54 54">` +
   `<defs><filter id="ncs" x="-40%" y="-40%" width="180%" height="180%">` +
   `<feDropShadow dx="0" dy="2.2" stdDeviation="2.4" flood-color="#7A5B12" flood-opacity="0.45"/></filter></defs>` +
   `<circle cx="27" cy="27" r="20.5" fill="#D6A93A" stroke="#fff" stroke-width="3.5" filter="url(#ncs)"/>` +
-  `<g transform="translate(14.4,14.4) scale(1.05)" fill="#0E3B2E">` +
-  `<path d="M18.92 6.01C18.72 5.42 18.16 5 17.5 5h-11c-.66 0-1.21.42-1.42 1.01L3 12v8c0 .55.45 1 1 1h1c.55 0 1-.45 1-1v-1h12v1c0 .55.45 1 1 1h1c.55 0 1-.45 1-1v-8l-2.08-5.99zM6.5 16c-.83 0-1.5-.67-1.5-1.5S5.67 13 6.5 13s1.5.67 1.5 1.5S7.33 16 6.5 16zm11 0c-.83 0-1.5-.67-1.5-1.5s.67-1.5 1.5-1.5 1.5.67 1.5 1.5-.67 1.5-1.5 1.5zM5 11l1.5-4.5h11L19 11H5z"/>` +
-  `</g></svg>`
+  `<g transform="translate(14.4,14.4) scale(1.05)" fill="#0E3B2E">${glyph}</g></svg>`
+
+/** يختار رمز المركبة القريبة حسب شكلها (art). */
+function nearbyGlyph(art?: string): string {
+  if (art === 'van' || art === 'microbus') return G_BUS
+  if (art === 'tow') return G_TRUCK
+  if (art === 'rickshaw') return G_RICKSHAW
+  return G_CAR // sedan / ladies / غير معروف
+}
 
 const PIN_SVG =
   `<svg xmlns="http://www.w3.org/2000/svg" width="30" height="42" viewBox="0 0 30 42">` +
@@ -172,18 +192,18 @@ export default function GoogleJsMap({
       scaledSize: new maps.Size(56, 56),
       anchor: new maps.Point(28, 28),
     }
-    const nearbyCarIcon = {
-      url: svgUrl(NEARBY_CAR_SVG),
+    const nearbyIcon = (art?: string) => ({
+      url: svgUrl(nearbySvg(nearbyGlyph(art))),
       scaledSize: new maps.Size(54, 54),
       anchor: new maps.Point(27, 27),
-    }
+    })
 
     const add = (pos: google.maps.LatLngLiteral, icon: google.maps.Icon, z: number) =>
       overlays.current.markers.push(new maps.Marker({ position: pos, map, icon, zIndex: z }))
 
     if (marker) add(marker, pinIcon, 10)
     markers?.forEach((m) => add(m, pinIcon, 10))
-    driverMarkers?.forEach((d) => add(d, nearbyCarIcon, 500))
+    driverMarkers?.forEach((d) => add(d, nearbyIcon(d.art), 500))
     if (driver) add(driver, carIcon, 1000)
   }
 
