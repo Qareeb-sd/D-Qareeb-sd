@@ -75,6 +75,13 @@ const PIN_SVG =
 
 const svgUrl = (svg: string) => `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(svg)}`
 
+// ظلّ أرضيّ بيضاوي ناعم يوضع أسفل صورة المركبة ليمنحها إحساساً ثلاثيّ الأبعاد.
+const SHADOW_SVG =
+  `<svg xmlns="http://www.w3.org/2000/svg" width="48" height="18" viewBox="0 0 48 18">` +
+  `<defs><filter id="sb" x="-40%" y="-40%" width="180%" height="180%">` +
+  `<feGaussianBlur stdDeviation="2.4"/></filter></defs>` +
+  `<ellipse cx="24" cy="10" rx="17" ry="4.6" fill="#0E3B2E" opacity="0.3" filter="url(#sb)"/></svg>`
+
 // قياس أبعاد صورة المركبة (لحفظ نسبة الأبعاد على العلامة) — مع كاش لكل رابط.
 const imgSizeCache = new Map<string, { w: number; h: number }>()
 function measureImage(url: string): Promise<{ w: number; h: number }> {
@@ -232,16 +239,24 @@ export default function GoogleJsMap({
         }, 500)
         return
       }
-      // نُلائم الصورة داخل صندوق 64×48 مع الحفاظ على نسبتها (بلا تشويه).
+      // نُلائم الصورة داخل صندوق 52×40 (أصغر) مع الحفاظ على نسبتها (بلا تشويه).
       void measureImage(d.icon).then(({ w, h }) => {
         if (!mapRef.current || overlays.current !== gen) return
-        const scale = Math.min(64 / w, 48 / h)
+        const scale = Math.min(52 / w, 40 / h)
         const iw = Math.round(w * scale)
         const ih = Math.round(h * scale)
+        // ظلّ أرضيّ تحت المركبة (علامة منفصلة أدنى في الترتيب) — مركزه عند نقطة القاعدة.
+        const shH = Math.round(iw * 0.34)
+        add(d, {
+          url: svgUrl(SHADOW_SVG),
+          scaledSize: new maps.Size(iw, shH),
+          anchor: new maps.Point(iw / 2, Math.round(shH * 0.55)),
+        }, 499)
+        // المركبة نفسها تقف على النقطة (مرساة أسفل الوسط) فوق الظلّ.
         add(d, {
           url: d.icon as string,
           scaledSize: new maps.Size(iw, ih),
-          anchor: new maps.Point(iw / 2, ih / 2),
+          anchor: new maps.Point(iw / 2, ih),
         }, 500)
       })
     })
