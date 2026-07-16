@@ -1,4 +1,5 @@
 import { Capacitor } from '@capacitor/core'
+import { PushNotifications } from '@capacitor/push-notifications'
 import { saveDeviceToken, deleteDeviceToken } from './api'
 import { supabase, isSupabaseConfigured } from './supabase'
 
@@ -27,12 +28,6 @@ export function getPushStatus(): string {
   } catch {
     return 'غير متاح'
   }
-}
-
-// استيراد ديناميكي حتى لا يُحمَّل الملحق على الويب.
-async function plugin() {
-  const mod = await import('@capacitor/push-notifications')
-  return mod.PushNotifications
 }
 
 /**
@@ -87,8 +82,6 @@ export async function registerPushForDriver(userId: string): Promise<boolean> {
     return false
   }
   try {
-    setStatus('تحميل ملحق الإشعارات…')
-    const PushNotifications = await plugin()
     setStatus('فحص الإذن…')
     const perm = await PushNotifications.checkPermissions()
     let status = perm.receive
@@ -131,7 +124,6 @@ export async function unregisterPush(): Promise<void> {
       await deleteDeviceToken(currentToken)
       currentToken = null
     }
-    const PushNotifications = await plugin()
     await PushNotifications.removeAllListeners()
   } catch {
     /* تجاهل */
