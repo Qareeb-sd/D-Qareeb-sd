@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useLocation } from 'react-router-dom'
 import {
   ChevronRight,
   ArrowUpDown,
@@ -88,6 +88,9 @@ export default function SelectLocation() {
   const sid = serviceId ?? DEFAULT_SERVICE_ID
   const service = getService(sid)
 
+  // إعادة الطلب: وجهة مُمرَّرة من «رحلاتي» لتعبئة الوجهة تلقائياً.
+  const rebook = (useLocation().state as { rebook?: { dropoffPos: google.maps.LatLngLiteral | null; dropoffAddr: string } } | null)?.rebook
+
   const [pickupMode, setPickupMode] = useState<PickupMode>('current')
   const [active, setActive] = useState<Field>('dropoff')
   const [searching, setSearching] = useState<Field | null>(null)
@@ -96,9 +99,11 @@ export default function SelectLocation() {
   const [pickupPos, setPickupPos] = useState<google.maps.LatLngLiteral>(initialCenter)
   const [pickupAddr, setPickupAddr] = useState('')
   const [pickupSet, setPickupSet] = useState(false)
-  const [dropoffPos, setDropoffPos] = useState<google.maps.LatLngLiteral>(initialCenter)
-  const [dropoffAddr, setDropoffAddr] = useState('')
-  const [dropoffSet, setDropoffSet] = useState(false)
+  const [dropoffPos, setDropoffPos] = useState<google.maps.LatLngLiteral>(
+    rebook?.dropoffPos ?? initialCenter,
+  )
+  const [dropoffAddr, setDropoffAddr] = useState(rebook?.dropoffAddr ?? '')
+  const [dropoffSet, setDropoffSet] = useState(Boolean(rebook?.dropoffPos))
   const [gpsBusy, setGpsBusy] = useState(false)
   const [gpsErr, setGpsErr] = useState('')
   // وضع «تكبير الخريطة» أثناء وضع الدبوس — تكبر الخريطة وتصغر البطاقة السفلية.
