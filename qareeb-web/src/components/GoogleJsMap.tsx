@@ -82,19 +82,40 @@ const SHADOW_SVG =
   `<feGaussianBlur stdDeviation="2.4"/></filter></defs>` +
   `<ellipse cx="24" cy="10" rx="17" ry="4.6" fill="#0E3B2E" opacity="0.3" filter="url(#sb)"/></svg>`
 
-// قياس أبعاد صورة المركبة (لحفظ نسبة الأبعاد على العلامة) — مع كاش لكل رابط.
-const imgSizeCache = new Map<string, { w: number; h: number }>()
-function measureImage(url: string): Promise<{ w: number; h: number }> {
-  const cached = imgSizeCache.get(url)
+// يصغّر صورة المركبة مرّة واحدة إلى نسخة خفيفة (~104px) ويخزّنها، فتستخدم الخريطة
+// النسخة الصغيرة بدل الأصلية الثقيلة (توفير ذاكرة ووقت فكّ الترميز على الأجهزة الضعيفة).
+type MapIcon = { url: string; w: number; h: number }
+const iconCache = new Map<string, MapIcon>()
+function getMapIcon(url: string): Promise<MapIcon> {
+  const cached = iconCache.get(url)
   if (cached) return Promise.resolve(cached)
   return new Promise((resolve) => {
     const im = new Image()
+    im.crossOrigin = 'anonymous' // للسماح بالتصغير عبر canvas لصور التخزين (إن سمح CORS)
     im.onload = () => {
-      const s = { w: im.naturalWidth || 60, h: im.naturalHeight || 44 }
-      imgSizeCache.set(url, s)
-      resolve(s)
+      const nw = im.naturalWidth || 60
+      const nh = im.naturalHeight || 44
+      const scale = Math.min(104 / nw, 80 / nh, 1) // نسخة عرض ×2 للوضوح على الشاشات الحادّة
+      const w = Math.max(1, Math.round(nw * scale))
+      const h = Math.max(1, Math.round(nh * scale))
+      let outUrl = url
+      try {
+        const canvas = document.createElement('canvas')
+        canvas.width = w
+        canvas.height = h
+        const ctx = canvas.getContext('2d')
+        if (ctx) {
+          ctx.drawImage(im, 0, 0, w, h)
+          outUrl = canvas.toDataURL('image/png') // بيانات صغيرة مضمّنة
+        }
+      } catch {
+        /* الصورة «مسمومة» بسبب CORS → نستخدم الأصلية (تعمل، بلا تصغير) */
+      }
+      const r = { url: outUrl, w, h }
+      iconCache.set(url, r)
+      resolve(r)
     }
-    im.onerror = () => resolve({ w: 60, h: 44 })
+    im.onerror = () => resolve({ url, w: 60, h: 44 })
     im.src = url
   })
 }
@@ -239,8 +260,8 @@ export default function GoogleJsMap({
         }, 500)
         return
       }
-      // نُلائم الصورة داخل صندوق 52×40 (أصغر) مع الحفاظ على نسبتها (بلا تشويه).
-      void measureImage(d.icon).then(({ w, h }) => {
+      // نسخة مصغّرة خفيفة + ملاءمتها داخل صندوق 52×40 مع الحفاظ على النسبة (بلا تشويه).
+      void getMapIcon(d.icon).then(({ url, w, h }) => {
         if (!mapRef.current || overlays.current !== gen) return
         const scale = Math.min(52 / w, 40 / h)
         const iw = Math.round(w * scale)
@@ -254,7 +275,7 @@ export default function GoogleJsMap({
         }, 499)
         // المركبة نفسها تقف على النقطة (مرساة أسفل الوسط) فوق الظلّ.
         add(d, {
-          url: d.icon as string,
+          url,
           scaledSize: new maps.Size(iw, ih),
           anchor: new maps.Point(iw / 2, ih),
         }, 500)
