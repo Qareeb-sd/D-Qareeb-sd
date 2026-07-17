@@ -23,14 +23,25 @@ export default function FindDriver() {
   const { rideId, reset } = useRide()
   const [busy, setBusy] = useState(false)
   const [confirmCancel, setConfirmCancel] = useState(false)
+  const [cancelErr, setCancelErr] = useState('')
   // searching → البحث جارٍ | timeout → طالت المدّة | cancelled → أُلغيت خارجياً
   const [phase, setPhase] = useState<'searching' | 'timeout' | 'cancelled'>('searching')
   const done = useRef(false)
 
   const cancel = async (reason: CancelReason) => {
     setBusy(true)
+    setCancelErr('')
     // قبل قبول السائق لا رسوم إطلاقاً.
-    if (rideId) await cancelRide(rideId, reason.label, reason.code)
+    if (rideId) {
+      const { error } = await cancelRide(rideId, reason.label, reason.code)
+      if (error) {
+        // فشل الإلغاء (شبكة مثلاً) → لا نغادر، فالرحلة قد تبقى قابلة للقبول.
+        setBusy(false)
+        setConfirmCancel(false)
+        setCancelErr('تعذّر إلغاء الطلب، تأكّد من اتصالك وحاول مجدداً.')
+        return
+      }
+    }
     reset()
     navigate('/home', { replace: true })
   }
@@ -138,6 +149,12 @@ export default function FindDriver() {
             <p className="text-lg font-bold text-royal">نبحث عن أقرب سائق…</p>
             <p className="text-sm text-ink-soft">لحظات ونلقى ليك سائق قريب</p>
           </div>
+        )}
+
+        {cancelErr && (
+          <p className="w-full max-w-xs rounded-xl border border-danger/40 bg-danger/5 px-3 py-2 text-center text-sm font-medium text-danger">
+            {cancelErr}
+          </p>
         )}
 
         {confirmCancel ? (

@@ -691,12 +691,13 @@ const demoPendingTopups: Topup[] = [
 
 export async function listPendingTopups(): Promise<Topup[]> {
   if (!isSupabaseConfigured) return demoPendingTopups
+  // نجلب صاحب المحفظة (اسم/هاتف) ليتحقّق الأدمن من هوية المُعبِّئ قبل اعتماد المال.
   const { data } = await supabase
     .from('topups')
-    .select('*')
+    .select('*, wallets ( users ( full_name, phone ) )')
     .eq('status', 'pending')
     .order('created_at', { ascending: true })
-  return data ?? []
+  return (data as Topup[]) ?? []
 }
 
 export async function approveTopup(id: string): Promise<{ error?: string }> {

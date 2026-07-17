@@ -165,6 +165,13 @@ export default function SelectLocation() {
         )
       : null
 
+  // إذا تغيّرت الأجرة الأساسية (وجهة/توقّفات/ذروة) بعد تطبيق برومو، أبطِل الخصم —
+  // فقيمته كانت محسوبة على أجرة مختلفة، ويجب إعادة التحقّق منه ضدّ الأجرة الجديدة.
+  useEffect(() => {
+    setPromo(null)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [baseFare])
+
   const applyPromo = async () => {
     if (!promoCode.trim() || !quote) return
     setPromoBusy(true)

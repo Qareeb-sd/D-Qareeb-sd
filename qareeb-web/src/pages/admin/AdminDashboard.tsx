@@ -1111,6 +1111,16 @@ export default function AdminDashboard() {
   }
 
   const review = async (id: string, approve: boolean) => {
+    if (approve) {
+      const t = topups.find((x) => x.id === id)
+      const who = t?.wallets?.users?.full_name ? ` (${t.wallets.users.full_name})` : ''
+      if (
+        !window.confirm(
+          `اعتماد تعبئة بقيمة ${t ? money(t.amount) : ''}${who}؟ سيُضاف الرصيد فوراً ولا يمكن التراجع.`,
+        )
+      )
+        return
+    }
     setBusyId(id)
     const { error } = approve ? await approveTopup(id) : await rejectTopup(id)
     if (approve && !error) void notifyTopupApproved(id) // إشعار صاحب التعبئة
@@ -1136,6 +1146,16 @@ export default function AdminDashboard() {
   // اعتماد/رفض طلب سحب أرباح (الرفض يعيد المبلغ لمحفظة السائق).
   const reviewWithdraw = async (id: string, approve: boolean) => {
     let note: string | null = null
+    if (approve) {
+      const w = withdrawReqs.find((x) => x.id === id)
+      const who = w?.users?.full_name ? ` للسائق ${w.users.full_name}` : ''
+      if (
+        !window.confirm(
+          `اعتماد صرف سحب بقيمة ${w ? money(w.amount) : ''}${who}؟ عملية مالية لا يمكن التراجع عنها.`,
+        )
+      )
+        return
+    }
     if (!approve) note = window.prompt('سبب الرفض (اختياري):', '') || null
     setBusyId(id)
     const { error } = approve ? await approveWithdrawal(id) : await rejectWithdrawal(id, note)
@@ -1277,7 +1297,10 @@ export default function AdminDashboard() {
   }
 
   const commissionPct = settings ? Math.round(settings.commission_rate * 100) : 0
-  const pendingCount = topups.length + driverApps.length
+  // يشمل كل ما ينتظر إجراءً: تعبئة العملاء + طلبات السائقين + سحوبات + اشتراكات VIP —
+  // كي تعكس الشارة/العنوان/المؤشّر أيّ سائق ينتظر صرف أمواله لا التعبئة فقط.
+  const pendingCount =
+    topups.length + driverApps.length + withdrawReqs.length + vipReqs.length
 
   // عنوان التبويب في المتصفح يعكس الطلبات المعلّقة (يظهر حتى لو اللوحة بالخلفية).
   useEffect(() => {
@@ -1594,11 +1617,18 @@ export default function AdminDashboard() {
                 <div className="divide-y divide-hairline">
                   {topups.map((t) => (
                     <div key={t.id} className="flex items-center gap-3 py-3">
-                      <div className="flex-1">
-                        <p className="font-bold text-green">{money(t.amount)}</p>
-                        <p className="text-xs text-ink-muted">
-                          محفظة {t.wallet_id.slice(0, 8)} ·{' '}
-                          {new Date(t.created_at).toLocaleDateString('ar-SD')}
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate font-bold text-royal">
+                          {t.wallets?.users?.full_name ?? `محفظة ${t.wallet_id.slice(0, 8)}`}
+                        </p>
+                        <p className="text-xs text-ink-muted" dir="ltr">
+                          {t.wallets?.users?.phone ?? '—'}
+                        </p>
+                        <p className="text-xs font-bold text-green">
+                          {money(t.amount)} ·{' '}
+                          <span className="font-normal text-ink-muted">
+                            {new Date(t.created_at).toLocaleDateString('ar-SD')}
+                          </span>
                         </p>
                       </div>
                       {t.proof_url && (
