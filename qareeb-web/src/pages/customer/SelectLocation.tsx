@@ -22,6 +22,7 @@ import MapView from '@/components/MapView'
 import LocationSearchPanel, { type SavedEntry } from '@/components/LocationSearchPanel'
 import { useRide } from '@/store/RideContext'
 import { useAuth } from '@/store/AuthContext'
+import { useResumeActiveRide } from '@/hooks/useResumeActiveRide'
 import { DEFAULT_SERVICE_ID, getService } from '@/data/services'
 import {
   createRide,
@@ -88,6 +89,8 @@ export default function SelectLocation() {
   const { profile } = useAuth()
   const { serviceId, payment, setPayment, setPickup, setDropoff, setFare, setRideId, restore } =
     useRide()
+  // إن دخل العميل هذه الشاشة (عبر «رجوع» مثلاً) وله رحلة جارية، يُعاد إليها فوراً.
+  useResumeActiveRide()
 
   const sid = serviceId ?? DEFAULT_SERVICE_ID
   const service = getService(sid)

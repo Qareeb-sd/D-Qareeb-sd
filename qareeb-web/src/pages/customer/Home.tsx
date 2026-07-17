@@ -1,17 +1,12 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Search, Clock, House, Briefcase, ChevronLeft, Navigation } from 'lucide-react'
+import { Search, Clock, House, Briefcase, ChevronLeft } from 'lucide-react'
 import BottomNav from '@/components/BottomNav'
 import MapView from '@/components/MapView'
 import VehicleImage from '@/components/VehicleImage'
 import ServiceStateOverlay from '@/components/ServiceStateOverlay'
 import Logo from '@/components/Logo'
-import {
-  listServicePricing,
-  listServicePeriods,
-  getActiveCustomerRide,
-  nearbyOnlineDrivers,
-} from '@/lib/api'
+import { listServicePricing, listServicePeriods, nearbyOnlineDrivers } from '@/lib/api'
 import { currentPeriod } from '@/lib/pricing'
 import { money } from '@/lib/format'
 import { getCurrentPos, loadLastPos } from '@/lib/geo'
@@ -20,7 +15,7 @@ import { useRide } from '@/store/RideContext'
 import { useAuth } from '@/store/AuthContext'
 import { useServices } from '@/store/ServicesContext'
 import { registerPush } from '@/lib/pushNative'
-import type { Ride } from '@/lib/types'
+import { useResumeActiveRide } from '@/hooks/useResumeActiveRide'
 
 /**
  * الرئيسية — أسلوب «الواحة الملكية»: خريطة خلفية ممتدة + هيدر شفاف يطفو فوقها +
@@ -35,14 +30,15 @@ const SHORTCUTS = [
 
 export default function Home() {
   const navigate = useNavigate()
-  const { setServiceId, restore } = useRide()
+  const { setServiceId } = useRide()
   const { profile } = useAuth()
   const { services: allServices } = useServices()
+  // إن كانت هناك رحلة جارية، يعيد العميل إليها فوراً (منع فقدانها عند «رجوع»/الخروج).
+  const checkingActive = useResumeActiveRide()
   // تُستبعد الخدمات المخفية من العرض؛ الصيانة/قريباً تظهر معطّلة.
   const services = allServices.filter((s) => (s.state ?? 'available') !== 'hidden')
   const [prices, setPrices] = useState<Record<string, number>>({})
   const [selected, setSelected] = useState('standard')
-  const [activeRide, setActiveRide] = useState<Ride | null>(null)
   const [mapCenter, setMapCenter] = useState(loadLastPos() ?? KHARTOUM)
   const [nearby, setNearby] = useState<{ lat: number; lng: number; icon?: string }[]>([])
 
@@ -61,12 +57,6 @@ export default function Home() {
       setPrices(map)
     })
   }, [])
-
-  // اكتشاف رحلة نشطة (حتى لو ضغط العميل «رجوع») ليتمكّن من العودة لمتابعتها.
-  useEffect(() => {
-    if (!profile?.id) return
-    void getActiveCustomerRide(profile.id).then(setActiveRide)
-  }, [profile?.id])
 
   // موقع العميل + السيارات المتصلة القريبة على الخريطة (تحديث دوري).
   useEffect(() => {
@@ -95,16 +85,18 @@ export default function Home() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  // العودة لمتابعة الرحلة النشطة.
-  const resumeRide = () => {
-    if (!activeRide) return
-    restore(activeRide)
-    navigate(activeRide.status === 'searching' || activeRide.status === 'requested' ? '/find-driver' : '/trip')
-  }
-
   const chooseService = (id: string) => {
     setServiceId(id)
     navigate('/select-location')
+  }
+
+  // أثناء التحقّق من وجود رحلة جارية — مؤشّر بدل وميض شاشة الطلب الجديد.
+  if (checkingActive) {
+    return (
+      <div className="flex h-full min-h-screen items-center justify-center bg-ivory">
+        <div className="h-10 w-10 animate-spin rounded-full border-4 border-royal-soft border-t-royal" />
+      </div>
+    )
   }
 
   return (
@@ -174,23 +166,6 @@ export default function Home() {
         <div className="rounded-t-[28px] bg-white px-5 pb-4 pt-3 shadow-soft">
           {/* مقبض ذهبي */}
           <div className="mx-auto mb-4 h-1 w-10 rounded-full bg-sand/60" />
-
-          {/* شريط الرحلة النشطة — يتيح العودة للمتابعة بعد «رجوع» */}
-          {activeRide && (
-            <button
-              onClick={resumeRide}
-              className="press-scale mb-3 flex w-full items-center gap-3 rounded-2xl bg-royal p-3.5 text-right text-white shadow-float"
-            >
-              <span className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-white/15">
-                <Navigation className="h-5 w-5" strokeWidth={2} />
-              </span>
-              <div className="flex-1">
-                <p className="text-sm font-bold">لديك رحلة جارية</p>
-                <p className="text-[12px] text-white/70">اضغط لمتابعتها على الخريطة</p>
-              </div>
-              <ChevronLeft className="h-5 w-5 text-white/70" />
-            </button>
-          )}
 
           {/* بحث الوجهة — بتوقيع خط المسار */}
           <button

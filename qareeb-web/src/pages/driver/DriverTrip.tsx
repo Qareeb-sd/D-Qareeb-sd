@@ -149,6 +149,9 @@ export default function DriverTrip() {
     approach: null,
     now: null,
   })
+  // آخر نقطة حُسِب منها المسار — لخنق طلبات OSRM (نعيد الحساب فقط عند تحرّك مؤثّر
+  // أو تغيّر الوجهة، لا مع كل نبضة GPS — مهمّ لموثوقية الخادم العام داخل السودان).
+  const lastRouteRef = useRef<{ origin: google.maps.LatLngLiteral; destKey: string } | null>(null)
 
   useEffect(() => {
     void getSettings().then((s) => setRate(s.commission_rate))
@@ -268,8 +271,16 @@ export default function DriverTrip() {
     if (!rOrigin || !rDest) {
       setRoutePts([])
       setEta(null)
+      lastRouteRef.current = null
       return
     }
+    // خنق: أعِد حساب المسار فقط إذا تغيّرت الوجهة، أو تحرّك السائق أكثر من ~45م منذ
+    // آخر حساب، أو لم يُحسب مسار بعد. يبقى شريط المناورة حيّاً (يُحسب محلياً من الموقع).
+    const destKey = `${rDest.lat.toFixed(5)},${rDest.lng.toFixed(5)}`
+    const prev = lastRouteRef.current
+    const movedM = prev ? haversineKm(prev.origin, rOrigin) * 1000 : Infinity
+    if (prev && prev.destKey === destKey && movedM < 45) return
+    lastRouteRef.current = { origin: rOrigin, destKey }
     let alive = true
     void fetchRouteNav(rOrigin, rDest).then((r) => {
       if (alive && r) {
