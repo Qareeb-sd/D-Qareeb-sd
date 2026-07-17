@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Search, Clock, House, Briefcase, ChevronLeft } from 'lucide-react'
+import { Search, Clock, ChevronLeft } from 'lucide-react'
 import BottomNav from '@/components/BottomNav'
 import MapView from '@/components/MapView'
 import VehicleImage from '@/components/VehicleImage'
@@ -22,11 +22,6 @@ import { useResumeActiveRide } from '@/hooks/useResumeActiveRide'
  * بطاقة سفلية تحمل بحث الوجهة (بتوقيع خط المسار) واختيار الخدمة.
  * زمردي عميق + عاجي + لمسات ذهبية | خط IBM Plex Sans Arabic | أيقونات خطية.
  */
-
-const SHORTCUTS = [
-  { key: 'home', label: 'المنزل', icon: House },
-  { key: 'work', label: 'العمل', icon: Briefcase },
-]
 
 export default function Home() {
   const navigate = useNavigate()
@@ -181,24 +176,7 @@ export default function Home() {
               </span>
             </span>
             <span className="flex-1 text-[15px] font-semibold text-royal">وين ماشي؟</span>
-            <span className="flex items-center gap-1.5">
-              {SHORTCUTS.map((s) => {
-                const Icon = s.icon
-                return (
-                  <span
-                    key={s.key}
-                    onClick={(e) => {
-                      e.stopPropagation()
-                      navigate('/select-location')
-                    }}
-                    className="flex items-center gap-1 rounded-full border border-hairline/70 bg-white px-2.5 py-1.5 text-[11px] text-ink-soft"
-                  >
-                    <Icon className="h-3.5 w-3.5 text-sand-ink" strokeWidth={1.8} />
-                    {s.label}
-                  </span>
-                )
-              })}
-            </span>
+            <ChevronLeft className="h-5 w-5 text-ink-muted" />
           </button>
 
           {/* اختر الخدمة */}
@@ -224,8 +202,9 @@ export default function Home() {
                   disabled={disabled}
                   onClick={() => {
                     if (disabled) return
-                    if (isActive) chooseService(s.id)
-                    else setSelected(s.id)
+                    // نقرة واحدة تختار الخدمة وتنتقل مباشرة (بدل الحاجة لنقرتين).
+                    setSelected(s.id)
+                    chooseService(s.id)
                   }}
                   style={{ animationDelay: `${i * 55}ms` }}
                   className={`press-scale animate-fade-up relative w-32 shrink-0 rounded-2xl border p-3 text-center transition-colors ${
