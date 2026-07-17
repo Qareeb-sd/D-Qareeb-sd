@@ -34,6 +34,7 @@ import Logo from '@/components/Logo'
 import MapView from '@/components/MapView'
 import { StatCard, ChartCard, StatusBadge, BarChart, DonutChart } from '@/components/admin/AdminUI'
 import IncentivesManager from '@/components/admin/IncentivesManager'
+import DriverPerformance from '@/components/admin/DriverPerformance'
 import { services } from '@/data/services'
 import { money, num } from '@/lib/format'
 import { useAuth } from '@/store/AuthContext'
@@ -1162,6 +1163,10 @@ export default function AdminDashboard() {
       cancellation_far_min: settings.cancellation_far_min,
       min_driver_balance: settings.min_driver_balance,
       referral_reward: settings.referral_reward,
+      loyalty_per_ride: settings.loyalty_per_ride,
+      loyalty_point_value: settings.loyalty_point_value,
+      auto_surge_enabled: settings.auto_surge_enabled,
+      auto_surge_max: settings.auto_surge_max,
     })
     setSavedMsg(error ? `خطأ: ${error}` : 'تم حفظ الإعدادات ✓')
   }
@@ -1800,7 +1805,9 @@ export default function AdminDashboard() {
         )}
 
         {tab === 'drivers' && (
-          <div className="card p-4">
+          <div className="space-y-4">
+            <DriverPerformance />
+            <div className="card p-4">
             <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
               <p className="font-bold">
                 السائقون ({filteredDrivers.length})
@@ -1944,6 +1951,7 @@ export default function AdminDashboard() {
                 })}
               </div>
             )}
+          </div>
           </div>
         )}
 
@@ -2867,6 +2875,30 @@ export default function AdminDashboard() {
                     onChange={(v) => setSettings({ ...settings, tier2_max_km: v })}
                   />
                 </div>
+
+                <div className="rounded-2xl border border-sand/40 bg-sand-soft/40 p-3">
+                  <label className="flex items-center gap-2 font-bold text-royal">
+                    <input
+                      type="checkbox"
+                      className="h-4 w-4 accent-green"
+                      checked={settings.auto_surge_enabled}
+                      onChange={(e) =>
+                        setSettings({ ...settings, auto_surge_enabled: e.target.checked })
+                      }
+                    />
+                    تسعير ذروة تلقائي
+                  </label>
+                  <p className="mb-2 mt-1 text-xs text-ink-muted">
+                    يرفع المضاعف تلقائياً حسب نسبة الطلبات الباحثة للسائقين المتصلين حتى السقف.
+                    عند تعطيله يُستخدم «مضاعف الذروة» اليدوي أعلاه.
+                  </p>
+                  <NumField
+                    label="سقف المضاعف التلقائي"
+                    step={0.1}
+                    value={settings.auto_surge_max}
+                    onChange={(v) => setSettings({ ...settings, auto_surge_max: v })}
+                  />
+                </div>
                 {savedMsg && <p className="text-sm text-green">{savedMsg}</p>}
                 <button className="btn-primary w-full" type="submit">
                   حفظ
@@ -3163,6 +3195,28 @@ export default function AdminDashboard() {
                 value={settings.referral_reward}
                 onChange={(v) => setSettings({ ...settings, referral_reward: v })}
               />
+            </div>
+
+            <div className="rounded-2xl border border-sand/40 bg-sand-soft/40 p-3">
+              <p className="font-bold text-royal">نقاط الولاء</p>
+              <p className="mb-2 text-xs text-ink-muted">
+                نقاط يكسبها العميل عن كل رحلة مكتملة، ويستبدلها برصيد. اضبط النقاط على 0 لتعطيل
+                البرنامج.
+              </p>
+              <div className="grid grid-cols-2 gap-2">
+                <NumField
+                  label="نقاط لكل رحلة"
+                  step={1}
+                  value={settings.loyalty_per_ride}
+                  onChange={(v) => setSettings({ ...settings, loyalty_per_ride: v })}
+                />
+                <NumField
+                  label="قيمة النقطة (ج.س)"
+                  step={10}
+                  value={settings.loyalty_point_value}
+                  onChange={(v) => setSettings({ ...settings, loyalty_point_value: v })}
+                />
+              </div>
             </div>
             {savedMsg && <p className="text-sm text-green">{savedMsg}</p>}
             <button className="btn-primary w-full" type="submit">

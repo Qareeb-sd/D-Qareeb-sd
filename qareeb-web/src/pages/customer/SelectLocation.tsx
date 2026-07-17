@@ -36,6 +36,8 @@ import {
   validatePromo,
   listServicePeriods,
   nearbyOnlineDrivers,
+  getWallet,
+  getCurrentSurge,
   type PromoResult,
 } from '@/lib/api'
 import {
@@ -132,8 +134,14 @@ export default function SelectLocation() {
 
   // دَيْن رسوم إلغاء سابق (يُضاف لأجرة هذه الرحلة).
   const [debt, setDebt] = useState(0)
+  const [walletBal, setWalletBal] = useState<number | null>(null)
+  const [surge, setSurge] = useState(1)
+  useEffect(() => {
+    void getCurrentSurge().then(setSurge)
+  }, [])
   useEffect(() => {
     if (profile?.id) void getCancellationDebt(profile.id).then(setDebt)
+    if (profile?.id) void getWallet(profile.id).then((w) => setWalletBal(w?.balance ?? 0))
   }, [profile?.id])
 
   // السيارات المتصلة القريبة (تُعبّأ أدناه بعد تعريف activePos).
@@ -323,9 +331,11 @@ export default function SelectLocation() {
       }
       if (!alive) return
       // النموذج الجديد (فترات) إن توفّر، وإلا التسعير القديم (شرائح).
-      const fare = periodRate
+      const baseFare = periodRate
         ? computeFare(km, min, periodRate)
         : estimateFare({ distanceKm: km, durationMin: min, pricing, settings }).total
+      // مضاعف الذروة (تلقائي/يدوي) يُطبَّق على الأجرة ويُقرّب لأقرب 100.
+      const fare = surge > 1 ? Math.round((baseFare * surge) / 100) * 100 : baseFare
       setQuote({ distanceKm: km, durationMin: min, fare, real: anyReal })
     }, 700)
     return () => {
@@ -333,7 +343,7 @@ export default function SelectLocation() {
       clearTimeout(t)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pickupPos, dropoffPos, pickupSet, dropoffSet, pricing, settings, periodRate, JSON.stringify(stops)])
+  }, [pickupPos, dropoffPos, pickupSet, dropoffSet, pricing, settings, periodRate, surge, JSON.stringify(stops)])
 
   const activePos = active === 'pickup' ? pickupPos : dropoffPos
   const setActivePos = active === 'pickup' ? setPickupPos : setDropoffPos
@@ -829,6 +839,14 @@ export default function SelectLocation() {
             </div>
           )}
 
+          {/* شارة الذروة — يعرف العميل أن السعر أعلى بسبب ازدحام الطلب */}
+          {quote && destChosen && surge > 1 && (
+            <div className="mt-2 flex items-center gap-1.5 rounded-xl bg-warning/10 px-3 py-2 text-[12px] font-bold text-warning">
+              <RouteIcon className="h-4 w-4" strokeWidth={2.2} />
+              تسعير ذروة ×{surge} — الطلب مرتفع حالياً.
+            </div>
+          )}
+
           {/* دَيْن رسوم إلغاء سابق مُضاف لهذه الرحلة */}
           {quote && destChosen && debt > 0 && (
             <div className="mt-2 flex items-center justify-between rounded-xl bg-warning/10 px-3 py-2 text-[12px]">
@@ -956,11 +974,21 @@ export default function SelectLocation() {
                 )
               })}
             </div>
-            {payment === 'wallet' && (
-              <p className="mt-1.5 text-[11px] text-ink-muted">
-                سيُخصم المبلغ من محفظتك فور تأكيد الرحلة، ويُسترجَع إن أُلغيت.
-              </p>
-            )}
+            {payment === 'wallet' &&
+              (walletBal != null && quote && walletBal < effectiveFare + debt ? (
+                <button
+                  onClick={() => navigate('/wallet')}
+                  className="mt-1.5 flex w-full items-center gap-1.5 rounded-xl bg-danger/5 px-3 py-2 text-right text-[12px] font-bold text-danger"
+                >
+                  <Wallet className="h-4 w-4 shrink-0" strokeWidth={2} />
+                  رصيد محفظتك {money(walletBal)} لا يكفي لهذه الرحلة — اضغط لتعبئة المحفظة.
+                </button>
+              ) : (
+                <p className="mt-1.5 text-[11px] text-ink-muted">
+                  سيُخصم المبلغ من محفظتك فور تأكيد الرحلة، ويُسترجَع إن أُلغيت.
+                  {walletBal != null && ` رصيدك: ${money(walletBal)}.`}
+                </p>
+              ))}
           </div>
 
           {/* زر التأكيد */}

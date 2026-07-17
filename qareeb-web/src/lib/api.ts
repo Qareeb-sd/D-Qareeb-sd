@@ -50,6 +50,10 @@ const demoSettings: Settings = {
   cancellation_far_min: 15,
   min_driver_balance: 0,
   referral_reward: 0,
+  loyalty_per_ride: 0,
+  loyalty_point_value: 0,
+  auto_surge_enabled: false,
+  auto_surge_max: 2.0,
   updated_at: new Date().toISOString(),
 }
 
@@ -315,6 +319,7 @@ export async function submitReview(
   stars: number,
   complaint?: string | null,
   mismatch?: { driver?: boolean; vehicle?: boolean },
+  extra?: { tags?: string[]; comment?: string | null },
 ): Promise<{ error?: string }> {
   if (!isSupabaseConfigured) return {}
   const { error } = await supabase.rpc('submit_review', {
@@ -323,6 +328,8 @@ export async function submitReview(
     p_complaint: complaint?.trim() || null,
     p_driver_mismatch: mismatch?.driver ?? false,
     p_vehicle_mismatch: mismatch?.vehicle ?? false,
+    p_tags: extra?.tags?.length ? extra.tags : null,
+    p_comment: extra?.comment?.trim() || null,
   })
   return error ? { error: error.message } : {}
 }
@@ -770,6 +777,22 @@ export async function listAllDrivers(): Promise<AdminDriverRow[]> {
   return (data as AdminDriverRow[]) ?? []
 }
 
+export interface DriverPerf {
+  user_id: string
+  name: string | null
+  phone: string
+  rating: number | null
+  rides: number
+  earnings: number
+  cancels: number
+}
+/** أداء السائقين (أدمن): رحلات/تقييم/إيرادات/إلغاءات خلال مدّة. */
+export async function getDriverPerformance(days = 30): Promise<DriverPerf[]> {
+  if (!isSupabaseConfigured) return []
+  const { data } = await supabase.rpc('admin_driver_performance', { p_days: days })
+  return (data as DriverPerf[]) ?? []
+}
+
 export async function listAllRides(limit = 50): Promise<Ride[]> {
   if (!isSupabaseConfigured) return demoRides
   const { data } = await supabase
@@ -1188,6 +1211,30 @@ export async function setDriverOnline(
 export async function updateMyLocation(lat: number, lng: number): Promise<void> {
   if (!isSupabaseConfigured) return
   await supabase.rpc('update_my_location', { p_lat: lat, p_lng: lng })
+}
+
+/** مضاعف الذروة الحالي (تلقائي حسب الطلب أو يدوي). */
+export async function getCurrentSurge(): Promise<number> {
+  if (!isSupabaseConfigured) return 1
+  const { data } = await supabase.rpc('current_surge')
+  const n = typeof data === 'number' ? data : Number(data)
+  return Number.isFinite(n) && n >= 1 ? n : 1
+}
+
+/** نقاط ولاء العميل الحالي + قيمة النقطة. */
+export async function getMyLoyalty(): Promise<{ points: number; point_value: number }> {
+  if (!isSupabaseConfigured) return { points: 0, point_value: 0 }
+  const { data } = await supabase.rpc('my_loyalty')
+  const row = (data as { points: number; point_value: number }[])?.[0]
+  return { points: row?.points ?? 0, point_value: row?.point_value ?? 0 }
+}
+
+/** استبدال نقاط ولاء برصيد في المحفظة. */
+export async function redeemLoyalty(points: number): Promise<{ amount?: number; error?: string }> {
+  if (!isSupabaseConfigured) return { amount: 0 }
+  const { data, error } = await supabase.rpc('redeem_loyalty', { p_points: points })
+  if (error) return { error: error.message }
+  return { amount: (data as { amount?: number })?.amount ?? 0 }
 }
 
 /** نقاط كثافة الطلب الأخيرة (لخريطة السائق الحرارية). */

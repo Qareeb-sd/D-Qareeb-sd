@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
-import { Bell, BellOff, LifeBuoy, Eye, Star, ChevronLeft, Route, Coins, Power, User, Flame } from 'lucide-react'
+import { Bell, BellOff, LifeBuoy, Eye, Star, ChevronLeft, Route, Coins, Power, User, Flame, Navigation } from 'lucide-react'
 import { haversineKm } from '@/lib/pricing'
 import Logo from '@/components/Logo'
 import DriverNav from '@/components/DriverNav'
@@ -16,6 +16,7 @@ import {
   getWallet,
   listDriverTransactions,
   updateMyLocation,
+  getSettings,
 } from '@/lib/api'
 import { subscribeToRides } from '@/lib/realtime'
 import {
@@ -44,12 +45,16 @@ export default function DriverHome() {
   const [busyId, setBusyId] = useState<string | null>(null)
   const [notifOn, setNotifOn] = useState(notificationsGranted())
   const [acceptMsg, setAcceptMsg] = useState('')
+  const [myPos, setMyPos] = useState<google.maps.LatLngLiteral | null>(null)
 
   // ملخّص اليوم (رحلات + صافي أرباح) — من محفظة السائق ومعاملاتها.
   const { data: wallet } = useQuery({
     queryKey: ['driver-wallet', userId],
     queryFn: () => getWallet(userId),
   })
+  const { data: settings } = useQuery({ queryKey: ['settings'], queryFn: getSettings })
+  const minBalance = settings?.min_driver_balance ?? 0
+  const lowBalance = wallet != null && minBalance > 0 && (wallet.balance ?? 0) < minBalance
   const { data: txs = [] } = useQuery({
     queryKey: ['driver-transactions', wallet?.id],
     queryFn: () => listDriverTransactions(wallet!.id),
@@ -136,6 +141,7 @@ export default function DriverHome() {
     let alive = true
     let last = 0
     const report = (lat: number, lng: number) => {
+      if (alive) setMyPos({ lat, lng }) // نحتفظ بالموقع لحساب بُعد الراكب
       const now = Date.now()
       if (now - last < 10000) return // خنق: مرّة كل ١٠ ثوانٍ على الأكثر
       last = now
@@ -250,6 +256,26 @@ export default function DriverHome() {
       </header>
 
       <main className="flex-1 px-4 pt-4 pb-24">
+        {/* تنبيه رصيد منخفض — يمنع الاتصال واستقبال الطلبات */}
+        {lowBalance && (
+          <button
+            onClick={() => navigate('/driver/wallet')}
+            className="mb-4 flex w-full items-center gap-3 rounded-2xl border border-danger/40 bg-danger/5 p-3.5 text-right"
+          >
+            <span className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-danger/15 text-danger">
+              <Coins className="h-5 w-5" strokeWidth={2} />
+            </span>
+            <div className="flex-1">
+              <p className="font-bold text-danger">رصيدك منخفض</p>
+              <p className="text-xs text-ink-soft">
+                رصيدك {money(wallet?.balance ?? 0)} أقلّ من الحدّ الأدنى {money(minBalance)} — عبّئ
+                رصيدك لتتمكّن من الاتصال واستقبال الطلبات.
+              </p>
+            </div>
+            <ChevronLeft className="h-5 w-5 text-ink-muted" />
+          </button>
+        )}
+
         {/* ملخّص اليوم — رحلات + صافي أرباح + تقييم */}
         <div className="mb-4 grid grid-cols-3 gap-2.5">
           <SummaryStat Icon={Route} label="رحلات اليوم" value={String(tripsToday)} />
@@ -357,6 +383,11 @@ export default function DriverHome() {
                       { lat: r.dropoff_lat, lng: r.dropoff_lng },
                     ) * 1.3
                   : null
+              // بُعد الراكب عن السائق (خطّ مستقيم × معامل الطريق) + زمن تقريبي.
+              const toPickupKm = myPos
+                ? haversineKm(myPos, { lat: r.pickup_lat, lng: r.pickup_lng }) * 1.3
+                : null
+              const toPickupMin = toPickupKm != null ? Math.max(1, Math.round((toPickupKm / 25) * 60)) : null
               return (
                 <div key={r.id} className="rounded-2xl bg-white p-4 shadow-card">
                   <div className="flex items-center gap-3">
@@ -389,6 +420,14 @@ export default function DriverHome() {
                       </span>
                     )}
                   </div>
+
+                  {/* بُعد الراكب عن السائق — يقرّر السائق بسرعة */}
+                  {toPickupKm != null && (
+                    <div className="mt-2 flex items-center gap-2 rounded-xl bg-green-mint px-3 py-2 text-[13px] font-bold text-green">
+                      <Navigation className="h-4 w-4" strokeWidth={2.2} />
+                      الراكب يبعد ~{toPickupKm.toFixed(1)} كم عنك ({toPickupMin} دقيقة)
+                    </div>
+                  )}
 
                   <button
                     onClick={() => accept(r)}

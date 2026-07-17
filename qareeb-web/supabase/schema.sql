@@ -3606,3 +3606,201 @@ grant execute on function public.demand_hotspots(int) to authenticated;
 --  نقاط توقّف متوسّطة في الرحلة (بين الانطلاق والوجهة) — مصفوفة JSON.
 -- ============================================================
 alter table public.rides add column if not exists stops jsonb;
+
+-- ============================================================
+--  تقييم بوسوم + تعليق: وسوم سريعة (نظيف/سريع/مهذّب…) وتعليق إيجابي على التقييم.
+-- ============================================================
+alter table public.reviews add column if not exists tags    text[];
+alter table public.reviews add column if not exists comment text;
+
+drop function if exists public.submit_review(uuid, int, text);
+drop function if exists public.submit_review(uuid, int, text, boolean, boolean);
+
+create or replace function public.submit_review(
+  p_ride uuid, p_stars int, p_complaint text default null,
+  p_driver_mismatch boolean default false, p_vehicle_mismatch boolean default false,
+  p_tags text[] default null, p_comment text default null
+) returns void language plpgsql security definer set search_path = public as $$
+declare
+  v_customer uuid; v_driver uuid; v_status ride_status;
+  v_role text; v_ratee uuid; v_avg numeric; v_cnt int; v_complaint text;
+begin
+  if p_stars is null or p_stars < 1 or p_stars > 5 then
+    raise exception 'التقييم يجب أن يكون بين 1 و5';
+  end if;
+  select customer_id, driver_id, status into v_customer, v_driver, v_status
+    from public.rides where id = p_ride;
+  if not found then raise exception 'الرحلة غير موجودة'; end if;
+  if v_status <> 'completed' then raise exception 'لا يمكن التقييم قبل انتهاء الرحلة'; end if;
+
+  if auth.uid() = v_customer then v_role := 'customer'; v_ratee := v_driver;
+  elsif auth.uid() = v_driver then v_role := 'driver'; v_ratee := v_customer;
+  else raise exception 'غير مصرّح — لست طرفاً في هذه الرحلة'; end if;
+  if v_ratee is null then raise exception 'لا يوجد طرف آخر لتقييمه'; end if;
+
+  v_complaint := nullif(btrim(coalesce(p_complaint, '')), '');
+  if p_driver_mismatch then
+    v_complaint := concat_ws(' | ', v_complaint, 'مخالفة: السائق يختلف عن المسجّل (حساب مُعار)');
+  end if;
+  if p_vehicle_mismatch then
+    v_complaint := concat_ws(' | ', v_complaint, 'مخالفة: المركبة تختلف عن المسجّلة');
+  end if;
+
+  insert into public.reviews
+    (ride_id, rater_id, ratee_id, rater_role, stars, complaint, driver_mismatch, vehicle_mismatch,
+     complaint_status, tags, comment)
+  values
+    (p_ride, auth.uid(), v_ratee, v_role, p_stars, v_complaint, p_driver_mismatch, p_vehicle_mismatch,
+     case when v_complaint is not null then 'open' else 'resolved' end,
+     p_tags, nullif(btrim(coalesce(p_comment, '')), ''))
+  on conflict (ride_id, rater_role) do update
+    set stars = excluded.stars, complaint = excluded.complaint,
+        driver_mismatch = excluded.driver_mismatch, vehicle_mismatch = excluded.vehicle_mismatch,
+        complaint_status = case when excluded.complaint is not null then 'open' else 'resolved' end,
+        tags = excluded.tags, comment = excluded.comment, created_at = now();
+
+  select round(avg(stars)::numeric, 1), count(*) into v_avg, v_cnt
+    from public.reviews where ratee_id = v_ratee;
+  update public.users   set rating = v_avg, ratings_count = v_cnt where id = v_ratee;
+  update public.drivers set rating = v_avg where user_id = v_ratee;
+end $$;
+grant execute on function public.submit_review(uuid, int, text, boolean, boolean, text[], text) to authenticated;
+
+-- ============================================================
+--  إشعارات حالة الرحلة للعميل (Push): عند قبول/وصول/بدء/إكمال الرحلة.
+-- ============================================================
+create or replace function public.notify_ride_status()
+returns trigger language plpgsql security definer set search_path = public as $$
+declare v_title text; v_body text;
+begin
+  if new.status is distinct from old.status then
+    if new.status = 'accepted' then
+      v_title := 'تم قبول رحلتك'; v_body := 'السائق في الطريق إليك — تابع وصوله على الخريطة.';
+    elsif new.status = 'arrived' then
+      v_title := 'وصل السائق'; v_body := 'الكابتن بانتظارك في نقطة الالتقاء.';
+    elsif new.status = 'in_progress' then
+      v_title := 'بدأت رحلتك'; v_body := 'أنت في الطريق إلى وجهتك — رحلة موفّقة.';
+    elsif new.status = 'completed' then
+      v_title := 'انتهت رحلتك'; v_body := 'وصلت بالسلامة — لا تنسَ تقييم رحلتك 🌟';
+    else
+      return new;
+    end if;
+    begin
+      perform net.http_post(
+        url := 'https://yjdidwnnlyeisaahfmlr.supabase.co/functions/v1/notify-user-fcm',
+        headers := '{"Content-Type": "application/json"}'::jsonb,
+        body := jsonb_build_object('user_id', new.customer_id::text, 'title', v_title, 'body', v_body));
+    exception when others then null; end;
+  end if;
+  return new;
+end $$;
+drop trigger if exists trg_notify_ride_status on public.rides;
+create trigger trg_notify_ride_status after update on public.rides
+  for each row execute function public.notify_ride_status();
+
+-- ============================================================
+--  نظام نقاط الولاء: نقاط لكل رحلة مكتملة، تُستبدل برصيد في المحفظة.
+-- ============================================================
+alter table public.users    add column if not exists loyalty_points int not null default 0;
+alter table public.settings add column if not exists loyalty_per_ride    int not null default 0;   -- نقاط لكل رحلة
+alter table public.settings add column if not exists loyalty_point_value numeric(12,2) not null default 0; -- قيمة النقطة (ج.س)
+
+-- منح نقاط للعميل عند إكمال الرحلة.
+create or replace function public.award_loyalty()
+returns trigger language plpgsql security definer set search_path = public as $$
+declare v_pts int;
+begin
+  if new.status = 'completed' and old.status is distinct from 'completed' then
+    select loyalty_per_ride into v_pts from public.settings where id = 1;
+    if coalesce(v_pts, 0) > 0 then
+      update public.users set loyalty_points = loyalty_points + v_pts where id = new.customer_id;
+    end if;
+  end if;
+  return new;
+end $$;
+drop trigger if exists trg_award_loyalty on public.rides;
+create trigger trg_award_loyalty after update on public.rides
+  for each row execute function public.award_loyalty();
+
+-- نقاط العميل الحالي + قيمتها.
+create or replace function public.my_loyalty()
+returns table (points int, point_value numeric) language sql security definer set search_path = public stable as $$
+  select coalesce(u.loyalty_points, 0),
+         (select loyalty_point_value from public.settings where id = 1)
+  from public.users u where u.id = auth.uid();
+$$;
+grant execute on function public.my_loyalty() to authenticated;
+
+-- استبدال النقاط برصيد في المحفظة.
+create or replace function public.redeem_loyalty(p_points int)
+returns jsonb language plpgsql security definer set search_path = public as $$
+declare v_uid uuid := auth.uid(); v_have int; v_val numeric; v_amount numeric; v_wallet uuid;
+begin
+  if v_uid is null then raise exception 'غير مصرّح'; end if;
+  if coalesce(p_points, 0) <= 0 then raise exception 'عدد النقاط غير صالح'; end if;
+  select loyalty_points into v_have from public.users where id = v_uid for update;
+  if coalesce(v_have, 0) < p_points then raise exception 'نقاطك غير كافية'; end if;
+  select loyalty_point_value into v_val from public.settings where id = 1;
+  if coalesce(v_val, 0) <= 0 then raise exception 'استبدال النقاط غير مفعّل حالياً'; end if;
+  v_amount := p_points * v_val;
+  update public.users set loyalty_points = loyalty_points - p_points where id = v_uid;
+  select id into v_wallet from public.wallets where user_id = v_uid for update;
+  if v_wallet is null then raise exception 'المحفظة غير موجودة'; end if;
+  update public.wallets set balance = balance + v_amount, updated_at = now() where id = v_wallet;
+  insert into public.transactions (wallet_id, type, amount, note)
+    values (v_wallet, 'topup', v_amount, 'استبدال ' || p_points || ' نقطة ولاء');
+  return jsonb_build_object('amount', v_amount);
+end $$;
+grant execute on function public.redeem_loyalty(int) to authenticated;
+
+-- ============================================================
+--  لوحة أداء السائقين (أدمن): تجميع رحلات/تقييم/إيرادات/إلغاءات لكل سائق.
+-- ============================================================
+create or replace function public.admin_driver_performance(p_days int default 30)
+returns table (
+  user_id uuid, name text, phone text, rating numeric,
+  rides int, earnings numeric, cancels int
+) language sql security definer set search_path = public stable as $$
+  select d.user_id,
+         u.full_name,
+         u.phone,
+         d.rating,
+         (select count(*)::int from public.rides r
+            where r.driver_id = d.user_id and r.status = 'completed'
+              and r.created_at > now() - make_interval(days => p_days)),
+         coalesce((select sum(r.fare) from public.rides r
+            where r.driver_id = d.user_id and r.status = 'completed'
+              and r.created_at > now() - make_interval(days => p_days)), 0),
+         (select count(*)::int from public.rides r
+            where r.driver_id = d.user_id and r.status = 'cancelled'
+              and r.created_at > now() - make_interval(days => p_days))
+  from public.drivers d
+  join public.users u on u.id = d.user_id
+  where public.is_admin()
+  order by 5 desc, 4 desc nulls last;
+$$;
+grant execute on function public.admin_driver_performance(int) to authenticated;
+
+-- ============================================================
+--  تسعير ذروة تلقائي: يحسب مضاعف الذروة من نسبة الطلبات الباحثة للسائقين المتصلين.
+--  عند التعطيل يعيد المضاعف اليدوي (surge_multiplier).
+-- ============================================================
+alter table public.settings add column if not exists auto_surge_enabled boolean not null default false;
+alter table public.settings add column if not exists auto_surge_max numeric(4,2) not null default 2.0;
+
+create or replace function public.current_surge()
+returns numeric language plpgsql security definer set search_path = public stable as $$
+declare v_auto boolean; v_max numeric; v_manual numeric; v_demand int; v_supply int; v_surge numeric;
+begin
+  select auto_surge_enabled, auto_surge_max, surge_multiplier
+    into v_auto, v_max, v_manual from public.settings where id = 1;
+  if not coalesce(v_auto, false) then return coalesce(v_manual, 1); end if;
+  select count(*) into v_demand from public.rides
+    where status in ('searching', 'requested') and created_at > now() - interval '15 minutes';
+  select count(*) into v_supply from public.drivers
+    where is_online and last_loc_at > now() - interval '5 minutes';
+  if v_supply = 0 then v_supply := 1; end if;
+  v_surge := round(least(coalesce(v_max, 2.0), greatest(1.0, v_demand::numeric / v_supply)), 1);
+  return v_surge;
+end $$;
+grant execute on function public.current_surge() to authenticated;

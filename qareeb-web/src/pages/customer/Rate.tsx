@@ -21,6 +21,10 @@ export default function Rate() {
   // للأمان: هل السائق/المركبة نفس المسجّل؟ (عدم التطابق = مخالفة حساب مُعار)
   const [driverSame, setDriverSame] = useState(true)
   const [vehicleSame, setVehicleSame] = useState(true)
+  const [tags, setTags] = useState<string[]>([])
+  const [comment, setComment] = useState('')
+  const toggleTag = (t: string) =>
+    setTags((cur) => (cur.includes(t) ? cur.filter((x) => x !== t) : [...cur, t]))
 
   useEffect(() => {
     if (!rideId) return
@@ -33,10 +37,13 @@ export default function Rate() {
   const finish = async () => {
     setBusy(true)
     if (rideId) {
-      const { error } = await submitReview(rideId, stars, complaint, {
-        driver: !driverSame,
-        vehicle: !vehicleSame,
-      })
+      const { error } = await submitReview(
+        rideId,
+        stars,
+        complaint,
+        { driver: !driverSame, vehicle: !vehicleSame },
+        { tags, comment },
+      )
       if (error) {
         setBusy(false)
         return alert(error)
@@ -66,6 +73,33 @@ export default function Rate() {
             />
           </button>
         ))}
+      </div>
+
+      {/* وسوم سريعة + تعليق */}
+      <div className="mt-3">
+        <p className="mb-2 text-center text-[13px] text-ink-soft">ما الذي أعجبك؟</p>
+        <div className="flex flex-wrap justify-center gap-2">
+          {['نظيفة', 'سريع', 'مهذّب', 'قيادة آمنة', 'دقيق بالموعد', 'مركبة مريحة'].map((t) => {
+            const on = tags.includes(t)
+            return (
+              <button
+                key={t}
+                onClick={() => toggleTag(t)}
+                className={`rounded-full border px-3.5 py-1.5 text-[13px] font-bold transition ${
+                  on ? 'border-green bg-green text-white' : 'border-hairline text-ink-soft'
+                }`}
+              >
+                {t}
+              </button>
+            )
+          })}
+        </div>
+        <textarea
+          className="field mt-3 min-h-[64px] resize-none"
+          placeholder="أضف تعليقاً للسائق (اختياري)…"
+          value={comment}
+          onChange={(e) => setComment(e.target.value)}
+        />
       </div>
 
       {/* تحقّق المطابقة (أمان) — عدم التطابق مخالفة تصل للإدارة */}
