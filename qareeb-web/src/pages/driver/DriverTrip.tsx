@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate, Navigate } from 'react-router-dom'
 import {
-  Navigation,
   MapPin,
   User,
   Phone,
@@ -386,15 +385,6 @@ export default function DriverTrip() {
     navigate('/driver', { replace: true })
   }
 
-  // يفتح ملاحة قوقل خارجياً نحو الهدف الحالي (يفتح التطبيق على الجهاز).
-  const openNav = () => {
-    if (!target) return
-    window.open(
-      `https://www.google.com/maps/dir/?api=1&destination=${target.lat},${target.lng}&travelmode=driving`,
-      '_blank',
-    )
-  }
-
   const stepIndex =
     activeRide.status === 'arrived' ? 1 : activeRide.status === 'in_progress' ? 2 : 0
   const headingLabel = heading === 'pickup' ? 'التوجّه إلى الراكب' : 'التوجّه إلى الوجهة'
@@ -471,14 +461,6 @@ export default function DriverTrip() {
             </div>
           </div>
 
-          {/* بديل اختياري: فتح خرائط قوقل خارجياً (الملاحة الأساسية داخل التطبيق) */}
-          <button
-            onClick={openNav}
-            className="press-scale absolute bottom-4 left-4 flex items-center gap-1.5 rounded-full bg-white/95 px-3 py-2 text-[11px] font-bold text-royal shadow-float backdrop-blur"
-          >
-            <Navigation className="h-3.5 w-3.5" strokeWidth={2.2} />
-            خرائط قوقل
-          </button>
         </div>
 
         {/* لوحة سفلية: خطوات الرحلة + الأرباح + الإجراءات */}
