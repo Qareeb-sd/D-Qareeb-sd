@@ -26,6 +26,7 @@ import MapView from '@/components/MapView'
 import SosButton from '@/components/SosButton'
 import ShareRideButton from '@/components/ShareRideButton'
 import RideChat from '@/components/RideChat'
+import CancelReasonSheet, { type CancelReason } from '@/components/CancelReasonSheet'
 import { useDriver } from '@/store/DriverContext'
 import { useAuth } from '@/store/AuthContext'
 import {
@@ -134,6 +135,7 @@ export default function DriverTrip() {
   } | null>(null)
   const [busy, setBusy] = useState(false)
   const [settleErr, setSettleErr] = useState('')
+  const [showRelease, setShowRelease] = useState(false)
   const [recovering, setRecovering] = useState(!activeRide)
   // موقع السائق الحيّ + خطّ الملاحة إلى الهدف الحالي.
   const [pos, setPos] = useState<google.maps.LatLngLiteral | null>(null)
@@ -158,6 +160,8 @@ export default function DriverTrip() {
   // آخر نقطة حُسِب منها المسار — لخنق طلبات OSRM (نعيد الحساب فقط عند تحرّك مؤثّر
   // أو تغيّر الوجهة، لا مع كل نبضة GPS — مهمّ لموثوقية الخادم العام داخل السودان).
   const lastRouteRef = useRef<{ origin: google.maps.LatLngLiteral; destKey: string } | null>(null)
+  // مؤشّر المناورة الحالية على قائمة الخطوات (يتقدّم فقط) — للملاحة التتابعية.
+  const navIdxRef = useRef(0)
 
   useEffect(() => {
     void getSettings().then((s) => setRate(s.commission_rate))
@@ -195,18 +199,28 @@ export default function DriverTrip() {
     if (!rid) return
     let cancelled = false
     let stop = () => {}
+    // خنق البثّ للخادم: نحدّث الخريطة محلياً مع كل قراءة (سلاسة)، لكن نبثّ للخادم
+    // مرّة كل ~4ث على الأكثر (بدل كل نبضة GPS) — يقلّل ضغط الشبكة، والنبضة الدورية
+    // كل 6ث تغطّي حالة الوقوف.
+    let lastBroadcast = 0
+    const broadcast = (here: google.maps.LatLngLiteral, force = false) => {
+      const now = Date.now()
+      if (!force && now - lastBroadcast < 4000) return
+      lastBroadcast = now
+      void updateDriverLocation(rid, here.lat, here.lng)
+    }
     // موقع فوري أولاً (ليراه الراكب بسرعة) ثم تتبّع مستمر.
     void getCurrentPos().then((here) => {
       if (here && !cancelled) {
         setPos(here)
-        void updateDriverLocation(rid, here.lat, here.lng)
+        broadcast(here, true)
       }
     })
     let lastPos: google.maps.LatLngLiteral | null = null
     void watchPos((here) => {
       lastPos = here
       setPos(here)
-      void updateDriverLocation(rid, here.lat, here.lng)
+      broadcast(here)
     }).then((s) => {
       if (cancelled) s()
       else stop = s
@@ -216,13 +230,13 @@ export default function DriverTrip() {
     const beat = setInterval(() => {
       if (cancelled) return
       if (lastPos) {
-        void updateDriverLocation(rid, lastPos.lat, lastPos.lng)
+        broadcast(lastPos, true)
       } else {
         void getCurrentPos().then((here) => {
           if (here && !cancelled) {
             lastPos = here
             setPos(here)
-            void updateDriverLocation(rid, here.lat, here.lng)
+            broadcast(here, true)
           }
         })
       }
@@ -321,18 +335,23 @@ export default function DriverTrip() {
     routePts.length >= 2 ? routePts : rOrigin && rDest ? [rOrigin, rDest] : []
 
   // المناورة التالية للملاحة داخل التطبيق: أقرب خطوة أمام السائق.
+  // عند وصول قائمة خطوات جديدة (مسار جديد) نُعيد مؤشّر المناورة للبداية.
+  useEffect(() => {
+    navIdxRef.current = 0
+  }, [navSteps])
+
   const nextStep = (() => {
     if (!pos || navSteps.length === 0) return null
     const distM = (a: google.maps.LatLngLiteral, b: google.maps.LatLngLiteral) =>
       haversineKm(a, b) * 1000
-    let best: { step: NavStep; d: number } | null = null
-    for (const s of navSteps) {
-      // نتخطّى «ابدأ»؛ ونبحث عن أقرب مناورة متبقّية أمام السائق.
-      if (s.instruction.startsWith('ابدأ')) continue
-      const d = distM(pos, s.location)
-      if (!best || d < best.d) best = { step: s, d }
-    }
-    return best
+    // نتتبّع المناورة الحالية بمؤشّر متقدّم فقط (لا يعود للخلف): نتجاوز المناورة عند
+    // الاقتراب منها (≤ 35م) فلا نعرض منعطفاً مضى، ثم نعرض التالية أمام السائق.
+    let i = navIdxRef.current
+    while (i < navSteps.length - 1 && distM(pos, navSteps[i].location) <= 35) i++
+    while (i < navSteps.length - 1 && navSteps[i].instruction.startsWith('ابدأ')) i++
+    navIdxRef.current = i
+    const step = navSteps[i]
+    return { step, d: distM(pos, step.location) }
   })()
 
   // حفظ تفضيل الكتم.
@@ -428,12 +447,12 @@ export default function DriverTrip() {
     navigate('/driver/rate', { state: { rideId }, replace: true })
   }
 
-  const release = async () => {
-    if (!confirm('التخلّي عن هذه الرحلة؟ ستعود متاحة لسائق آخر.')) return
+  const release = async (reason: CancelReason) => {
     setBusy(true)
-    const { error } = await cancelRide(activeRide.id)
+    const { error } = await cancelRide(activeRide.id, reason.label, reason.code)
     setBusy(false)
     if (error) return alert(error)
+    setShowRelease(false)
     setActiveRide(null)
     navigate('/driver', { replace: true })
   }
@@ -536,11 +555,13 @@ export default function DriverTrip() {
                 </span>
               )}
               <p className="text-sm font-bold text-white/90">
-                {!pos
-                  ? 'جارٍ تحديد موقعك…'
-                  : displayRoute.length > 1
-                    ? `اتبع المسار ${heading === 'pickup' ? 'إلى الراكب' : 'إلى الوجهة'}`
-                    : 'جارٍ حساب المسار…'}
+                {heading === 'dropoff' && !dropoffPt
+                  ? 'مشوار مفتوح — بلا وجهة محدّدة. تابع حسب طلب الراكب.'
+                  : !pos
+                    ? 'جارٍ تحديد موقعك…'
+                    : displayRoute.length > 1
+                      ? `اتبع المسار ${heading === 'pickup' ? 'إلى الراكب' : 'إلى الوجهة'}`
+                      : 'جارٍ حساب المسار…'}
               </p>
             </div>
           )}
@@ -804,7 +825,7 @@ export default function DriverTrip() {
             {(activeRide.status === 'accepted' || activeRide.status === 'arrived') && (
               <button
                 className="w-full text-center text-sm text-danger"
-                onClick={release}
+                onClick={() => setShowRelease(true)}
                 disabled={busy}
               >
                 التخلّي عن الرحلة
@@ -812,6 +833,22 @@ export default function DriverTrip() {
             )}
           </div>
         </section>
+
+        {/* ورقة سبب التخلّي — نلتقط سبباً كي يرصد التشغيل تكرار التخلّي */}
+        {showRelease && (
+          <div className="absolute inset-0 z-30 flex items-end bg-black/40 p-4">
+            <div className="w-full rounded-t-[24px] bg-white p-4 shadow-float">
+              <p className="mb-2 text-center text-sm font-bold text-royal">
+                سبب التخلّي عن الرحلة؟ ستعود متاحة لسائق آخر.
+              </p>
+              <CancelReasonSheet
+                busy={busy}
+                onConfirm={release}
+                onDismiss={() => setShowRelease(false)}
+              />
+            </div>
+          </div>
+        )}
       </div>
     </Screen>
   )

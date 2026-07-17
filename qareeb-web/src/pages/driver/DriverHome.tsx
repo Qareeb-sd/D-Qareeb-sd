@@ -201,20 +201,24 @@ export default function DriverHome() {
     }
   }, [online])
 
+  const [toggling, setToggling] = useState(false)
   const toggleOnline = async () => {
+    if (toggling) return
     const next = !online
-    setOnline(next)
     setAcceptMsg('')
-    // الخادم يفرض الحدّ الأدنى للرصيد عند الاتصال — نتحقّق أولاً قبل تشغيل الخدمات.
+    // لا نُغيّر الحالة (ولا نبدأ الاستطلاع/البثّ) إلا بعد تأكيد الخادم — الخادم يفرض
+    // الحدّ الأدنى للرصيد عند الاتصال، فقد يرفض. هذا يمنع ظهور السائق «متصلاً» لحظياً.
+    setToggling(true)
     if (driver) {
       const { error } = await setDriverOnline(driver.id, next)
       if (error) {
-        // رُفض الاتصال (رصيد غير كافٍ) — أعِد الحالة وأبلغ السائق.
-        setOnline(!next)
-        setAcceptMsg(error)
+        setToggling(false)
+        setAcceptMsg(error) // رُفض الاتصال (رصيد غير كافٍ)
         return
       }
     }
+    setOnline(next)
+    setToggling(false)
     // الخدمة الأمامية أثناء «متصل» فقط. رمز FCM يبقى محفوظاً (إشعارات الطلبات
     // تُرسَل للمتصلين فقط عبر الخادم، فلا يصل غير المتصل طلباً رغم بقاء رمزه).
     if (next) void startCaptainBg()
