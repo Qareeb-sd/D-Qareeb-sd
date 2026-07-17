@@ -17,6 +17,7 @@ import {
   listDriverTransactions,
   updateMyLocation,
   getSettings,
+  getActiveDriverRide,
 } from '@/lib/api'
 import { subscribeToRides } from '@/lib/realtime'
 import {
@@ -36,8 +37,10 @@ import type { Driver, Ride } from '@/lib/types'
 export default function DriverHome() {
   const navigate = useNavigate()
   const { profile } = useAuth()
-  const { setActiveRide } = useDriver()
+  const { activeRide, setActiveRide } = useDriver()
   const userId = profile?.id ?? 'demo-user'
+  // نتحقّق أوّلاً إن كان للسائق رحلة جارية قبل عرض شاشة الطلبات (منع الوميض).
+  const [checkingActive, setCheckingActive] = useState(true)
 
   const [driver, setDriver] = useState<Driver | null>(null)
   const [online, setOnline] = useState(false)
@@ -82,6 +85,32 @@ export default function DriverHome() {
     // تسجيل رمز FCM (محاولة موثوقة بعد جهوز التطبيق) — لإشعارات الاعتماد والطلبات.
     if (userId) void registerPush(userId)
   }, [userId])
+
+  // رحلة جارية؟ أعِد السائق إليها فوراً — يمنع فقدان الرحلة عند الضغط على «رجوع»
+  // أو الخروج من التطبيق ثم العودة (كان يهبط على شاشة الطلبات ولا يجد رحلته).
+  useEffect(() => {
+    if (!profile?.id) {
+      setCheckingActive(false)
+      return
+    }
+    if (activeRide) {
+      navigate('/driver/trip', { replace: true })
+      return
+    }
+    let alive = true
+    void getActiveDriverRide(profile.id).then((ride) => {
+      if (!alive) return
+      if (ride) {
+        setActiveRide(ride)
+        navigate('/driver/trip', { replace: true })
+      } else {
+        setCheckingActive(false)
+      }
+    })
+    return () => {
+      alive = false
+    }
+  }, [profile?.id, activeRide, navigate, setActiveRide])
 
   // أوقف الخدمة الأمامية عند مغادرة الشاشة إن لم يعد متصلاً (احتياط).
   useEffect(() => {
@@ -211,6 +240,15 @@ export default function DriverHome() {
     }
     setActiveRide({ ...ride, driver_id: userId, status: 'accepted' })
     navigate('/driver/trip')
+  }
+
+  // أثناء التحقّق من وجود رحلة جارية — نعرض مؤشّراً بدل وميض شاشة الطلبات.
+  if (checkingActive) {
+    return (
+      <div className="screen items-center justify-center bg-ivory">
+        <div className="h-10 w-10 animate-spin rounded-full border-4 border-royal-soft border-t-royal" />
+      </div>
+    )
   }
 
   return (
