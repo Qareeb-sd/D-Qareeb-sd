@@ -15,7 +15,7 @@
 
 **الحل (بلا أي تعديل على الكود):**
 1. استضِف OSRM على خادم صغير (VPS ~5–10$/شهر) بخريطة السودان من OpenStreetMap.
-   - حمّل خريطة السودan: `sudan-latest.osm.pbf` من Geofabrik.
+   - حمّل خريطة السودان: `sudan-latest.osm.pbf` من Geofabrik.
    - شغّل OSRM بالأمر المعتاد (osrm-extract / osrm-partition / osrm-customize / osrm-routed) أو عبر Docker.
 2. أضِف سطراً واحداً في ملف `.env` (المحلي وعلى Cloudflare Pages):
    ```
@@ -23,6 +23,9 @@
    ```
 3. أعِد البناء/النشر — انتهى. الكود يقرأ `OSRM_BASE_URL` من هذا المتغيّر تلقائياً
    (انظر `src/lib/maps.ts`).
+
+> 📘 **دليل عملي كامل خطوة بخطوة** (خادم + Docker + خريطة السودان + HTTPS):
+> [`docs/OSRM_SUDAN_SETUP.md`](./OSRM_SUDAN_SETUP.md)
 
 **بديل بمميزات إضافية (صوت + زحام حيّ):** Mapbox Navigation أو Google Directions
 (مدفوع بالطلب) — يتطلّب تعديل كود أكبر. غير ضروري للإطلاق.
