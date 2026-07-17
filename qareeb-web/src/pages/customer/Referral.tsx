@@ -151,7 +151,7 @@ export default function Referral() {
               />
               <button
                 onClick={apply}
-                disabled={applyBusy || entered.trim().length < 4}
+                disabled={applyBusy || entered.trim().length < 6}
                 className="btn-primary px-6 disabled:opacity-60"
               >
                 {applyBusy ? '…' : 'تأكيد'}

@@ -10,7 +10,8 @@ export default function DriverRate() {
   const navigate = useNavigate()
   const location = useLocation()
   const rideId = (location.state as { rideId?: string } | null)?.rideId
-  const [stars, setStars] = useState(5)
+  // لا نُفضّل تقييماً مسبقاً كي يحمل التقييم إشارة حقيقية (لا 5 نجوم بنقرة واحدة).
+  const [stars, setStars] = useState(0)
   const [complaint, setComplaint] = useState('')
   const [showComplaint, setShowComplaint] = useState(false)
   const [busy, setBusy] = useState(false)
@@ -70,8 +71,8 @@ export default function DriverRate() {
         )}
       </div>
 
-      <button className="btn-driver mt-6 w-full" onClick={finish} disabled={busy}>
-        {busy ? '…' : 'تم'}
+      <button className="btn-driver mt-6 w-full" onClick={finish} disabled={busy || stars === 0}>
+        {busy ? '…' : stars === 0 ? 'اختر تقييماً' : 'تم'}
       </button>
     </Screen>
   )

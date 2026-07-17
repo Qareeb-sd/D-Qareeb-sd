@@ -1531,7 +1531,10 @@ export interface PromoResult {
 /** يتحقّق من كود خصم ويعيد قيمة الخصم والسعر النهائي (بلا كشف الأكواد). */
 export async function validatePromo(code: string, fare: number): Promise<PromoResult> {
   if (!isSupabaseConfigured) return { valid: false, discount: 0, final: fare, message: 'غير متاح' }
-  const { data, error } = await supabase.rpc('validate_promo', { p_code: code, p_fare: fare })
+  const { data, error } = await supabase.rpc('validate_promo', {
+    p_code: code.trim().toUpperCase(),
+    p_fare: fare,
+  })
   const row = Array.isArray(data) ? data[0] : data
   if (error || !row) return { valid: false, discount: 0, final: fare, message: 'تعذّر التحقّق' }
   return {
@@ -1552,7 +1555,10 @@ export async function listPromos(): Promise<PromoCode[]> {
 /** إنشاء/تعديل كود خصم (أدمن — صلاحية settings). */
 export async function upsertPromo(promo: Partial<PromoCode> & { code: string }): Promise<{ error?: string }> {
   if (!isSupabaseConfigured) return {}
-  const { error } = await supabase.from('promo_codes').upsert({ ...promo, code: promo.code.trim() })
+  // نُوحّد الرمز بأحرف كبيرة (تخزيناً وتحقّقاً) فيطابق إدخال العميل مهما كانت حالته.
+  const { error } = await supabase
+    .from('promo_codes')
+    .upsert({ ...promo, code: promo.code.trim().toUpperCase() })
   return error ? { error: error.message } : {}
 }
 

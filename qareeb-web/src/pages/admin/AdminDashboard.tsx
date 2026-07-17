@@ -376,12 +376,17 @@ export default function AdminDashboard() {
     // كبديل موثوق عن Realtime، فتظهر الطلبات الجديدة دون الحاجة لتحديث الصفحة.
     // كما يصدر تنبيهاً عند ازدياد عدد الطلبات المعلّقة (طلب جديد وصل).
     let prevPending = -1 // -1 = لم يُهيّأ بعد (أول قياس لا يُنبّه)
+    // سياق صوت واحد يُعاد استخدامه — إنشاؤه لكل تنبيه يُراكم سياقات حتى يتوقّف الصوت
+    // (المتصفّح يحدّ عددها). نُنشئه كسولاً مرّة واحدة.
+    let audioCtx: AudioContext | null = null
     const beep = () => {
       try {
         const AC =
           window.AudioContext ||
           (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext
-        const ctx = new AC()
+        if (!audioCtx) audioCtx = new AC()
+        const ctx = audioCtx
+        if (ctx.state === 'suspended') void ctx.resume()
         const osc = ctx.createOscillator()
         const gain = ctx.createGain()
         osc.connect(gain)
