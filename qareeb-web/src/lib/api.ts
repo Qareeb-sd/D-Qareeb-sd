@@ -1213,6 +1213,20 @@ export async function getAdminAnalytics(): Promise<AdminAnalytics | null> {
   return data as AdminAnalytics
 }
 
+/** تحليلات أعمق: ساعات الذروة + إيراد 30 يوماً + أكثر المناطق طلباً. */
+export interface AdminDeepAnalytics {
+  peakHours: { hour: number; value: number }[]
+  revenue30: { d: string; value: number }[]
+  topAreas: { area: string; value: number }[]
+}
+
+export async function getAdminDeepAnalytics(days = 30): Promise<AdminDeepAnalytics | null> {
+  if (!isSupabaseConfigured) return null
+  const { data, error } = await supabase.rpc('admin_deep_analytics', { p_days: days })
+  if (error || !data) return null
+  return data as AdminDeepAnalytics
+}
+
 export async function updateSettings(
   patch: Partial<Settings>,
 ): Promise<{ error?: string }> {

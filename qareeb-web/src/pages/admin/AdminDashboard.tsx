@@ -90,6 +90,8 @@ import {
   getFinancialSummary,
   getAdminAnalytics,
   type AdminAnalytics,
+  getAdminDeepAnalytics,
+  type AdminDeepAnalytics,
   listSosAlerts,
   resolveSos,
   getMyAdminAccess,
@@ -216,6 +218,35 @@ const STATE_OPTS: { value: ServiceState; label: string; color: string }[] = [
 /** ترتيب الفترات الزمنية للعرض: صباحاً ← ظهراً ← مساءً ← ليلاً. */
 const PERIOD_ORDER: ServicePeriod['period'][] = ['morning', 'afternoon', 'evening', 'night']
 
+/** يحوّل ساعات الذروة (0..23) إلى أعمدة كل ٣ ساعات لعرض أوضح. */
+function peakHourBars(hours: { hour: number; value: number }[]): { label: string; value: number }[] {
+  const buckets = [
+    { label: '٠-٣', from: 0 },
+    { label: '٣-٦', from: 3 },
+    { label: '٦-٩', from: 6 },
+    { label: '٩-١٢', from: 9 },
+    { label: '١٢-١٥', from: 12 },
+    { label: '١٥-١٨', from: 15 },
+    { label: '١٨-٢١', from: 18 },
+    { label: '٢١-٢٤', from: 21 },
+  ]
+  const val = (h: number) => hours.find((x) => x.hour === h)?.value ?? 0
+  return buckets.map((b) => ({ label: b.label, value: val(b.from) + val(b.from + 1) + val(b.from + 2) }))
+}
+
+/** يعرض إيراد ٣٠ يوماً كأعمدة أسبوعية (٥ أعمدة) لتجنّب ازدحام المحور. */
+function revenueBars(days: { d: string; value: number }[]): { label: string; value: number }[] {
+  const out: { label: string; value: number }[] = []
+  for (let i = 0; i < days.length; i += 6) {
+    const chunk = days.slice(i, i + 6)
+    const sum = chunk.reduce((s, x) => s + x.value, 0)
+    const first = chunk[0]?.d ?? ''
+    const label = first ? new Date(`${first}T00:00:00`).toLocaleDateString('ar-SD', { day: 'numeric', month: 'numeric' }) : ''
+    out.push({ label, value: sum })
+  }
+  return out
+}
+
 /**
  * جدول التسعير الموصى به (per_min=56، per_km=طلب المشوار). أربع مجموعات أسعار
  * لكل فترة: [base_fare/per_km, min_fare]. تُطبَّق بضغطة زر ثم تبقى قابلة للتعديل.
@@ -312,6 +343,7 @@ export default function AdminDashboard() {
   const [rides, setRides] = useState<Ride[] | null>(null)
   const [detailRides, setDetailRides] = useState<AdminRideRow[] | null>(null)
   const [analyticsRaw, setAnalyticsRaw] = useState<AdminAnalytics | null>(null)
+  const [deepAnalytics, setDeepAnalytics] = useState<AdminDeepAnalytics | null>(null)
   const [activeRides, setActiveRides] = useState<Ride[]>([])
   const [onlineDrivers, setOnlineDrivers] = useState<AdminOnlineDriver[]>([])
   const [sos, setSos] = useState<SosAlert[]>([])
@@ -402,6 +434,7 @@ export default function AdminDashboard() {
         listAllRides(500),
         adminListRides(1500), // نطاق أوسع لتقارير الفترات (فلترة التاريخ محليّاً)
         getAdminAnalytics(),
+        getAdminDeepAnalytics(30),
       ])
       if (!alive) return
       if (r[0].status === 'fulfilled') setStats(r[0].value)
@@ -413,6 +446,7 @@ export default function AdminDashboard() {
       if (r[6].status === 'fulfilled') setRides(r[6].value)
       if (r[7].status === 'fulfilled') setDetailRides(r[7].value)
       if (r[8].status === 'fulfilled') setAnalyticsRaw(r[8].value)
+      if (r[9].status === 'fulfilled') setDeepAnalytics(r[9].value)
       setLoadErr(
         r.some((x) => x.status === 'rejected')
           ? 'تعذّر تحميل بعض البيانات — تحقّق من الاتصال ثم حدّث الصفحة.'
@@ -1771,6 +1805,55 @@ export default function AdminDashboard() {
                 <DonutChart segments={analytics.vehicle} />
               </ChartCard>
             </div>
+
+            {/* تحليلات أعمق: ساعات الذروة + إيراد ٣٠ يوماً + أكثر المناطق */}
+            {deepAnalytics && (
+              <>
+                <div className="grid gap-4 lg:grid-cols-2">
+                  <ChartCard title="ساعات الذروة" subtitle="عدد الطلبات حسب ساعة اليوم (٣٠ يوماً)">
+                    <BarChart
+                      data={peakHourBars(deepAnalytics.peakHours)}
+                      color="#A88528"
+                    />
+                  </ChartCard>
+                  <ChartCard title="الإيراد آخر ٣٠ يوماً" subtitle="إيراد الرحلات المكتملة يومياً">
+                    <BarChart
+                      data={revenueBars(deepAnalytics.revenue30)}
+                      format={(v) => money(v)}
+                    />
+                  </ChartCard>
+                </div>
+
+                <div className="card p-4">
+                  <p className="mb-3 font-bold">أكثر مناطق الانطلاق طلباً (٣٠ يوماً)</p>
+                  {deepAnalytics.topAreas.length === 0 ? (
+                    <p className="py-4 text-center text-sm text-ink-muted">لا توجد بيانات كافية</p>
+                  ) : (
+                    <div className="space-y-2">
+                      {deepAnalytics.topAreas.map((a, i) => {
+                        const max = deepAnalytics.topAreas[0]?.value || 1
+                        return (
+                          <div key={i} className="flex items-center gap-3">
+                            <span className="w-40 shrink-0 truncate text-sm font-medium text-ink">
+                              {a.area}
+                            </span>
+                            <div className="h-2.5 flex-1 overflow-hidden rounded-full bg-ivory">
+                              <div
+                                className="h-full rounded-full bg-royal"
+                                style={{ width: `${Math.round((a.value / max) * 100)}%` }}
+                              />
+                            </div>
+                            <span className="w-10 shrink-0 text-left text-sm font-bold text-royal">
+                              {a.value}
+                            </span>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  )}
+                </div>
+              </>
+            )}
 
             {/* الطلبات النشطة الآن */}
             <div className="card p-4">
