@@ -17,6 +17,8 @@ import {
   RotateCcw,
   RefreshCw,
   Flag,
+  ChevronUp,
+  ChevronDown,
 } from 'lucide-react'
 import Screen from '@/components/Screen'
 import MapView from '@/components/MapView'
@@ -136,6 +138,8 @@ export default function DriverTrip() {
   const [routePts, setRoutePts] = useState<google.maps.LatLngLiteral[]>([])
   const [eta, setEta] = useState<{ km: number; min: number } | null>(null)
   const [navSteps, setNavSteps] = useState<NavStep[]>([])
+  // اللوحة السفلية مطويّة افتراضياً لتملأ الخريطة الشاشة (إحساس ملاحة حقيقي).
+  const [sheetOpen, setSheetOpen] = useState(false)
   // كتم التوجيه الصوتي (يُحفظ بين الجلسات).
   const [muted, setMuted] = useState(() => {
     try {
@@ -413,261 +417,323 @@ export default function DriverTrip() {
   const headingLabel = heading === 'pickup' ? 'التوجّه إلى الراكب' : 'التوجّه إلى الوجهة'
   const headingAddress = heading === 'pickup' ? activeRide.pickup_address : activeRide.dropoff_address
 
+  const riderName = activeRide.rider_name || customer?.full_name || 'الراكب'
+  const riderPhone = activeRide.rider_phone || customer?.phone
+
   return (
     <Screen title="الرحلة الجارية" bare>
       <SosButton rideId={activeRide.id} role="driver" />
-      <div className="relative flex h-full flex-col bg-ivory font-plex">
-        {/* الخريطة الحيّة تملأ المساحة العليا (بحدّ أدنى حتى لا ينهار ارتفاعها) */}
-        <div className="relative min-h-[48vh] flex-1">
-          <MapView
-            center={pos ?? target ?? { lat: activeRide.pickup_lat, lng: activeRide.pickup_lng }}
-            driver={pos ?? undefined}
-            markers={
-              (heading === 'pickup'
-                ? // مرحلة الوصول: نُبرز نقطة الراكب فقط (لا نُشتّت بوجهة الرحلة بعد).
-                  [pickupPt]
-                : // مرحلة الرحلة: نقاط التوقّف ثم الوجهة.
-                  [
-                    ...(activeRide.stops?.map((s) => ({ lat: s.lat, lng: s.lng })) ?? []),
-                    dropoffPt,
-                  ]
-              ).filter(Boolean) as google.maps.LatLngLiteral[]
-            }
-            route={routePts}
-            zoom={pos ? 16 : 15}
-            className="absolute inset-0"
-          />
+      {/* الخريطة تملأ الشاشة كاملة — إحساس ملاحة حقيقي، والتفاصيل في لوحة عائمة */}
+      <div className="relative h-full overflow-hidden bg-ivory font-plex">
+        <MapView
+          center={pos ?? target ?? { lat: activeRide.pickup_lat, lng: activeRide.pickup_lng }}
+          driver={pos ?? undefined}
+          markers={
+            (heading === 'pickup'
+              ? // مرحلة الوصول: نُبرز نقطة الراكب فقط (لا نُشتّت بوجهة الرحلة بعد).
+                [pickupPt]
+              : // مرحلة الرحلة: نقاط التوقّف ثم الوجهة.
+                [
+                  ...(activeRide.stops?.map((s) => ({ lat: s.lat, lng: s.lng })) ?? []),
+                  dropoffPt,
+                ]
+            ).filter(Boolean) as google.maps.LatLngLiteral[]
+          }
+          route={routePts}
+          zoom={pos ? 16 : 15}
+          className="absolute inset-0"
+        />
 
-          {/* لافتة ملاحة احترافية: شريط المرحلة + المناورة الكبيرة + العنوان/الوقت */}
-          <div className="absolute inset-x-3 top-3 overflow-hidden rounded-2xl shadow-float">
-            {/* شريط المرحلة — لون مميّز لكل مرحلة حتى لا يلتبس على السائق */}
+        {/* لافتة ملاحة احترافية: شريط المرحلة + المناورة الكبيرة + العنوان/الوقت */}
+        <div className="absolute inset-x-3 top-3 overflow-hidden rounded-2xl shadow-float">
+          {/* شريط المرحلة — لون مميّز لكل مرحلة حتى لا يلتبس على السائق */}
+          <div
+            className={`flex items-center justify-between px-4 py-1.5 text-white ${
+              heading === 'pickup' ? 'bg-green' : 'bg-royal'
+            }`}
+          >
+            <span className="text-xs font-extrabold">
+              {heading === 'pickup' ? '① التوجّه إلى الراكب' : '② توصيل الراكب إلى الوجهة'}
+            </span>
+            <button
+              onClick={() => setMuted((m) => !m)}
+              aria-label={muted ? 'تشغيل الصوت' : 'كتم الصوت'}
+              className="press-scale grid h-7 w-7 shrink-0 place-items-center rounded-full bg-white/20"
+            >
+              {muted ? (
+                <VolumeX className="h-4 w-4" strokeWidth={2.2} />
+              ) : (
+                <Volume2 className="h-4 w-4" strokeWidth={2.2} />
+              )}
+            </button>
+          </div>
+
+          {/* المناورة الكبيرة — سهم ضخم + مسافة بارزة + تعليمة واضحة (تباين عالٍ) */}
+          {nextStep ? (
             <div
-              className={`flex items-center justify-between px-4 py-1.5 text-white ${
+              className={`flex items-center gap-3 px-4 py-3 text-white ${
                 heading === 'pickup' ? 'bg-green' : 'bg-royal'
               }`}
             >
-              <span className="text-xs font-extrabold">
-                {heading === 'pickup' ? '① التوجّه إلى الراكب' : '② توصيل الراكب إلى الوجهة'}
-              </span>
-              <button
-                onClick={() => setMuted((m) => !m)}
-                aria-label={muted ? 'تشغيل الصوت' : 'كتم الصوت'}
-                className="press-scale grid h-7 w-7 shrink-0 place-items-center rounded-full bg-white/20"
-              >
-                {muted ? (
-                  <VolumeX className="h-4 w-4" strokeWidth={2.2} />
-                ) : (
-                  <Volume2 className="h-4 w-4" strokeWidth={2.2} />
-                )}
-              </button>
-            </div>
-
-            {/* المناورة الكبيرة — سهم ضخم + مسافة بارزة + تعليمة واضحة (تباين عالٍ) */}
-            {nextStep ? (
-              <div
-                className={`flex items-center gap-3 px-4 py-3 text-white ${
-                  heading === 'pickup' ? 'bg-green' : 'bg-royal'
-                }`}
-              >
-                <span className="grid h-14 w-14 shrink-0 place-items-center rounded-2xl bg-white/15">
-                  <ManeuverArrow
-                    type={nextStep.step.type}
-                    modifier={nextStep.step.modifier}
-                    className="h-9 w-9"
-                  />
-                </span>
-                <div className="min-w-0 flex-1">
-                  <p className="text-3xl font-black leading-none">
-                    {nextStep.d < 950
-                      ? `${Math.round(nextStep.d / 10) * 10} م`
-                      : `${(nextStep.d / 1000).toFixed(1)} كم`}
-                  </p>
-                  <p className="mt-1 truncate text-sm font-bold text-white/90">
-                    {nextStep.step.instruction}
-                  </p>
-                </div>
-              </div>
-            ) : (
-              <div
-                className={`px-4 py-3 text-white ${heading === 'pickup' ? 'bg-green' : 'bg-royal'}`}
-              >
-                <p className="text-sm font-bold text-white/90">
-                  {pos ? 'جارٍ حساب المسار…' : 'جارٍ تحديد موقعك…'}
-                </p>
-              </div>
-            )}
-
-            {/* العنوان الهدف + زمن/مسافة الوصول (خلفية بيضاء) */}
-            <div className="flex items-center gap-3 bg-white/95 px-4 py-2.5 backdrop-blur">
-              <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-royal-soft text-royal">
-                <MapPin className="h-5 w-5" strokeWidth={2} />
+              <span className="grid h-14 w-14 shrink-0 place-items-center rounded-2xl bg-white/15">
+                <ManeuverArrow
+                  type={nextStep.step.type}
+                  modifier={nextStep.step.modifier}
+                  className="h-9 w-9"
+                />
               </span>
               <div className="min-w-0 flex-1">
-                <p className="text-[11px] font-bold text-sand-ink">{headingLabel}</p>
-                <p className="truncate text-sm font-semibold text-royal">{headingAddress}</p>
+                <p className="text-3xl font-black leading-none">
+                  {nextStep.d < 950
+                    ? `${Math.round(nextStep.d / 10) * 10} م`
+                    : `${(nextStep.d / 1000).toFixed(1)} كم`}
+                </p>
+                <p className="mt-1 truncate text-sm font-bold text-white/90">
+                  {nextStep.step.instruction}
+                </p>
               </div>
-              {eta && (
-                <div className="shrink-0 text-center">
-                  <p className="text-base font-extrabold leading-none text-royal">
-                    {Math.max(1, Math.round(eta.min))}
-                    <span className="text-[10px] font-bold"> د</span>
-                  </p>
-                  <p className="text-[10px] text-ink-muted">{eta.km.toFixed(1)} كم</p>
-                </div>
-              )}
             </div>
-          </div>
+          ) : (
+            <div className={`px-4 py-3 text-white ${heading === 'pickup' ? 'bg-green' : 'bg-royal'}`}>
+              <p className="text-sm font-bold text-white/90">
+                {pos ? 'جارٍ حساب المسار…' : 'جارٍ تحديد موقعك…'}
+              </p>
+            </div>
+          )}
 
+          {/* العنوان الهدف + زمن/مسافة الوصول (خلفية بيضاء) */}
+          <div className="flex items-center gap-3 bg-white/95 px-4 py-2.5 backdrop-blur">
+            <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-royal-soft text-royal">
+              <MapPin className="h-5 w-5" strokeWidth={2} />
+            </span>
+            <div className="min-w-0 flex-1">
+              <p className="text-[11px] font-bold text-sand-ink">{headingLabel}</p>
+              <p className="truncate text-sm font-semibold text-royal">{headingAddress}</p>
+            </div>
+            {eta && (
+              <div className="shrink-0 text-center">
+                <p className="text-base font-extrabold leading-none text-royal">
+                  {Math.max(1, Math.round(eta.min))}
+                  <span className="text-[10px] font-bold"> د</span>
+                </p>
+                <p className="text-[10px] text-ink-muted">{eta.km.toFixed(1)} كم</p>
+              </div>
+            )}
+          </div>
         </div>
 
-        {/* لوحة سفلية: خطوات الرحلة + الأرباح + الإجراءات */}
-        <section className="relative z-10 -mt-4 rounded-t-[24px] bg-white shadow-soft">
-          <div className="px-4 pt-4">
-            {/* شريط خطوات الرحلة */}
-            <div className="mb-4 flex items-center">
-              {STEPS.map((s, i) => {
-                const done = i <= stepIndex
-                return (
-                  <div key={s.key} className="flex flex-1 items-center last:flex-none">
-                    <div className="flex flex-col items-center">
-                      <span
-                        className={`grid h-7 w-7 place-items-center rounded-full text-[11px] font-bold transition ${
-                          done ? 'bg-royal text-white' : 'bg-hairline text-ink-muted'
-                        }`}
-                      >
-                        {i + 1}
-                      </span>
-                      <span
-                        className={`mt-1 text-[10px] font-semibold ${
-                          done ? 'text-royal' : 'text-ink-muted'
-                        }`}
-                      >
-                        {s.label}
-                      </span>
+        {/* لوحة سفلية عائمة قابلة للطيّ — مطويّة تُبقي الخريطة تملأ الشاشة */}
+        <section className="absolute inset-x-0 bottom-0 z-10 rounded-t-[24px] bg-white shadow-float">
+          {/* مقبض للطيّ/التوسيع */}
+          <button
+            onClick={() => setSheetOpen((o) => !o)}
+            className="flex w-full flex-col items-center gap-1 pb-1 pt-2.5"
+            aria-label={sheetOpen ? 'طيّ التفاصيل' : 'عرض التفاصيل'}
+          >
+            <span className="h-1.5 w-10 rounded-full bg-hairline" />
+            <span className="flex items-center gap-1 text-[11px] font-bold text-ink-muted">
+              {sheetOpen ? (
+                <>
+                  <ChevronDown className="h-3.5 w-3.5" /> إخفاء التفاصيل
+                </>
+              ) : (
+                <>
+                  <ChevronUp className="h-3.5 w-3.5" /> تفاصيل الرحلة والأرباح
+                </>
+              )}
+            </span>
+          </button>
+
+          {sheetOpen ? (
+            /* موسّعة: كل التفاصيل داخل حاوية قابلة للتمرير كي لا تتجاوز الشاشة */
+            <div className="max-h-[52vh] overflow-y-auto px-4 pt-1">
+              {/* شريط خطوات الرحلة */}
+              <div className="mb-4 flex items-center">
+                {STEPS.map((s, i) => {
+                  const done = i <= stepIndex
+                  return (
+                    <div key={s.key} className="flex flex-1 items-center last:flex-none">
+                      <div className="flex flex-col items-center">
+                        <span
+                          className={`grid h-7 w-7 place-items-center rounded-full text-[11px] font-bold transition ${
+                            done ? 'bg-royal text-white' : 'bg-hairline text-ink-muted'
+                          }`}
+                        >
+                          {i + 1}
+                        </span>
+                        <span
+                          className={`mt-1 text-[10px] font-semibold ${
+                            done ? 'text-royal' : 'text-ink-muted'
+                          }`}
+                        >
+                          {s.label}
+                        </span>
+                      </div>
+                      {i < STEPS.length - 1 && (
+                        <span
+                          className={`mx-1 h-[3px] flex-1 rounded-full ${
+                            i < stepIndex ? 'bg-royal' : 'bg-hairline'
+                          }`}
+                        />
+                      )}
                     </div>
-                    {i < STEPS.length - 1 && (
-                      <span
-                        className={`mx-1 h-[3px] flex-1 rounded-full ${
-                          i < stepIndex ? 'bg-royal' : 'bg-hairline'
-                        }`}
-                      />
-                    )}
-                  </div>
-                )
-              })}
-            </div>
-
-            <div className="flex items-center justify-between">
-              <p className="font-bold text-royal">{service?.name ?? activeRide.service_id}</p>
-              <span className="chip-driver">
-                {statusLabels[activeRide.status] ?? activeRide.status}
-              </span>
-            </div>
-            <p className="mt-1 text-sm text-ink-soft">
-              {activeRide.pickup_address}
-              {activeRide.stops?.length
-                ? activeRide.stops.map((s) => ` ← ${s.address ?? 'توقّف'}`).join('')
-                : ''}{' '}
-              ← {activeRide.dropoff_address}
-            </p>
-            {activeRide.stops?.length ? (
-              <p className="mt-0.5 text-[11px] font-bold text-sand-ink">
-                تتضمّن {activeRide.stops.length} نقطة توقّف
-              </p>
-            ) : null}
-
-            {/* الراكب — اسم/تقييم + زر اتصال */}
-            <div className="mt-3 flex items-center gap-3 rounded-2xl border border-hairline bg-ivory/60 p-3">
-              <span className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-sand/20">
-                <User className="h-5 w-5 text-royal" strokeWidth={2} />
-              </span>
-              <div className="min-w-0 flex-1">
-                <p className="truncate font-bold text-royal">
-                  {activeRide.rider_name || customer?.full_name || 'الراكب'}
-                </p>
-                {activeRide.rider_name ? (
-                  <span className="mt-0.5 inline-block rounded-md bg-sand-soft px-1.5 py-0.5 text-[10px] font-bold text-sand-ink">
-                    رحلة لشخص آخر
-                  </span>
-                ) : (
-                  customer?.rating != null && (
-                    <p className="flex items-center gap-1 text-xs text-ink-soft">
-                      <Star className="h-3.5 w-3.5 text-sand" fill="currentColor" strokeWidth={2} />
-                      {customer.rating}
-                    </p>
                   )
-                )}
+                })}
               </div>
-              <div className="flex shrink-0 flex-col gap-1.5">
-                {(activeRide.rider_phone || customer?.phone) && (
-                  <a
-                    href={`tel:${activeRide.rider_phone || customer?.phone}`}
-                    className="flex items-center justify-center gap-1.5 rounded-xl bg-royal px-3 py-2 text-sm font-bold text-white"
-                  >
-                    <Phone className="h-4 w-4" strokeWidth={2} />
-                    اتصال
-                  </a>
-                )}
-                {profile?.id && (
-                  <RideChat
-                    rideId={activeRide.id}
-                    myId={profile.id}
-                    role="driver"
-                    otherName={activeRide.rider_name || customer?.full_name || 'الراكب'}
+
+              <div className="flex items-center justify-between">
+                <p className="font-bold text-royal">{service?.name ?? activeRide.service_id}</p>
+                <span className="chip-driver">
+                  {statusLabels[activeRide.status] ?? activeRide.status}
+                </span>
+              </div>
+              <p className="mt-1 text-sm text-ink-soft">
+                {activeRide.pickup_address}
+                {activeRide.stops?.length
+                  ? activeRide.stops.map((s) => ` ← ${s.address ?? 'توقّف'}`).join('')
+                  : ''}{' '}
+                ← {activeRide.dropoff_address}
+              </p>
+              {activeRide.stops?.length ? (
+                <p className="mt-0.5 text-[11px] font-bold text-sand-ink">
+                  تتضمّن {activeRide.stops.length} نقطة توقّف
+                </p>
+              ) : null}
+
+              {/* الراكب — اسم/تقييم + زر اتصال */}
+              <div className="mt-3 flex items-center gap-3 rounded-2xl border border-hairline bg-ivory/60 p-3">
+                <span className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-sand/20">
+                  <User className="h-5 w-5 text-royal" strokeWidth={2} />
+                </span>
+                <div className="min-w-0 flex-1">
+                  <p className="truncate font-bold text-royal">{riderName}</p>
+                  {activeRide.rider_name ? (
+                    <span className="mt-0.5 inline-block rounded-md bg-sand-soft px-1.5 py-0.5 text-[10px] font-bold text-sand-ink">
+                      رحلة لشخص آخر
+                    </span>
+                  ) : (
+                    customer?.rating != null && (
+                      <p className="flex items-center gap-1 text-xs text-ink-soft">
+                        <Star
+                          className="h-3.5 w-3.5 text-sand"
+                          fill="currentColor"
+                          strokeWidth={2}
+                        />
+                        {customer.rating}
+                      </p>
+                    )
+                  )}
+                </div>
+                <div className="flex shrink-0 flex-col gap-1.5">
+                  {riderPhone && (
+                    <a
+                      href={`tel:${riderPhone}`}
+                      className="flex items-center justify-center gap-1.5 rounded-xl bg-royal px-3 py-2 text-sm font-bold text-white"
+                    >
+                      <Phone className="h-4 w-4" strokeWidth={2} />
+                      اتصال
+                    </a>
+                  )}
+                  {profile?.id && (
+                    <RideChat
+                      rideId={activeRide.id}
+                      myId={profile.id}
+                      role="driver"
+                      otherName={riderName}
+                    />
+                  )}
+                </div>
+              </div>
+
+              {/* تفصيل الأرباح */}
+              <div className="mt-3 rounded-2xl border border-hairline bg-ivory/60">
+                <Row label="طريقة الدفع" value={paymentLabels[activeRide.payment_method]} />
+                <Row label="الأجرة" value={money(fare)} />
+                {exempt ? (
+                  <Row
+                    label={exemptVip ? 'عمولة المنصة (VIP)' : 'عمولة المنصة (إعفاء)'}
+                    value="معفاة"
+                    strong
+                  />
+                ) : (
+                  <Row
+                    label={`عمولة المنصة (${Math.round(effectiveRate * 100)}%)`}
+                    value={`− ${money(commission)}`}
+                    danger
                   />
                 )}
+                <Row label="صافي أرباحك" value={money(net)} strong />
+              </div>
+
+              {exempt && (
+                <p className="mt-2 text-center text-xs font-medium text-green">
+                  {exemptVip
+                    ? 'أنت سائق VIP — بلا عمولة على هذه الرحلة.'
+                    : 'معفى من العمولة حالياً — تحصل على كامل الأجرة.'}
+                </p>
+              )}
+
+              {isCash && (
+                <p className="mt-2 text-center text-xs text-ink-muted">
+                  {exempt
+                    ? 'تستلم كامل الأجرة من الراكب مباشرة — لا عمولة.'
+                    : `تستلم الأجرة من الراكب مباشرة، وتُخصم العمولة (${money(commission)}) من محفظتك.`}
+                </p>
+              )}
+
+              <div className="mt-3">
+                <ShareRideButton rideId={activeRide.id} variant="driver" />
               </div>
             </div>
-
-            {/* تفصيل الأرباح */}
-            <div className="mt-3 rounded-2xl border border-hairline bg-ivory/60">
-              <Row label="طريقة الدفع" value={paymentLabels[activeRide.payment_method]} />
-              <Row label="الأجرة" value={money(fare)} />
-              {exempt ? (
-                <Row
-                  label={exemptVip ? 'عمولة المنصة (VIP)' : 'عمولة المنصة (إعفاء)'}
-                  value="معفاة"
-                  strong
-                />
-              ) : (
-                <Row
-                  label={`عمولة المنصة (${Math.round(effectiveRate * 100)}%)`}
-                  value={`− ${money(commission)}`}
-                  danger
+          ) : (
+            /* مطويّة: صفّ مُختصر للراكب مع اتصال/محادثة سريعة */
+            <div className="flex items-center gap-3 px-4 pb-1">
+              <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-sand/20">
+                <User className="h-[18px] w-[18px] text-royal" strokeWidth={2} />
+              </span>
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-sm font-bold text-royal">{riderName}</p>
+                <p className="truncate text-[11px] text-ink-muted">
+                  {statusLabels[activeRide.status] ?? activeRide.status} ·{' '}
+                  {service?.name ?? activeRide.service_id} · {money(net)}
+                </p>
+              </div>
+              {riderPhone && (
+                <a
+                  href={`tel:${riderPhone}`}
+                  aria-label="اتصال بالراكب"
+                  className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-royal text-white"
+                >
+                  <Phone className="h-[18px] w-[18px]" strokeWidth={2} />
+                </a>
+              )}
+              {profile?.id && (
+                <RideChat
+                  rideId={activeRide.id}
+                  myId={profile.id}
+                  role="driver"
+                  otherName={riderName}
                 />
               )}
-              <Row label="صافي أرباحك" value={money(net)} strong />
             </div>
+          )}
 
-            {exempt && (
-              <p className="mt-2 text-center text-xs font-medium text-green">
-                {exemptVip
-                  ? 'أنت سائق VIP — بلا عمولة على هذه الرحلة.'
-                  : 'معفى من العمولة حالياً — تحصل على كامل الأجرة.'}
-              </p>
-            )}
-
-            {isCash && (
-              <p className="mt-2 text-center text-xs text-ink-muted">
-                {exempt
-                  ? 'تستلم كامل الأجرة من الراكب مباشرة — لا عمولة.'
-                  : `تستلم الأجرة من الراكب مباشرة، وتُخصم العمولة (${money(commission)}) من محفظتك.`}
-              </p>
-            )}
-          </div>
-
+          {/* أزرار الإجراء — ظاهرة دائماً (سواء طُويت اللوحة أم فُتحت) */}
           <div
-            className="mt-3 space-y-2 border-t border-hairline p-4"
+            className="mt-2 space-y-2 border-t border-hairline p-4"
             style={{ paddingBottom: 'calc(1rem + env(safe-area-inset-bottom))' }}
           >
-            <ShareRideButton rideId={activeRide.id} variant="driver" />
             {activeRide.status === 'accepted' && (
               <button className="btn-driver w-full" onClick={() => advance('arrived')} disabled={busy}>
                 {busy ? '…' : 'وصلت لموقع الراكب'}
               </button>
             )}
             {activeRide.status === 'arrived' && (
-              <button className="btn-driver w-full" onClick={() => advance('in_progress')} disabled={busy}>
+              <button
+                className="btn-driver w-full"
+                onClick={() => advance('in_progress')}
+                disabled={busy}
+              >
                 {busy ? '…' : 'بدء الرحلة'}
               </button>
             )}
