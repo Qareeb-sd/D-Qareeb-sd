@@ -124,11 +124,15 @@ export async function fetchRoutePath(
   }
 }
 
-/** خطوة ملاحة واحدة: تعليمة عربية + موقع المناورة + مسافتها. */
+/** خطوة ملاحة واحدة: تعليمة عربية + موقع المناورة + مسافتها + نوع المناورة (للسهم). */
 export type NavStep = {
   instruction: string
   location: google.maps.LatLngLiteral
   distanceM: number
+  /** نوع المناورة الخام من OSRM (turn/roundabout/arrive…) لاختيار السهم. */
+  type: string
+  /** اتجاه المناورة الخام (left/right/straight…) لاختيار السهم والنطق. */
+  modifier?: string
 }
 export type RouteNav = {
   points: google.maps.LatLngLiteral[]
@@ -232,6 +236,8 @@ export async function fetchRouteNav(
           instruction: maneuverAr(s.maneuver.type, s.maneuver.modifier, s.name),
           location: { lat: s.maneuver.location[1], lng: s.maneuver.location[0] },
           distanceM: s.distance,
+          type: s.maneuver.type,
+          modifier: s.maneuver.modifier,
         })
       }
     }

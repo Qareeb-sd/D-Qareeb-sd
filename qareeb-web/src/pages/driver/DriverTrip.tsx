@@ -1,6 +1,24 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useNavigate, Navigate } from 'react-router-dom'
-import { Navigation, Navigation2, MapPin, User, Phone, Star } from 'lucide-react'
+import {
+  Navigation,
+  MapPin,
+  User,
+  Phone,
+  Star,
+  Volume2,
+  VolumeX,
+  ArrowUp,
+  ArrowUpLeft,
+  ArrowUpRight,
+  ArrowLeft,
+  ArrowRight,
+  CornerUpLeft,
+  CornerUpRight,
+  RotateCcw,
+  RefreshCw,
+  Flag,
+} from 'lucide-react'
 import Screen from '@/components/Screen'
 import MapView from '@/components/MapView'
 import SosButton from '@/components/SosButton'
@@ -46,6 +64,52 @@ const STEPS = [
   { key: 'done', label: 'انتهت' },
 ]
 
+/** سهم اتجاه كبير للمناورة التالية — يُشتقّ من نوع/اتجاه مناورة OSRM. */
+function ManeuverArrow({ type, modifier }: { type?: string; modifier?: string }) {
+  const cls = 'h-7 w-7'
+  const sw = 2.6
+  if (type === 'arrive') return <Flag className={cls} strokeWidth={sw} />
+  if (type === 'roundabout' || type === 'rotary') return <RefreshCw className={cls} strokeWidth={sw} />
+  switch (modifier) {
+    case 'left':
+      return <ArrowLeft className={cls} strokeWidth={sw} />
+    case 'right':
+      return <ArrowRight className={cls} strokeWidth={sw} />
+    case 'sharp left':
+      return <CornerUpLeft className={cls} strokeWidth={sw} />
+    case 'sharp right':
+      return <CornerUpRight className={cls} strokeWidth={sw} />
+    case 'slight left':
+      return <ArrowUpLeft className={cls} strokeWidth={sw} />
+    case 'slight right':
+      return <ArrowUpRight className={cls} strokeWidth={sw} />
+    case 'uturn':
+      return <RotateCcw className={cls} strokeWidth={sw} />
+    default:
+      return <ArrowUp className={cls} strokeWidth={sw} />
+  }
+}
+
+// مسافة مقروءة عربياً للنطق الصوتي.
+const spokenDist = (d: number) =>
+  d < 950 ? `${Math.round(d / 10) * 10} متر` : `${(d / 1000).toFixed(1)} كيلومتر`
+
+// نطق تعليمة الملاحة عربياً عبر Web Speech API (متوفّر داخل WebView الأندرويد).
+function speak(text: string) {
+  try {
+    const synth = window.speechSynthesis
+    if (!synth) return
+    synth.cancel() // أَلغِ ما في الطابور حتى تفوز أحدث مناورة
+    const u = new SpeechSynthesisUtterance(text)
+    u.lang = 'ar-SA'
+    u.rate = 1
+    u.pitch = 1
+    synth.speak(u)
+  } catch {
+    /* غير مدعوم — نكتفي بالعرض المرئي */
+  }
+}
+
 /** الرحلة الجارية للسائق — بيانات الرحلة، وإكمالها مع تسوية الأرباح (خصم العمولة). */
 export default function DriverTrip() {
   const navigate = useNavigate()
@@ -65,6 +129,19 @@ export default function DriverTrip() {
   const [routePts, setRoutePts] = useState<google.maps.LatLngLiteral[]>([])
   const [eta, setEta] = useState<{ km: number; min: number } | null>(null)
   const [navSteps, setNavSteps] = useState<NavStep[]>([])
+  // كتم التوجيه الصوتي (يُحفظ بين الجلسات).
+  const [muted, setMuted] = useState(() => {
+    try {
+      return localStorage.getItem('qareeb_nav_muted') === '1'
+    } catch {
+      return false
+    }
+  })
+  // تتبّع ما نُطق لكل مناورة حتى لا يتكرّر النطق كل ثانية.
+  const spokenRef = useRef<{ approach: string | null; now: string | null }>({
+    approach: null,
+    now: null,
+  })
 
   useEffect(() => {
     void getSettings().then((s) => setRate(s.commission_rate))
@@ -211,6 +288,46 @@ export default function DriverTrip() {
     return best
   })()
 
+  // حفظ تفضيل الكتم.
+  useEffect(() => {
+    try {
+      localStorage.setItem('qareeb_nav_muted', muted ? '1' : '0')
+    } catch {
+      /* لا يهمّ إن تعذّر */
+    }
+  }, [muted])
+
+  // التوجيه الصوتي: أعلن المناورة القادمة مرّة عند الاقتراب (~300م) ومرّة عند الوصول (~60م).
+  const nsKey = nextStep
+    ? `${nextStep.step.location.lat.toFixed(5)},${nextStep.step.location.lng.toFixed(5)}`
+    : null
+  const nsDist = nextStep?.d ?? null
+  const nsText = nextStep?.step.instruction ?? null
+  useEffect(() => {
+    if (muted || !nsKey || nsDist == null || !nsText) return
+    // إعلان اقتراب مبكّر (مرّة واحدة لكل مناورة).
+    if (nsDist <= 300 && nsDist > 60 && spokenRef.current.approach !== nsKey) {
+      spokenRef.current.approach = nsKey
+      speak(`بعد ${spokenDist(nsDist)}، ${nsText}`)
+    }
+    // إعلان «الآن» عند الاقتراب الشديد من المناورة (مرّة واحدة).
+    if (nsDist <= 60 && spokenRef.current.now !== nsKey) {
+      spokenRef.current.now = nsKey
+      speak(nsText)
+    }
+  }, [nsKey, nsDist, nsText, muted])
+
+  // إيقاف أي نطق جارٍ عند مغادرة الشاشة.
+  useEffect(() => {
+    return () => {
+      try {
+        window.speechSynthesis?.cancel()
+      } catch {
+        /* غير مدعوم */
+      }
+    }
+  }, [])
+
   if (recovering) {
     return (
       <Screen title="الرحلة الجارية">
@@ -300,7 +417,7 @@ export default function DriverTrip() {
               ].filter(Boolean) as google.maps.LatLngLiteral[]
             }
             route={routePts}
-            zoom={15}
+            zoom={pos ? 16 : 15}
             className="absolute inset-0"
           />
 
@@ -308,17 +425,30 @@ export default function DriverTrip() {
           <div className="absolute inset-x-3 top-3 rounded-2xl bg-white/95 shadow-float backdrop-blur">
             {nextStep && (
               <div className="flex items-center gap-3 border-b border-hairline p-3">
-                <span className="grid h-11 w-11 shrink-0 place-items-center rounded-full bg-green text-white">
-                  <Navigation2 className="h-6 w-6" strokeWidth={2.2} />
+                <span className="grid h-12 w-12 shrink-0 place-items-center rounded-2xl bg-green text-white">
+                  <ManeuverArrow type={nextStep.step.type} modifier={nextStep.step.modifier} />
                 </span>
                 <div className="min-w-0 flex-1">
-                  <p className="truncate text-[15px] font-extrabold text-royal">
+                  <p className="text-lg font-extrabold leading-tight text-green">
+                    {nextStep.d < 950
+                      ? `${Math.round(nextStep.d / 10) * 10} م`
+                      : `${(nextStep.d / 1000).toFixed(1)} كم`}
+                  </p>
+                  <p className="truncate text-[13px] font-bold text-royal">
                     {nextStep.step.instruction}
                   </p>
-                  <p className="text-[11px] font-bold text-green">
-                    بعد {nextStep.d < 950 ? `${Math.round(nextStep.d / 10) * 10} م` : `${(nextStep.d / 1000).toFixed(1)} كم`}
-                  </p>
                 </div>
+                <button
+                  onClick={() => setMuted((m) => !m)}
+                  aria-label={muted ? 'تشغيل الصوت' : 'كتم الصوت'}
+                  className="press-scale grid h-9 w-9 shrink-0 place-items-center rounded-full bg-ivory text-royal"
+                >
+                  {muted ? (
+                    <VolumeX className="h-5 w-5" strokeWidth={2} />
+                  ) : (
+                    <Volume2 className="h-5 w-5" strokeWidth={2} />
+                  )}
+                </button>
               </div>
             )}
             <div className="flex items-center gap-3 p-3">
