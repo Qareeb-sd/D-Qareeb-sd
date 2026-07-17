@@ -27,6 +27,9 @@ import type {
   RideMessage,
   DriverIncentive,
   MyIncentive,
+  Reward,
+  RewardRedemption,
+  AdminRewardRedemption,
 } from './types'
 import { services as seedServices, type Service, type VehicleArt } from '@/data/services'
 
@@ -1399,6 +1402,85 @@ export async function redeemLoyalty(points: number): Promise<{ amount?: number; 
   const { data, error } = await supabase.rpc('redeem_loyalty', { p_points: points })
   if (error) return { error: error.message }
   return { amount: (data as { amount?: number })?.amount ?? 0 }
+}
+
+/** متجر المكافآت: قائمة المكافآت المتاحة للعميل. */
+export async function listRewards(): Promise<Reward[]> {
+  if (!isSupabaseConfigured) return []
+  const { data } = await supabase.rpc('list_rewards')
+  return (data as Reward[]) ?? []
+}
+
+/** استبدال مكافأة من المتجر (رصيد محفظة أو مكافأة عينية برمز). */
+export async function redeemReward(
+  rewardId: string,
+): Promise<{ kind?: 'wallet' | 'perk'; value?: number; code?: string; error?: string }> {
+  if (!isSupabaseConfigured) return { error: 'غير متاح' }
+  const { data, error } = await supabase.rpc('redeem_reward', { p_reward_id: rewardId })
+  if (error) return { error: error.message }
+  const r = data as { kind: 'wallet' | 'perk'; value?: number; code?: string }
+  return { kind: r?.kind, value: r?.value, code: r?.code }
+}
+
+/** سجلّ استبدالات العميل الحالي. */
+export async function listMyRedemptions(): Promise<RewardRedemption[]> {
+  if (!isSupabaseConfigured) return []
+  const { data } = await supabase.rpc('my_reward_redemptions')
+  return (data as RewardRedemption[]) ?? []
+}
+
+/** أدمن: كل المكافآت (شاملة المعطّلة). */
+export async function adminListRewards(): Promise<Reward[]> {
+  if (!isSupabaseConfigured) return []
+  const { data } = await supabase.rpc('admin_list_rewards')
+  return (data as Reward[]) ?? []
+}
+
+/** أدمن: إضافة/تعديل مكافأة. */
+export async function adminUpsertReward(r: {
+  id?: string | null
+  title: string
+  description?: string | null
+  cost_points: number
+  kind: 'wallet' | 'perk'
+  value: number
+  active: boolean
+  sort: number
+}): Promise<{ id?: string; error?: string }> {
+  if (!isSupabaseConfigured) return { error: 'غير متاح' }
+  const { data, error } = await supabase.rpc('admin_upsert_reward', {
+    p_id: r.id ?? null,
+    p_title: r.title,
+    p_description: r.description ?? null,
+    p_cost_points: r.cost_points,
+    p_kind: r.kind,
+    p_value: r.value,
+    p_active: r.active,
+    p_sort: r.sort,
+  })
+  if (error) return { error: error.message }
+  return { id: data as string }
+}
+
+/** أدمن: حذف مكافأة. */
+export async function adminDeleteReward(id: string): Promise<{ error?: string }> {
+  if (!isSupabaseConfigured) return { error: 'غير متاح' }
+  const { error } = await supabase.rpc('admin_delete_reward', { p_id: id })
+  return error ? { error: error.message } : {}
+}
+
+/** أدمن: طلبات المكافآت العينية (للتسليم). */
+export async function adminListRewardRedemptions(): Promise<AdminRewardRedemption[]> {
+  if (!isSupabaseConfigured) return []
+  const { data } = await supabase.rpc('admin_list_reward_redemptions')
+  return (data as AdminRewardRedemption[]) ?? []
+}
+
+/** أدمن: تأكيد تسليم مكافأة عينية. */
+export async function adminFulfillRedemption(id: string): Promise<{ error?: string }> {
+  if (!isSupabaseConfigured) return { error: 'غير متاح' }
+  const { error } = await supabase.rpc('admin_fulfill_redemption', { p_id: id })
+  return error ? { error: error.message } : {}
 }
 
 /** نقاط كثافة الطلب الأخيرة (لخريطة السائق الحرارية). */

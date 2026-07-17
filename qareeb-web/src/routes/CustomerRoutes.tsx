@@ -16,6 +16,7 @@ import Commute from '@/pages/customer/Commute'
 import CommuteOrder from '@/pages/customer/CommuteOrder'
 import CommuteJoin from '@/pages/customer/CommuteJoin'
 import Rides from '@/pages/customer/Rides'
+import Rewards from '@/pages/customer/Rewards'
 import Profile from '@/pages/customer/Profile'
 import Addresses from '@/pages/customer/Addresses'
 import ScheduledRides from '@/pages/customer/ScheduledRides'
@@ -51,6 +52,7 @@ export default function CustomerRoutes() {
       <Route path="/commute/join/:code" element={guard(<CommuteJoin />)} />
       <Route path="/commute/:id" element={guard(<CommuteOrder />)} />
       <Route path="/rides" element={guard(<Rides />)} />
+      <Route path="/rewards" element={guard(<Rewards />)} />
       <Route path="/profile" element={guard(<Profile />)} />
       <Route path="/addresses" element={guard(<Addresses />)} />
       <Route path="/scheduled" element={guard(<ScheduledRides />)} />

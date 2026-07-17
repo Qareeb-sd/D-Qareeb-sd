@@ -200,6 +200,47 @@ export interface PromoCode {
   created_at: string
 }
 
+/** مكافأة في متجر النقاط (تُدار من لوحة الأدمن). */
+export interface Reward {
+  id: string
+  title: string
+  description: string | null
+  cost_points: number
+  kind: 'wallet' | 'perk' // wallet = رصيد محفظة، perk = مكافأة عينية برمز استلام
+  value: number // مبلغ ج.س عند kind='wallet'
+  active: boolean
+  sort: number
+  created_at: string
+}
+
+/** استبدال مكافأة من متجر النقاط. */
+export interface RewardRedemption {
+  id: string
+  user_id: string
+  reward_id: string | null
+  title: string
+  cost_points: number
+  kind: 'wallet' | 'perk'
+  value: number
+  code: string | null
+  status: 'pending' | 'fulfilled' | 'cancelled'
+  created_at: string
+}
+
+/** صفّ طلب مكافأة عينية معلّق (عرض الأدمن). */
+export interface AdminRewardRedemption {
+  id: string
+  user_name: string | null
+  user_phone: string
+  title: string
+  cost_points: number
+  kind: 'wallet' | 'perk'
+  value: number
+  code: string | null
+  status: 'pending' | 'fulfilled' | 'cancelled'
+  created_at: string
+}
+
 export interface ServicePricing {
   service_id: string
   name: string

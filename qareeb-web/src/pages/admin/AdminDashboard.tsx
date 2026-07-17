@@ -30,6 +30,8 @@ import {
   Star,
   Check,
   Download,
+  Gift,
+  Trash2,
   type LucideIcon,
 } from 'lucide-react'
 import Logo from '@/components/Logo'
@@ -80,6 +82,11 @@ import {
   adminWarnCustomer,
   adminBroadcast,
   listAnnouncements,
+  adminListRewards,
+  adminUpsertReward,
+  adminDeleteReward,
+  adminListRewardRedemptions,
+  adminFulfillRedemption,
   getFinancialSummary,
   getAdminAnalytics,
   type AdminAnalytics,
@@ -150,6 +157,8 @@ import type {
   Complaint,
   ServiceState,
   PromoCode,
+  Reward,
+  AdminRewardRedemption,
 } from '@/lib/types'
 
 type Tab =
@@ -169,6 +178,7 @@ type Tab =
   | 'subs'
   | 'topup'
   | 'promo'
+  | 'rewards'
   | 'staff'
   | 'audit'
 
@@ -190,6 +200,7 @@ const tabs: { id: Tab; label: string; perm: StaffPerm | null; ownerOnly?: boolea
   { id: 'subs', label: 'الاشتراكات', perm: 'settings', Icon: Crown },
   { id: 'topup', label: 'تعبئة العملاء', perm: 'settings', Icon: CreditCard },
   { id: 'promo', label: 'البريمو كود', perm: 'settings', Icon: BadgePercent },
+  { id: 'rewards', label: 'متجر المكافآت', perm: 'settings', Icon: Gift },
   { id: 'staff', label: 'الموظفون', perm: null, ownerOnly: true, Icon: ShieldCheck },
   { id: 'audit', label: 'سجلّ النشاط', perm: null, ownerOnly: true, Icon: ScrollText },
 ]
@@ -282,6 +293,21 @@ export default function AdminDashboard() {
   const [annAudience, setAnnAudience] = useState<'customers' | 'drivers' | 'all'>('customers')
   const [annBusy, setAnnBusy] = useState(false)
   const [annMsg, setAnnMsg] = useState('')
+  // متجر المكافآت
+  const [rewards, setRewards] = useState<Reward[] | null>(null)
+  const [rewardRedemptions, setRewardRedemptions] = useState<AdminRewardRedemption[] | null>(null)
+  const [rewardDraft, setRewardDraft] = useState<{
+    id?: string
+    title: string
+    description: string
+    cost_points: string
+    kind: 'wallet' | 'perk'
+    value: string
+    active: boolean
+    sort: string
+  }>({ title: '', description: '', cost_points: '', kind: 'wallet', value: '', active: true, sort: '0' })
+  const [rewardBusy, setRewardBusy] = useState(false)
+  const [rewardMsg, setRewardMsg] = useState('')
   const [complaints, setComplaints] = useState<Complaint[] | null>(null)
   const [rides, setRides] = useState<Ride[] | null>(null)
   const [detailRides, setDetailRides] = useState<AdminRideRow[] | null>(null)
@@ -497,7 +523,12 @@ export default function AdminDashboard() {
       void listComplaints().then((c) => setComplaints(c as Complaint[]))
     if (tab === 'promo') void listPromos().then(setPromos)
     if (tab === 'pricing') void listServicePeriods().then(setPeriods)
-  }, [tab, drivers, customers, complaints, announcements])
+    if (tab === 'rewards') {
+      if (rewards === null) void adminListRewards().then(setRewards)
+      if (rewardRedemptions === null)
+        void adminListRewardRedemptions().then(setRewardRedemptions)
+    }
+  }, [tab, drivers, customers, complaints, announcements, rewards, rewardRedemptions])
 
   // صلاحياتي + قائمة الموظفين (للمالك).
   useEffect(() => {
@@ -1027,6 +1058,77 @@ export default function AdminDashboard() {
     setAnnBody('')
     setAnnMsg('تم إرسال الإشعار ✓')
     void listAnnouncements().then(setAnnouncements)
+  }
+
+  // ===== متجر المكافآت =====
+  const resetRewardDraft = () =>
+    setRewardDraft({
+      title: '',
+      description: '',
+      cost_points: '',
+      kind: 'wallet',
+      value: '',
+      active: true,
+      sort: '0',
+    })
+
+  const saveReward = async () => {
+    const cost = Number(rewardDraft.cost_points)
+    if (!rewardDraft.title.trim() || !Number.isFinite(cost) || cost <= 0) {
+      setRewardMsg('اكتب العنوان وعدد نقاط صحيح')
+      return
+    }
+    const val = Number(rewardDraft.value) || 0
+    if (rewardDraft.kind === 'wallet' && val <= 0) {
+      setRewardMsg('حدّد مبلغ الرصيد (ج.س) للمكافأة')
+      return
+    }
+    setRewardBusy(true)
+    setRewardMsg('')
+    const { error } = await adminUpsertReward({
+      id: rewardDraft.id ?? null,
+      title: rewardDraft.title.trim(),
+      description: rewardDraft.description.trim() || null,
+      cost_points: Math.round(cost),
+      kind: rewardDraft.kind,
+      value: val,
+      active: rewardDraft.active,
+      sort: Math.round(Number(rewardDraft.sort) || 0),
+    })
+    setRewardBusy(false)
+    if (error) return setRewardMsg(`خطأ: ${error}`)
+    resetRewardDraft()
+    setRewardMsg('تم الحفظ ✓')
+    void adminListRewards().then(setRewards)
+  }
+
+  const editReward = (r: Reward) =>
+    setRewardDraft({
+      id: r.id,
+      title: r.title,
+      description: r.description ?? '',
+      cost_points: String(r.cost_points),
+      kind: r.kind,
+      value: String(r.value),
+      active: r.active,
+      sort: String(r.sort),
+    })
+
+  const removeReward = async (r: Reward) => {
+    if (!window.confirm(`حذف المكافأة «${r.title}»؟`)) return
+    setRewardBusy(true)
+    const { error } = await adminDeleteReward(r.id)
+    setRewardBusy(false)
+    if (error) return alert(error)
+    void adminListRewards().then(setRewards)
+  }
+
+  const fulfillRedemption = async (id: string) => {
+    setRewardBusy(true)
+    const { error } = await adminFulfillRedemption(id)
+    setRewardBusy(false)
+    if (error) return alert(error)
+    void adminListRewardRedemptions().then(setRewardRedemptions)
   }
 
   // ===== إدارة عميل: تحذير / حظر =====
@@ -2415,6 +2517,214 @@ export default function AdminDashboard() {
                       <p className="mt-0.5 text-[11px] text-ink-muted">
                         {new Date(a.created_at).toLocaleString('ar-SD')}
                       </p>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {tab === 'rewards' && (
+          <div className="space-y-4">
+            {/* إضافة/تعديل مكافأة */}
+            <div className="card p-4">
+              <p className="mb-3 flex items-center gap-2 font-bold">
+                <Gift className="h-5 w-5 text-royal" strokeWidth={2} />
+                {rewardDraft.id ? 'تعديل مكافأة' : 'إضافة مكافأة'}
+              </p>
+              <div className="space-y-2.5">
+                <input
+                  className="field"
+                  placeholder="العنوان (مثال: رصيد 1000 ج.س)"
+                  maxLength={60}
+                  value={rewardDraft.title}
+                  onChange={(e) => setRewardDraft({ ...rewardDraft, title: e.target.value })}
+                />
+                <input
+                  className="field"
+                  placeholder="وصف مختصر (اختياري)"
+                  maxLength={120}
+                  value={rewardDraft.description}
+                  onChange={(e) => setRewardDraft({ ...rewardDraft, description: e.target.value })}
+                />
+                <div>
+                  <label className="mb-1 block text-xs text-ink-soft">نوع المكافأة</label>
+                  <div className="flex gap-2">
+                    {(
+                      [
+                        { v: 'wallet', l: 'رصيد محفظة' },
+                        { v: 'perk', l: 'مكافأة عينية (رمز)' },
+                      ] as const
+                    ).map((o) => (
+                      <button
+                        key={o.v}
+                        onClick={() => setRewardDraft({ ...rewardDraft, kind: o.v })}
+                        className={`flex-1 rounded-xl px-3 py-2 text-sm font-bold ${
+                          rewardDraft.kind === o.v
+                            ? 'bg-royal text-white'
+                            : 'border border-hairline text-ink-soft hover:bg-green-soft'
+                        }`}
+                      >
+                        {o.l}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <label className="mb-1 block text-xs text-ink-soft">كلفة النقاط</label>
+                    <input
+                      className="field"
+                      inputMode="numeric"
+                      placeholder="مثال: 100"
+                      value={rewardDraft.cost_points}
+                      onChange={(e) =>
+                        setRewardDraft({ ...rewardDraft, cost_points: e.target.value })
+                      }
+                    />
+                  </div>
+                  {rewardDraft.kind === 'wallet' && (
+                    <div>
+                      <label className="mb-1 block text-xs text-ink-soft">قيمة الرصيد (ج.س)</label>
+                      <input
+                        className="field"
+                        inputMode="numeric"
+                        placeholder="مثال: 1000"
+                        value={rewardDraft.value}
+                        onChange={(e) => setRewardDraft({ ...rewardDraft, value: e.target.value })}
+                      />
+                    </div>
+                  )}
+                </div>
+                <div className="flex items-center gap-3">
+                  <label className="flex items-center gap-2 text-sm">
+                    <input
+                      type="checkbox"
+                      checked={rewardDraft.active}
+                      onChange={(e) => setRewardDraft({ ...rewardDraft, active: e.target.checked })}
+                    />
+                    مفعّلة
+                  </label>
+                  <div className="flex items-center gap-1 text-sm text-ink-soft">
+                    ترتيب:
+                    <input
+                      className="field w-16 px-2 py-1"
+                      inputMode="numeric"
+                      value={rewardDraft.sort}
+                      onChange={(e) => setRewardDraft({ ...rewardDraft, sort: e.target.value })}
+                    />
+                  </div>
+                </div>
+                {rewardMsg && (
+                  <p
+                    className={`text-sm font-medium ${
+                      rewardMsg.startsWith('خطأ') ? 'text-danger' : 'text-green'
+                    }`}
+                  >
+                    {rewardMsg}
+                  </p>
+                )}
+                <div className="flex gap-2">
+                  <button
+                    onClick={saveReward}
+                    disabled={rewardBusy}
+                    className="btn-primary flex-1"
+                  >
+                    {rewardBusy ? '…' : rewardDraft.id ? 'حفظ التعديل' : 'إضافة'}
+                  </button>
+                  {rewardDraft.id && (
+                    <button
+                      onClick={resetRewardDraft}
+                      className="rounded-xl border border-hairline px-4 py-2 text-sm font-bold text-ink-soft"
+                    >
+                      إلغاء
+                    </button>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            {/* قائمة المكافآت */}
+            <div className="card p-4">
+              <p className="mb-3 font-bold">المكافآت الحالية</p>
+              {rewards === null ? (
+                <div className="h-16 animate-pulse rounded-xl bg-ivory" />
+              ) : rewards.length === 0 ? (
+                <p className="py-4 text-center text-sm text-ink-muted">لا توجد مكافآت بعد</p>
+              ) : (
+                <div className="divide-y divide-hairline">
+                  {rewards.map((r) => (
+                    <div key={r.id} className="flex items-center gap-2 py-2.5">
+                      <div className="min-w-0 flex-1">
+                        <p className="flex items-center gap-2 font-bold text-royal">
+                          {r.title}
+                          {!r.active && (
+                            <span className="rounded-md bg-ink-muted/10 px-1.5 py-0.5 text-[10px] font-bold text-ink-muted">
+                              معطّلة
+                            </span>
+                          )}
+                        </p>
+                        <p className="text-xs text-ink-muted">
+                          {r.cost_points} نقطة ·{' '}
+                          {r.kind === 'wallet' ? `رصيد ${money(r.value)}` : 'مكافأة عينية'}
+                        </p>
+                      </div>
+                      <button
+                        onClick={() => editReward(r)}
+                        className="rounded-lg border border-hairline px-3 py-1.5 text-xs font-bold text-royal"
+                      >
+                        تعديل
+                      </button>
+                      <button
+                        onClick={() => void removeReward(r)}
+                        className="rounded-lg border border-danger/40 px-2 py-1.5 text-danger"
+                        aria-label="حذف"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* طلبات المكافآت العينية */}
+            <div className="card p-4">
+              <p className="mb-3 font-bold">طلبات الاستلام (مكافآت عينية)</p>
+              {rewardRedemptions === null ? (
+                <div className="h-16 animate-pulse rounded-xl bg-ivory" />
+              ) : rewardRedemptions.length === 0 ? (
+                <p className="py-4 text-center text-sm text-ink-muted">لا توجد طلبات</p>
+              ) : (
+                <div className="divide-y divide-hairline">
+                  {rewardRedemptions.map((rr) => (
+                    <div key={rr.id} className="flex items-center gap-2 py-2.5">
+                      <div className="min-w-0 flex-1">
+                        <p className="font-bold text-royal">{rr.title}</p>
+                        <p className="text-xs text-ink-muted">
+                          {rr.user_name ?? '—'} · {rr.user_phone}
+                          {rr.code && (
+                            <>
+                              {' '}
+                              · رمز: <span className="font-bold text-sand-ink">{rr.code}</span>
+                            </>
+                          )}
+                        </p>
+                      </div>
+                      {rr.status === 'pending' ? (
+                        <button
+                          onClick={() => void fulfillRedemption(rr.id)}
+                          disabled={rewardBusy}
+                          className="rounded-lg bg-green px-3 py-1.5 text-xs font-bold text-white"
+                        >
+                          تأكيد التسليم
+                        </button>
+                      ) : (
+                        <span className="flex items-center gap-1 rounded-md bg-green/10 px-1.5 py-0.5 text-xs font-bold text-green">
+                          <Check className="h-3.5 w-3.5" /> تم
+                        </span>
+                      )}
                     </div>
                   ))}
                 </div>

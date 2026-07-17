@@ -4168,3 +4168,161 @@ begin
   exception when others then null; end;
 end $$;
 grant execute on function public.admin_broadcast(text, text, text) to authenticated;
+
+-- ============================================================
+--  متجر المكافآت — استبدال نقاط الولاء بمكافآت مُنسّقة (#7)
+--  شغّل هذا القسم كاملاً مرّة واحدة.
+-- ============================================================
+create table if not exists public.rewards (
+  id          uuid primary key default gen_random_uuid(),
+  title       text not null,
+  description text,
+  cost_points int  not null check (cost_points > 0),
+  kind        text not null default 'wallet' check (kind in ('wallet', 'perk')),
+  value       numeric(12,2) not null default 0,   -- مبلغ ج.س عند kind='wallet'
+  active      boolean not null default true,
+  sort        int not null default 0,
+  created_at  timestamptz not null default now()
+);
+alter table public.rewards enable row level security;
+drop policy if exists "anyone read active rewards" on public.rewards;
+create policy "anyone read active rewards" on public.rewards
+  for select using (active or public.is_staff_or_admin());
+drop policy if exists "admin write rewards" on public.rewards;
+create policy "admin write rewards" on public.rewards
+  for all using (public.has_perm('settings')) with check (public.has_perm('settings'));
+
+create table if not exists public.reward_redemptions (
+  id          uuid primary key default gen_random_uuid(),
+  user_id     uuid not null references public.users(id) on delete cascade,
+  reward_id   uuid references public.rewards(id) on delete set null,
+  title       text not null,
+  cost_points int  not null,
+  kind        text not null,
+  value       numeric(12,2) not null default 0,
+  code        text,                                 -- رمز الاستلام للمكافآت العينية
+  status      text not null default 'fulfilled' check (status in ('pending', 'fulfilled', 'cancelled')),
+  created_at  timestamptz not null default now()
+);
+alter table public.reward_redemptions enable row level security;
+drop policy if exists "user read own redemptions" on public.reward_redemptions;
+create policy "user read own redemptions" on public.reward_redemptions
+  for select using (user_id = auth.uid() or public.is_staff_or_admin());
+drop policy if exists "staff manage redemptions" on public.reward_redemptions;
+create policy "staff manage redemptions" on public.reward_redemptions
+  for update using (public.has_perm('settings')) with check (public.has_perm('settings'));
+
+-- قائمة المكافآت المتاحة للعميل (المفعّلة فقط).
+create or replace function public.list_rewards()
+returns setof public.rewards language sql security definer set search_path = public stable as $$
+  select * from public.rewards where active order by sort, cost_points;
+$$;
+grant execute on function public.list_rewards() to authenticated;
+
+-- استبدال مكافأة: يخصم النقاط ويطبّق الأثر (رصيد محفظة أو مكافأة عينية برمز).
+create or replace function public.redeem_reward(p_reward_id uuid)
+returns jsonb language plpgsql security definer set search_path = public as $$
+declare
+  v_uid uuid := auth.uid();
+  r public.rewards;
+  v_have int;
+  v_wallet uuid;
+  v_code text;
+begin
+  if v_uid is null then raise exception 'غير مصرّح'; end if;
+  select * into r from public.rewards where id = p_reward_id;
+  if not found or not r.active then raise exception 'المكافأة غير متاحة'; end if;
+  select loyalty_points into v_have from public.users where id = v_uid for update;
+  if coalesce(v_have, 0) < r.cost_points then raise exception 'نقاطك غير كافية'; end if;
+  update public.users set loyalty_points = loyalty_points - r.cost_points where id = v_uid;
+
+  if r.kind = 'wallet' then
+    select id into v_wallet from public.wallets where user_id = v_uid for update;
+    if v_wallet is null then raise exception 'المحفظة غير موجودة'; end if;
+    update public.wallets set balance = balance + r.value, updated_at = now() where id = v_wallet;
+    insert into public.transactions (wallet_id, type, amount, note)
+      values (v_wallet, 'topup', r.value, 'مكافأة: ' || r.title);
+    insert into public.reward_redemptions (user_id, reward_id, title, cost_points, kind, value, status)
+      values (v_uid, r.id, r.title, r.cost_points, r.kind, r.value, 'fulfilled');
+    return jsonb_build_object('kind', 'wallet', 'value', r.value);
+  else
+    v_code := upper(substr(md5(gen_random_uuid()::text), 1, 6));
+    insert into public.reward_redemptions (user_id, reward_id, title, cost_points, kind, value, code, status)
+      values (v_uid, r.id, r.title, r.cost_points, r.kind, r.value, v_code, 'pending');
+    return jsonb_build_object('kind', 'perk', 'code', v_code);
+  end if;
+end $$;
+grant execute on function public.redeem_reward(uuid) to authenticated;
+
+-- سجلّ استبدالات العميل الحالي.
+create or replace function public.my_reward_redemptions()
+returns setof public.reward_redemptions language sql security definer set search_path = public stable as $$
+  select * from public.reward_redemptions where user_id = auth.uid() order by created_at desc;
+$$;
+grant execute on function public.my_reward_redemptions() to authenticated;
+
+-- إدارة المكافآت (أدمن): إضافة/تعديل.
+create or replace function public.admin_upsert_reward(
+  p_id uuid, p_title text, p_description text, p_cost_points int,
+  p_kind text, p_value numeric, p_active boolean, p_sort int
+) returns uuid language plpgsql security definer set search_path = public as $$
+declare v_id uuid;
+begin
+  if not public.has_perm('settings') then raise exception 'غير مصرّح'; end if;
+  if coalesce(trim(p_title), '') = '' then raise exception 'العنوان مطلوب'; end if;
+  if coalesce(p_cost_points, 0) <= 0 then raise exception 'عدد النقاط غير صالح'; end if;
+  if p_kind not in ('wallet', 'perk') then raise exception 'نوع غير صالح'; end if;
+  if p_id is null then
+    insert into public.rewards (title, description, cost_points, kind, value, active, sort)
+      values (p_title, p_description, p_cost_points, p_kind, coalesce(p_value, 0), coalesce(p_active, true), coalesce(p_sort, 0))
+      returning id into v_id;
+  else
+    update public.rewards set
+      title = p_title, description = p_description, cost_points = p_cost_points,
+      kind = p_kind, value = coalesce(p_value, 0), active = coalesce(p_active, true), sort = coalesce(p_sort, 0)
+      where id = p_id returning id into v_id;
+  end if;
+  perform public.log_action('تعديل مكافأة', p_title);
+  return v_id;
+end $$;
+grant execute on function public.admin_upsert_reward(uuid, text, text, int, text, numeric, boolean, int) to authenticated;
+
+create or replace function public.admin_delete_reward(p_id uuid)
+returns void language plpgsql security definer set search_path = public as $$
+begin
+  if not public.has_perm('settings') then raise exception 'غير مصرّح'; end if;
+  delete from public.rewards where id = p_id;
+  perform public.log_action('حذف مكافأة', p_id::text);
+end $$;
+grant execute on function public.admin_delete_reward(uuid) to authenticated;
+
+-- قائمة كل المكافآت للأدمن (شاملة المعطّلة).
+create or replace function public.admin_list_rewards()
+returns setof public.rewards language sql security definer set search_path = public stable as $$
+  select * from public.rewards order by sort, cost_points;
+$$;
+grant execute on function public.admin_list_rewards() to authenticated;
+
+-- طلبات المكافآت العينية المعلّقة (للأدمن لتسليمها).
+create or replace function public.admin_list_reward_redemptions()
+returns table (
+  id uuid, user_name text, user_phone text, title text,
+  cost_points int, kind text, value numeric, code text, status text, created_at timestamptz
+) language sql security definer set search_path = public stable as $$
+  select rr.id, u.full_name, u.phone, rr.title, rr.cost_points, rr.kind,
+         rr.value, rr.code, rr.status, rr.created_at
+  from public.reward_redemptions rr
+  join public.users u on u.id = rr.user_id
+  where rr.kind = 'perk'
+  order by (rr.status = 'pending') desc, rr.created_at desc;
+$$;
+grant execute on function public.admin_list_reward_redemptions() to authenticated;
+
+create or replace function public.admin_fulfill_redemption(p_id uuid)
+returns void language plpgsql security definer set search_path = public as $$
+begin
+  if not public.has_perm('settings') then raise exception 'غير مصرّح'; end if;
+  update public.reward_redemptions set status = 'fulfilled' where id = p_id and status = 'pending';
+  perform public.log_action('تسليم مكافأة', p_id::text);
+end $$;
+grant execute on function public.admin_fulfill_redemption(uuid) to authenticated;
