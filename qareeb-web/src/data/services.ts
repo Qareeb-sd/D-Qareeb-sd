@@ -110,6 +110,32 @@ export const services: Service[] = [
     noun: 'السطحة',
     sharable: false,
   },
+  // خدمتان خاصّتان لا تظهران في قائمة اختيار المركبة (state=hidden)، لكن لهما
+  // تسعيرهما الكامل بالمسافة/الزمن في لوحة الأدمن مثل بقية المركبات.
+  {
+    id: 'package',
+    name: 'توصيل طرد',
+    tagline: 'أرسل غرضاً لأي مكان',
+    image: '/vehicles/rickshaw.png',
+    art: 'rickshaw',
+    tint: '#B0870F',
+    seats: 1,
+    noun: 'الطرد',
+    sharable: false,
+    state: 'hidden',
+  },
+  {
+    id: 'intercity',
+    name: 'سفر بين المدن',
+    tagline: 'رحلة لمدينة أخرى',
+    image: '/vehicles/standard.png',
+    art: 'sedan',
+    tint: '#0E3B2E',
+    seats: 4,
+    noun: 'السيارة',
+    sharable: false,
+    state: 'hidden',
+  },
 ]
 
 /**

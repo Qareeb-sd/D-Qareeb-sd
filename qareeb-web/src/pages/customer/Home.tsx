@@ -284,7 +284,7 @@ export default function Home() {
           <div className="mt-3 grid grid-cols-2 gap-3">
             <button
               onClick={() => {
-                setServiceId('rickshaw')
+                setServiceId('package')
                 navigate('/select-location', { state: { mode: 'package' } })
               }}
               className="press-scale flex items-center gap-2 rounded-2xl border border-sand/35 bg-ivory/70 px-3 py-3 text-right"
@@ -299,7 +299,7 @@ export default function Home() {
             </button>
             <button
               onClick={() => {
-                setServiceId('standard')
+                setServiceId('intercity')
                 navigate('/select-location', { state: { mode: 'intercity' } })
               }}
               className="press-scale flex items-center gap-2 rounded-2xl border border-sand/35 bg-ivory/70 px-3 py-3 text-right"

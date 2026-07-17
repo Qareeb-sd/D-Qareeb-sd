@@ -103,8 +103,9 @@ export default function SelectLocation() {
   const rebook = navState?.rebook
   // وضع الخدمة: توصيل طرد أو رحلة بين المدن (يُغيّر التسميات والحقول).
   const mode = navState?.mode
-  const isPackage = mode === 'package'
-  const isIntercity = mode === 'intercity'
+  // الوضع يُستنتج من علامة التنقّل أو من معرّف الخدمة نفسه (package/intercity).
+  const isPackage = mode === 'package' || sid === 'package'
+  const isIntercity = mode === 'intercity' || sid === 'intercity'
   const pickupLabel = isPackage ? 'موقع استلام الطرد' : 'نقطة الانطلاق'
   const dropoffLabel = isPackage ? 'موقع تسليم الطرد' : isIntercity ? 'المدينة / الوجهة' : 'الوجهة'
 
@@ -358,19 +359,9 @@ export default function SelectLocation() {
       const rawFare = periodRate
         ? computeFare(km, min, periodRate)
         : estimateFare({ distanceKm: km, durationMin: min, pricing, settings }).total
-      // تسعير الخدمات الإضافية (يُطبَّق قبل الذروة):
-      //   • بين المدن: مضاعف على الأجرة.
-      //   • توصيل طرد: مضاعف + رسم ثابت.
-      let baseFare = rawFare
-      if (isIntercity) {
-        const interMult = settings?.intercity_multiplier ?? 1
-        if (interMult > 1) baseFare = Math.round((baseFare * interMult) / 100) * 100
-      }
-      if (isPackage) {
-        const pkgMult = settings?.package_multiplier ?? 1
-        const pkgFee = settings?.package_fee ?? 0
-        baseFare = Math.round((baseFare * pkgMult + pkgFee) / 100) * 100
-      }
+      // الطرود والسفر بين المدن لها تسعيرها الخاص (خدمات مستقلّة في جدول الأسعار
+      // والأزمان)، فيُحسب سعرها بالمسافة والزمن تماماً كالمركبات دون أي مضاعف إضافي.
+      const baseFare = rawFare
       // مضاعف الذروة (تلقائي/يدوي) يُطبَّق على الأجرة ويُقرّب لأقرب 100.
       const fare = surge > 1 ? Math.round((baseFare * surge) / 100) * 100 : baseFare
       setQuote({ distanceKm: km, durationMin: min, fare, real: anyReal })
@@ -910,25 +901,6 @@ export default function SelectLocation() {
               تسعير ذروة ×{surge} — الطلب مرتفع حالياً.
             </div>
           )}
-
-          {/* شارة الرحلة بين المدن — يعرف العميل أن التسعير أعلى للمسافات البعيدة */}
-          {isIntercity && quote && destChosen && (settings?.intercity_multiplier ?? 1) > 1 && (
-            <div className="mt-2 flex items-center gap-1.5 rounded-xl bg-royal-soft px-3 py-2 text-[12px] font-bold text-royal">
-              <span className="text-sm">🏙️</span>
-              رحلة بين المدن — تسعير ×{settings?.intercity_multiplier} للمسافات البعيدة.
-            </div>
-          )}
-
-          {/* شارة توصيل الطرد — تسعير مخصّص */}
-          {isPackage && quote && destChosen &&
-            ((settings?.package_multiplier ?? 1) > 1 || (settings?.package_fee ?? 0) > 0) && (
-              <div className="mt-2 flex items-center gap-1.5 rounded-xl bg-sand-soft px-3 py-2 text-[12px] font-bold text-sand-ink">
-                <span className="text-sm">📦</span>
-                تسعير توصيل الطرود
-                {(settings?.package_multiplier ?? 1) > 1 && ` ×${settings?.package_multiplier}`}
-                {(settings?.package_fee ?? 0) > 0 && ` + ${money(settings?.package_fee ?? 0)}`}.
-              </div>
-            )}
 
           {/* دَيْن رسوم إلغاء سابق مُضاف لهذه الرحلة */}
           {quote && destChosen && debt > 0 && (

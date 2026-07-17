@@ -4614,3 +4614,28 @@ alter table public.settings add column if not exists intercity_multiplier numeri
 -- تسعير توصيل الطرود من الأدمن (#1): مضاعف + رسم ثابت يُطبَّقان على أجرة المسافة.
 alter table public.settings add column if not exists package_multiplier numeric(4,2) not null default 1.0;
 alter table public.settings add column if not exists package_fee numeric(12,2) not null default 0;
+
+-- ============================================================
+--  توصيل الطرود + السفر بين المدن كخدمتين مستقلّتين (تسعير كامل بالمسافة/الزمن).
+-- ============================================================
+insert into public.service_pricing
+  (service_id, name, base_fare, per_km_urban, per_km_far, per_minute,
+   sort_order, active, tagline, seats, art, tint, noun, sharable, destination_optional, state)
+values
+  ('package',   'توصيل طرد',    2400, 2400, 3000, 56, 20, true,
+   'أرسل غرضاً لأي مكان', 1, 'rickshaw', '#B0870F', 'الطرد',   false, false, 'hidden'),
+  ('intercity', 'سفر بين المدن', 5000, 4500, 5000, 56, 21, true,
+   'رحلة لمدينة أخرى',    4, 'sedan',    '#0E3B2E', 'السيارة', false, false, 'hidden')
+on conflict (service_id) do nothing;
+
+insert into public.service_pricing_periods (service_id, period, base_fare, per_km, per_min, min_fare)
+values
+  ('package','morning',   2400, 2400, 56, 6000),
+  ('package','afternoon', 2400, 2400, 56, 6000),
+  ('package','evening',   2640, 2640, 56, 6600),
+  ('package','night',     2760, 2760, 56, 6900),
+  ('intercity','morning',   5000, 4500, 56, 15000),
+  ('intercity','afternoon', 5000, 4500, 56, 15000),
+  ('intercity','evening',   5500, 4950, 56, 16500),
+  ('intercity','night',     5750, 5175, 56, 17300)
+on conflict (service_id, period) do nothing;
