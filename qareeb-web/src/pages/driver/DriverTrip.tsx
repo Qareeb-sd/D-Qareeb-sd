@@ -423,8 +423,9 @@ export default function DriverTrip() {
   return (
     <Screen title="الرحلة الجارية" bare>
       <SosButton rideId={activeRide.id} role="driver" />
-      {/* الخريطة تملأ الشاشة كاملة — إحساس ملاحة حقيقي، والتفاصيل في لوحة عائمة */}
-      <div className="relative h-full overflow-hidden bg-ivory font-plex">
+      {/* الخريطة تملأ معظم الشاشة (منطقة مرنة) والتفاصيل في لوحة سفلية قابلة للطيّ */}
+      <div className="relative flex h-full flex-col bg-ivory font-plex">
+        <div className="relative min-h-[40vh] flex-1">
         <MapView
           center={pos ?? target ?? { lat: activeRide.pickup_lat, lng: activeRide.pickup_lng }}
           driver={pos ?? undefined}
@@ -521,9 +522,10 @@ export default function DriverTrip() {
             )}
           </div>
         </div>
+        </div>
 
-        {/* لوحة سفلية عائمة قابلة للطيّ — مطويّة تُبقي الخريطة تملأ الشاشة */}
-        <section className="absolute inset-x-0 bottom-0 z-10 rounded-t-[24px] bg-white shadow-float">
+        {/* لوحة سفلية قابلة للطيّ — عند طيّها تكبر الخريطة أعلى الشاشة */}
+        <section className="relative z-10 -mt-4 rounded-t-[24px] bg-white shadow-float">
           {/* مقبض للطيّ/التوسيع */}
           <button
             onClick={() => setSheetOpen((o) => !o)}
@@ -546,7 +548,7 @@ export default function DriverTrip() {
 
           {sheetOpen ? (
             /* موسّعة: كل التفاصيل داخل حاوية قابلة للتمرير كي لا تتجاوز الشاشة */
-            <div className="max-h-[52vh] overflow-y-auto px-4 pt-1">
+            <div className="max-h-[40vh] overflow-y-auto px-4 pt-1">
               {/* شريط خطوات الرحلة */}
               <div className="mb-4 flex items-center">
                 {STEPS.map((s, i) => {
