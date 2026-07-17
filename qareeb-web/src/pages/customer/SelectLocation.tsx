@@ -36,6 +36,7 @@ import {
   validatePromo,
   listServicePeriods,
   nearbyOnlineDrivers,
+  getWallet,
   type PromoResult,
 } from '@/lib/api'
 import {
@@ -132,8 +133,10 @@ export default function SelectLocation() {
 
   // دَيْن رسوم إلغاء سابق (يُضاف لأجرة هذه الرحلة).
   const [debt, setDebt] = useState(0)
+  const [walletBal, setWalletBal] = useState<number | null>(null)
   useEffect(() => {
     if (profile?.id) void getCancellationDebt(profile.id).then(setDebt)
+    if (profile?.id) void getWallet(profile.id).then((w) => setWalletBal(w?.balance ?? 0))
   }, [profile?.id])
 
   // السيارات المتصلة القريبة (تُعبّأ أدناه بعد تعريف activePos).
@@ -956,11 +959,21 @@ export default function SelectLocation() {
                 )
               })}
             </div>
-            {payment === 'wallet' && (
-              <p className="mt-1.5 text-[11px] text-ink-muted">
-                سيُخصم المبلغ من محفظتك فور تأكيد الرحلة، ويُسترجَع إن أُلغيت.
-              </p>
-            )}
+            {payment === 'wallet' &&
+              (walletBal != null && quote && walletBal < effectiveFare + debt ? (
+                <button
+                  onClick={() => navigate('/wallet')}
+                  className="mt-1.5 flex w-full items-center gap-1.5 rounded-xl bg-danger/5 px-3 py-2 text-right text-[12px] font-bold text-danger"
+                >
+                  <Wallet className="h-4 w-4 shrink-0" strokeWidth={2} />
+                  رصيد محفظتك {money(walletBal)} لا يكفي لهذه الرحلة — اضغط لتعبئة المحفظة.
+                </button>
+              ) : (
+                <p className="mt-1.5 text-[11px] text-ink-muted">
+                  سيُخصم المبلغ من محفظتك فور تأكيد الرحلة، ويُسترجَع إن أُلغيت.
+                  {walletBal != null && ` رصيدك: ${money(walletBal)}.`}
+                </p>
+              ))}
           </div>
 
           {/* زر التأكيد */}

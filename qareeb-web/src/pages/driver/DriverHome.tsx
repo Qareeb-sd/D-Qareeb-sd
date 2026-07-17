@@ -16,6 +16,7 @@ import {
   getWallet,
   listDriverTransactions,
   updateMyLocation,
+  getSettings,
 } from '@/lib/api'
 import { subscribeToRides } from '@/lib/realtime'
 import {
@@ -51,6 +52,9 @@ export default function DriverHome() {
     queryKey: ['driver-wallet', userId],
     queryFn: () => getWallet(userId),
   })
+  const { data: settings } = useQuery({ queryKey: ['settings'], queryFn: getSettings })
+  const minBalance = settings?.min_driver_balance ?? 0
+  const lowBalance = wallet != null && minBalance > 0 && (wallet.balance ?? 0) < minBalance
   const { data: txs = [] } = useQuery({
     queryKey: ['driver-transactions', wallet?.id],
     queryFn: () => listDriverTransactions(wallet!.id),
@@ -252,6 +256,26 @@ export default function DriverHome() {
       </header>
 
       <main className="flex-1 px-4 pt-4 pb-24">
+        {/* تنبيه رصيد منخفض — يمنع الاتصال واستقبال الطلبات */}
+        {lowBalance && (
+          <button
+            onClick={() => navigate('/driver/wallet')}
+            className="mb-4 flex w-full items-center gap-3 rounded-2xl border border-danger/40 bg-danger/5 p-3.5 text-right"
+          >
+            <span className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-danger/15 text-danger">
+              <Coins className="h-5 w-5" strokeWidth={2} />
+            </span>
+            <div className="flex-1">
+              <p className="font-bold text-danger">رصيدك منخفض</p>
+              <p className="text-xs text-ink-soft">
+                رصيدك {money(wallet?.balance ?? 0)} أقلّ من الحدّ الأدنى {money(minBalance)} — عبّئ
+                رصيدك لتتمكّن من الاتصال واستقبال الطلبات.
+              </p>
+            </div>
+            <ChevronLeft className="h-5 w-5 text-ink-muted" />
+          </button>
+        )}
+
         {/* ملخّص اليوم — رحلات + صافي أرباح + تقييم */}
         <div className="mb-4 grid grid-cols-3 gap-2.5">
           <SummaryStat Icon={Route} label="رحلات اليوم" value={String(tripsToday)} />
