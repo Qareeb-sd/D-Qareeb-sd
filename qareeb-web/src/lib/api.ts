@@ -50,6 +50,8 @@ const demoSettings: Settings = {
   cancellation_far_min: 15,
   min_driver_balance: 0,
   referral_reward: 0,
+  loyalty_per_ride: 0,
+  loyalty_point_value: 0,
   updated_at: new Date().toISOString(),
 }
 
@@ -1191,6 +1193,22 @@ export async function setDriverOnline(
 export async function updateMyLocation(lat: number, lng: number): Promise<void> {
   if (!isSupabaseConfigured) return
   await supabase.rpc('update_my_location', { p_lat: lat, p_lng: lng })
+}
+
+/** نقاط ولاء العميل الحالي + قيمة النقطة. */
+export async function getMyLoyalty(): Promise<{ points: number; point_value: number }> {
+  if (!isSupabaseConfigured) return { points: 0, point_value: 0 }
+  const { data } = await supabase.rpc('my_loyalty')
+  const row = (data as { points: number; point_value: number }[])?.[0]
+  return { points: row?.points ?? 0, point_value: row?.point_value ?? 0 }
+}
+
+/** استبدال نقاط ولاء برصيد في المحفظة. */
+export async function redeemLoyalty(points: number): Promise<{ amount?: number; error?: string }> {
+  if (!isSupabaseConfigured) return { amount: 0 }
+  const { data, error } = await supabase.rpc('redeem_loyalty', { p_points: points })
+  if (error) return { error: error.message }
+  return { amount: (data as { amount?: number })?.amount ?? 0 }
 }
 
 /** نقاط كثافة الطلب الأخيرة (لخريطة السائق الحرارية). */

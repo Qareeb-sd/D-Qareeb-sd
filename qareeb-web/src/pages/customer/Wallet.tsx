@@ -11,7 +11,10 @@ import {
   listTransactions,
   createTopup,
   uploadTopupProof,
+  getMyLoyalty,
+  redeemLoyalty,
 } from '@/lib/api'
+import { Award } from 'lucide-react'
 
 /** محفظة قريب: الرصيد + التعبئة بتحويل بنكي ورفع إثبات + سجل المعاملات. */
 export default function Wallet() {
@@ -35,6 +38,25 @@ export default function Wallet() {
     ...live,
   })
   const loading = walletLoading || (Boolean(wallet) && txLoading)
+
+  const { data: loyalty } = useQuery({
+    queryKey: ['loyalty', userId],
+    queryFn: getMyLoyalty,
+    ...live,
+  })
+  const [redeeming, setRedeeming] = useState(false)
+  const redeem = async () => {
+    if (!loyalty || loyalty.points <= 0) return
+    if (!window.confirm(`استبدال ${loyalty.points} نقطة بـ ${money(loyalty.points * loyalty.point_value)} في محفظتك؟`))
+      return
+    setRedeeming(true)
+    const { amount, error } = await redeemLoyalty(loyalty.points)
+    setRedeeming(false)
+    if (error) return alert(error)
+    await qc.invalidateQueries({ queryKey: ['loyalty', userId] })
+    await qc.invalidateQueries({ queryKey: ['wallet', userId] })
+    alert(`تمت إضافة ${money(amount ?? 0)} إلى محفظتك 🎉`)
+  }
 
   const [showTopup, setShowTopup] = useState(false)
   const [amount, setAmount] = useState('')
@@ -89,6 +111,29 @@ export default function Wallet() {
             تعبئة الرصيد
           </button>
         </div>
+
+        {/* نقاط الولاء — تظهر عند تفعيلها من الأدمن */}
+        {loyalty && loyalty.point_value > 0 && (
+          <div className="card mt-4 flex items-center gap-3 p-4">
+            <span className="grid h-11 w-11 shrink-0 place-items-center rounded-full bg-sand-soft text-sand-ink">
+              <Award className="h-6 w-6" strokeWidth={1.9} />
+            </span>
+            <div className="flex-1">
+              <p className="font-bold text-royal">نقاط الولاء</p>
+              <p className="text-xs text-ink-muted">
+                لديك <span className="font-bold text-sand-ink">{loyalty.points}</span> نقطة ={' '}
+                {money(loyalty.points * loyalty.point_value)}
+              </p>
+            </div>
+            <button
+              onClick={redeem}
+              disabled={redeeming || loyalty.points <= 0}
+              className="rounded-xl bg-royal px-4 py-2 text-sm font-bold text-white disabled:opacity-50"
+            >
+              {redeeming ? '…' : 'استبدال'}
+            </button>
+          </div>
+        )}
 
         {/* نموذج التعبئة */}
         {showTopup && (

@@ -3665,3 +3665,90 @@ begin
   update public.drivers set rating = v_avg where user_id = v_ratee;
 end $$;
 grant execute on function public.submit_review(uuid, int, text, boolean, boolean, text[], text) to authenticated;
+
+-- ============================================================
+--  إشعارات حالة الرحلة للعميل (Push): عند قبول/وصول/بدء/إكمال الرحلة.
+-- ============================================================
+create or replace function public.notify_ride_status()
+returns trigger language plpgsql security definer set search_path = public as $$
+declare v_title text; v_body text;
+begin
+  if new.status is distinct from old.status then
+    if new.status = 'accepted' then
+      v_title := 'تم قبول رحلتك'; v_body := 'السائق في الطريق إليك — تابع وصوله على الخريطة.';
+    elsif new.status = 'arrived' then
+      v_title := 'وصل السائق'; v_body := 'الكابتن بانتظارك في نقطة الالتقاء.';
+    elsif new.status = 'in_progress' then
+      v_title := 'بدأت رحلتك'; v_body := 'أنت في الطريق إلى وجهتك — رحلة موفّقة.';
+    elsif new.status = 'completed' then
+      v_title := 'انتهت رحلتك'; v_body := 'وصلت بالسلامة — لا تنسَ تقييم رحلتك 🌟';
+    else
+      return new;
+    end if;
+    begin
+      perform net.http_post(
+        url := 'https://yjdidwnnlyeisaahfmlr.supabase.co/functions/v1/notify-user-fcm',
+        headers := '{"Content-Type": "application/json"}'::jsonb,
+        body := jsonb_build_object('user_id', new.customer_id::text, 'title', v_title, 'body', v_body));
+    exception when others then null; end;
+  end if;
+  return new;
+end $$;
+drop trigger if exists trg_notify_ride_status on public.rides;
+create trigger trg_notify_ride_status after update on public.rides
+  for each row execute function public.notify_ride_status();
+
+-- ============================================================
+--  نظام نقاط الولاء: نقاط لكل رحلة مكتملة، تُستبدل برصيد في المحفظة.
+-- ============================================================
+alter table public.users    add column if not exists loyalty_points int not null default 0;
+alter table public.settings add column if not exists loyalty_per_ride    int not null default 0;   -- نقاط لكل رحلة
+alter table public.settings add column if not exists loyalty_point_value numeric(12,2) not null default 0; -- قيمة النقطة (ج.س)
+
+-- منح نقاط للعميل عند إكمال الرحلة.
+create or replace function public.award_loyalty()
+returns trigger language plpgsql security definer set search_path = public as $$
+declare v_pts int;
+begin
+  if new.status = 'completed' and old.status is distinct from 'completed' then
+    select loyalty_per_ride into v_pts from public.settings where id = 1;
+    if coalesce(v_pts, 0) > 0 then
+      update public.users set loyalty_points = loyalty_points + v_pts where id = new.customer_id;
+    end if;
+  end if;
+  return new;
+end $$;
+drop trigger if exists trg_award_loyalty on public.rides;
+create trigger trg_award_loyalty after update on public.rides
+  for each row execute function public.award_loyalty();
+
+-- نقاط العميل الحالي + قيمتها.
+create or replace function public.my_loyalty()
+returns table (points int, point_value numeric) language sql security definer set search_path = public stable as $$
+  select coalesce(u.loyalty_points, 0),
+         (select loyalty_point_value from public.settings where id = 1)
+  from public.users u where u.id = auth.uid();
+$$;
+grant execute on function public.my_loyalty() to authenticated;
+
+-- استبدال النقاط برصيد في المحفظة.
+create or replace function public.redeem_loyalty(p_points int)
+returns jsonb language plpgsql security definer set search_path = public as $$
+declare v_uid uuid := auth.uid(); v_have int; v_val numeric; v_amount numeric; v_wallet uuid;
+begin
+  if v_uid is null then raise exception 'غير مصرّح'; end if;
+  if coalesce(p_points, 0) <= 0 then raise exception 'عدد النقاط غير صالح'; end if;
+  select loyalty_points into v_have from public.users where id = v_uid for update;
+  if coalesce(v_have, 0) < p_points then raise exception 'نقاطك غير كافية'; end if;
+  select loyalty_point_value into v_val from public.settings where id = 1;
+  if coalesce(v_val, 0) <= 0 then raise exception 'استبدال النقاط غير مفعّل حالياً'; end if;
+  v_amount := p_points * v_val;
+  update public.users set loyalty_points = loyalty_points - p_points where id = v_uid;
+  select id into v_wallet from public.wallets where user_id = v_uid for update;
+  if v_wallet is null then raise exception 'المحفظة غير موجودة'; end if;
+  update public.wallets set balance = balance + v_amount, updated_at = now() where id = v_wallet;
+  insert into public.transactions (wallet_id, type, amount, note)
+    values (v_wallet, 'topup', v_amount, 'استبدال ' || p_points || ' نقطة ولاء');
+  return jsonb_build_object('amount', v_amount);
+end $$;
+grant execute on function public.redeem_loyalty(int) to authenticated;

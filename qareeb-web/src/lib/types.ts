@@ -129,6 +129,8 @@ export interface Settings {
   cancellation_far_min: number // زمن وصول مقدّر يُعفي العميل — دقيقة
   min_driver_balance: number // أدنى رصيد يسمح للسائق بالاتصال (استقبال الرحلات)
   referral_reward: number // مكافأة دعوة صديق للطرفين عند أوّل رحلة (0 = معطّلة)
+  loyalty_per_ride: number // نقاط ولاء لكل رحلة مكتملة (0 = معطّل)
+  loyalty_point_value: number // قيمة نقطة الولاء عند الاستبدال (ج.س)
   updated_at: string
 }
 

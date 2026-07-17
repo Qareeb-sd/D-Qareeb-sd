@@ -1162,6 +1162,8 @@ export default function AdminDashboard() {
       cancellation_far_min: settings.cancellation_far_min,
       min_driver_balance: settings.min_driver_balance,
       referral_reward: settings.referral_reward,
+      loyalty_per_ride: settings.loyalty_per_ride,
+      loyalty_point_value: settings.loyalty_point_value,
     })
     setSavedMsg(error ? `خطأ: ${error}` : 'تم حفظ الإعدادات ✓')
   }
@@ -3163,6 +3165,28 @@ export default function AdminDashboard() {
                 value={settings.referral_reward}
                 onChange={(v) => setSettings({ ...settings, referral_reward: v })}
               />
+            </div>
+
+            <div className="rounded-2xl border border-sand/40 bg-sand-soft/40 p-3">
+              <p className="font-bold text-royal">نقاط الولاء</p>
+              <p className="mb-2 text-xs text-ink-muted">
+                نقاط يكسبها العميل عن كل رحلة مكتملة، ويستبدلها برصيد. اضبط النقاط على 0 لتعطيل
+                البرنامج.
+              </p>
+              <div className="grid grid-cols-2 gap-2">
+                <NumField
+                  label="نقاط لكل رحلة"
+                  step={1}
+                  value={settings.loyalty_per_ride}
+                  onChange={(v) => setSettings({ ...settings, loyalty_per_ride: v })}
+                />
+                <NumField
+                  label="قيمة النقطة (ج.س)"
+                  step={10}
+                  value={settings.loyalty_point_value}
+                  onChange={(v) => setSettings({ ...settings, loyalty_point_value: v })}
+                />
+              </div>
             </div>
             {savedMsg && <p className="text-sm text-green">{savedMsg}</p>}
             <button className="btn-primary w-full" type="submit">
