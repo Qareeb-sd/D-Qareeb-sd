@@ -51,6 +51,9 @@ export interface Driver {
   vip?: boolean // سائق VIP — بلا عمولة (اشتراك)
   vip_paid_until?: string | null // اشتراك VIP مدفوع حتى هذا التاريخ
   commission_free_until?: string | null // إعفاء عمولة مؤقّت حتى هذا التاريخ
+  suspended?: boolean // موقوف عن العمل (لا يتّصل ولا يقبل)
+  frozen_until?: string | null // مجمّد مؤقّتاً حتى هذا التاريخ
+  admin_note?: string | null // ملاحظة إدارية (سبب الإيقاف/التجميد)
   photo_url?: string | null
   vehicle_photo_url?: string | null
   created_at: string

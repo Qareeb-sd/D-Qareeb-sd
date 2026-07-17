@@ -3884,3 +3884,153 @@ language sql security definer set search_path = public stable as $$
     and d.last_loc_at > now() - interval '5 minutes'
 $$;
 grant execute on function public.admin_online_drivers() to authenticated;
+
+-- ============================================================================
+-- [أدمن] إدارة السائقين: إيقاف/تجميد مؤقّت + تحذيرات
+-- يمكّن الأدمن من إيقاف سائق عن العمل، أو تجميده حتى تاريخ، أو إرسال تحذير
+-- يصله كإشعار. الإيقاف/التجميد يمنعه من الاتصال وقبول الطلبات (فرض على الخادم).
+-- كتلة معزولة آمنة للتشغيل وحدها.
+-- ============================================================================
+alter table public.drivers add column if not exists suspended   boolean not null default false;
+alter table public.drivers add column if not exists frozen_until timestamptz;
+alter table public.drivers add column if not exists admin_note   text;
+
+create table if not exists public.driver_warnings (
+  id         uuid primary key default gen_random_uuid(),
+  driver_id  uuid not null references public.users(id) on delete cascade,
+  message    text not null,
+  created_by uuid references public.users(id) on delete set null,
+  created_at timestamptz not null default now()
+);
+create index if not exists driver_warnings_driver_idx on public.driver_warnings(driver_id);
+alter table public.driver_warnings enable row level security;
+drop policy if exists "own or staff warnings" on public.driver_warnings;
+create policy "own or staff warnings" on public.driver_warnings
+  for select using (driver_id = auth.uid() or public.is_staff_or_admin());
+
+-- الاتصال يُرفض للموقوف/المجمّد (مع فحص الرصيد كما كان).
+create or replace function public.set_driver_online(p_online boolean)
+returns void language plpgsql security definer set search_path = public as $$
+declare v_min numeric; v_bal numeric; v_susp boolean; v_frozen timestamptz;
+begin
+  select suspended, frozen_until into v_susp, v_frozen
+    from public.drivers where user_id = auth.uid();
+  if not found then raise exception 'الحساب ليس سائقاً'; end if;
+  if p_online then
+    if coalesce(v_susp, false) then
+      raise exception 'حسابك موقوف عن العمل — تواصل مع إدارة قريب';
+    end if;
+    if v_frozen is not null and v_frozen > now() then
+      raise exception 'حسابك مجمّد مؤقّتاً حتى % — تواصل مع الإدارة',
+        to_char(v_frozen at time zone 'Africa/Khartoum', 'YYYY-MM-DD HH24:MI');
+    end if;
+    select min_driver_balance into v_min from public.settings where id = 1;
+    select balance into v_bal from public.wallets where user_id = auth.uid();
+    if coalesce(v_bal, 0) < coalesce(v_min, 0) then
+      raise exception 'رصيدك غير كافٍ للاتصال — الحدّ الأدنى % ج.س، عبّئ محفظتك',
+        coalesce(v_min, 0);
+    end if;
+  end if;
+  update public.drivers set is_online = p_online where user_id = auth.uid();
+end $$;
+grant execute on function public.set_driver_online(boolean) to authenticated;
+
+-- قبول الطلب يُرفض للموقوف/المجمّد (احتياط إن كان متصلاً قبل الإيقاف).
+create or replace function public.accept_ride(p_ride uuid)
+returns boolean language plpgsql security definer set search_path = public as $$
+declare v_status ride_status; v_driver uuid;
+begin
+  if exists (select 1 from public.drivers where user_id = auth.uid()
+       and (suspended or (frozen_until is not null and frozen_until > now()))) then
+    raise exception 'حسابك موقوف/مجمّد عن العمل — تواصل مع الإدارة';
+  end if;
+
+  select status, driver_id into v_status, v_driver
+    from public.rides where id = p_ride for update;
+  if v_status is null then raise exception 'الرحلة غير موجودة'; end if;
+
+  if exists (
+    select 1 from public.rides
+     where driver_id = auth.uid()
+       and status in ('accepted', 'arrived', 'in_progress')
+  ) then
+    raise exception 'لديك رحلة جارية بالفعل';
+  end if;
+
+  if v_driver is not null or v_status not in ('searching', 'requested') then
+    return false;
+  end if;
+
+  update public.rides
+     set driver_id = auth.uid(), status = 'accepted'
+   where id = p_ride;
+  return true;
+end $$;
+grant execute on function public.accept_ride(uuid) to authenticated;
+
+-- إجراءات الأدمن (صلاحية «drivers» أو أدمن) — مع إشعار السائق.
+create or replace function public.admin_suspend_driver(p_user uuid, p_suspend boolean, p_note text default null)
+returns void language plpgsql security definer set search_path = public as $$
+begin
+  if not (public.is_admin() or public.has_perm('drivers')) then raise exception 'غير مصرّح'; end if;
+  update public.drivers
+     set suspended = p_suspend,
+         admin_note = coalesce(p_note, admin_note),
+         is_online = case when p_suspend then false else is_online end
+   where user_id = p_user;
+  perform public.log_action(case when p_suspend then 'إيقاف سائق' else 'إلغاء إيقاف سائق' end, coalesce(p_note, ''));
+  if p_suspend then
+    begin
+      perform net.http_post(
+        url := 'https://yjdidwnnlyeisaahfmlr.supabase.co/functions/v1/notify-user-fcm',
+        headers := '{"Content-Type": "application/json"}'::jsonb,
+        body := jsonb_build_object('user_id', p_user, 'title', 'إيقاف الحساب',
+          'body', coalesce(nullif(trim(p_note), ''), 'تم إيقاف حسابك عن العمل — تواصل مع إدارة قريب'))
+      );
+    exception when others then null; end;
+  end if;
+end $$;
+grant execute on function public.admin_suspend_driver(uuid, boolean, text) to authenticated;
+
+create or replace function public.admin_freeze_driver(p_user uuid, p_until timestamptz, p_note text default null)
+returns void language plpgsql security definer set search_path = public as $$
+begin
+  if not (public.is_admin() or public.has_perm('drivers')) then raise exception 'غير مصرّح'; end if;
+  update public.drivers
+     set frozen_until = p_until,
+         admin_note = coalesce(p_note, admin_note),
+         is_online = case when p_until is not null and p_until > now() then false else is_online end
+   where user_id = p_user;
+  perform public.log_action(
+    case when p_until is null then 'فكّ تجميد سائق' else 'تجميد سائق' end,
+    coalesce(to_char(p_until at time zone 'Africa/Khartoum', 'YYYY-MM-DD'), ''));
+  if p_until is not null and p_until > now() then
+    begin
+      perform net.http_post(
+        url := 'https://yjdidwnnlyeisaahfmlr.supabase.co/functions/v1/notify-user-fcm',
+        headers := '{"Content-Type": "application/json"}'::jsonb,
+        body := jsonb_build_object('user_id', p_user, 'title', 'تجميد الحساب مؤقّتاً',
+          'body', coalesce(nullif(trim(p_note), ''), 'تم تجميد حسابك مؤقّتاً — تواصل مع الإدارة'))
+      );
+    exception when others then null; end;
+  end if;
+end $$;
+grant execute on function public.admin_freeze_driver(uuid, timestamptz, text) to authenticated;
+
+create or replace function public.admin_warn_driver(p_user uuid, p_message text)
+returns void language plpgsql security definer set search_path = public as $$
+begin
+  if not (public.is_admin() or public.has_perm('drivers')) then raise exception 'غير مصرّح'; end if;
+  if coalesce(trim(p_message), '') = '' then raise exception 'نصّ التحذير فارغ'; end if;
+  insert into public.driver_warnings (driver_id, message, created_by)
+    values (p_user, p_message, auth.uid());
+  perform public.log_action('تحذير سائق', left(p_message, 60));
+  begin
+    perform net.http_post(
+      url := 'https://yjdidwnnlyeisaahfmlr.supabase.co/functions/v1/notify-user-fcm',
+      headers := '{"Content-Type": "application/json"}'::jsonb,
+      body := jsonb_build_object('user_id', p_user, 'title', '⚠️ تحذير من إدارة قريب', 'body', p_message)
+    );
+  exception when others then null; end;
+end $$;
+grant execute on function public.admin_warn_driver(uuid, text) to authenticated;

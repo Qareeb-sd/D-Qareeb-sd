@@ -18,6 +18,8 @@ import {
   getSettings,
   getActiveDriverRide,
   getDriverRideStats,
+  getMyDriverWarnings,
+  type DriverWarning,
 } from '@/lib/api'
 import { subscribeToRides } from '@/lib/realtime'
 import {
@@ -49,6 +51,8 @@ export default function DriverHome() {
   const [notifOn, setNotifOn] = useState(notificationsGranted())
   const [acceptMsg, setAcceptMsg] = useState('')
   const [myPos, setMyPos] = useState<google.maps.LatLngLiteral | null>(null)
+  // تحذير إداري (يُخفى بعد الاطّلاع، ويظهر أحدثه غير المطّلع عليه).
+  const [warning, setWarning] = useState<DriverWarning | null>(null)
 
   // ملخّص اليوم (رحلات + صافي أرباح) — من محفظة السائق ومعاملاتها.
   const { data: wallet } = useQuery({
@@ -83,6 +87,33 @@ export default function DriverHome() {
     // تسجيل رمز FCM (محاولة موثوقة بعد جهوز التطبيق) — لإشعارات الاعتماد والطلبات.
     if (userId) void registerPush(userId)
   }, [userId])
+
+  // تحذيرات الإدارة — نعرض أحدث تحذير لم يُطّلع عليه (يُخفى بعد الإغلاق محليّاً).
+  useEffect(() => {
+    if (!profile?.id) return
+    void getMyDriverWarnings(profile.id).then((ws) => {
+      let seen: string[] = []
+      try {
+        seen = JSON.parse(localStorage.getItem('qareeb_seen_warnings') ?? '[]')
+      } catch {
+        seen = []
+      }
+      const fresh = ws.find((w) => !seen.includes(w.id))
+      if (fresh) setWarning(fresh)
+    })
+  }, [profile?.id])
+
+  const dismissWarning = () => {
+    if (!warning) return
+    try {
+      const seen: string[] = JSON.parse(localStorage.getItem('qareeb_seen_warnings') ?? '[]')
+      seen.push(warning.id)
+      localStorage.setItem('qareeb_seen_warnings', JSON.stringify(seen.slice(-50)))
+    } catch {
+      /* لا يهمّ */
+    }
+    setWarning(null)
+  }
 
   // رحلة جارية؟ أعِد السائق إليها فوراً — يمنع فقدان الرحلة عند الضغط على «رجوع»
   // أو الخروج من التطبيق ثم العودة (كان يهبط على شاشة الطلبات ولا يجد رحلته).
@@ -299,6 +330,27 @@ export default function DriverHome() {
       </header>
 
       <main className="flex-1 px-4 pt-4 pb-24">
+        {/* تحذير من إدارة قريب */}
+        {warning && (
+          <div className="mb-4 rounded-2xl border border-sand/50 bg-sand-soft/60 p-3.5">
+            <div className="flex items-start gap-3">
+              <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-sand/30 text-lg">
+                ⚠️
+              </span>
+              <div className="flex-1">
+                <p className="font-bold text-sand-ink">تحذير من إدارة قريب</p>
+                <p className="mt-0.5 text-sm text-ink">{warning.message}</p>
+              </div>
+            </div>
+            <button
+              onClick={dismissWarning}
+              className="mt-2 w-full rounded-xl bg-sand py-2 text-sm font-bold text-royal"
+            >
+              اطّلعت وفهمت
+            </button>
+          </div>
+        )}
+
         {/* تنبيه رصيد منخفض — يمنع الاتصال واستقبال الطلبات */}
         {lowBalance && (
           <button
