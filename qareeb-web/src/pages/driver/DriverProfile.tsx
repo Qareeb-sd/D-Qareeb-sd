@@ -8,6 +8,7 @@ import VipSubscribe from '@/components/VipSubscribe'
 import { useAuth } from '@/store/AuthContext'
 import { getDriver, updateEmergencyContacts, setDriverServicePrefs } from '@/lib/api'
 import { getService } from '@/data/services'
+import { memberCode } from '@/lib/format'
 import { Package, Building2 } from 'lucide-react'
 
 export default function DriverProfile() {
@@ -82,8 +83,8 @@ export default function DriverProfile() {
               {profile?.phone ?? '—'}
             </p>
             {profile?.member_no != null && (
-              <span className="mt-1 inline-block rounded-full bg-sand-soft px-2.5 py-0.5 text-xs font-bold text-sand-ink">
-                عضوية: ك‑{profile.member_no}
+              <span className="mt-1 inline-block rounded-full bg-sand-soft px-2.5 py-0.5 text-xs font-bold text-sand-ink" dir="ltr">
+                {memberCode(profile.role, profile.member_no)}
               </span>
             )}
           </div>
