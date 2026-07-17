@@ -462,10 +462,15 @@ export default function AdminDashboard() {
       if (r[7].status === 'fulfilled') setDetailRides(r[7].value)
       if (r[8].status === 'fulfilled') setAnalyticsRaw(r[8].value)
       if (r[9].status === 'fulfilled') setDeepAnalytics(r[9].value)
+      // بعض الاستدعاءات خاصّة بالمالك (المالية/التحليلات المعمّقة/تفاصيل الرحلات)،
+      // فترفضها القاعدة للموظّف محدود الصلاحية — لا نُظهر ذلك كخطأ تحميل.
+      const realFailure = r.some((x) => {
+        if (x.status !== 'rejected') return false
+        const m = String((x as PromiseRejectedResult).reason?.message ?? x.reason ?? '')
+        return !/غير مصرّح|permission|not authoriz|denied|JWT|40[13]/i.test(m)
+      })
       setLoadErr(
-        r.some((x) => x.status === 'rejected')
-          ? 'تعذّر تحميل بعض البيانات — تحقّق من الاتصال ثم حدّث الصفحة.'
-          : '',
+        realFailure ? 'تعذّر تحميل بعض البيانات — تحقّق من الاتصال ثم حدّث الصفحة.' : '',
       )
     }
     void load()

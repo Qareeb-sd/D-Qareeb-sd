@@ -30,7 +30,7 @@ export default function DriverProfile() {
   useEffect(() => {
     if (driver) {
       setPrefPkg(driver.accepts_packages ?? true)
-      setPrefInter(driver.accepts_intercity ?? false)
+      setPrefInter(driver.accepts_intercity ?? true)
     }
   }, [driver])
   const savePrefs = async (pkg: boolean, inter: boolean) => {
@@ -40,7 +40,7 @@ export default function DriverProfile() {
     if (error) {
       // تراجع بصري عند الفشل
       setPrefPkg(driver?.accepts_packages ?? true)
-      setPrefInter(driver?.accepts_intercity ?? false)
+      setPrefInter(driver?.accepts_intercity ?? true)
       alert(error)
     } else {
       void refetchDriver()

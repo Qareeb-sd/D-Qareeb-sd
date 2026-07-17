@@ -47,6 +47,9 @@ export default function DriverHome() {
 
   const [driver, setDriver] = useState<Driver | null>(null)
   const [online, setOnline] = useState(false)
+  // مرجع حيّ لحالة الاتصال — كي لا تلتقط دالة التنظيف قيمة قديمة (تُوقف الخدمة بالخطأ).
+  const onlineRef = useRef(false)
+  onlineRef.current = online
   const [rides, setRides] = useState<Ride[]>([])
   const [busyId, setBusyId] = useState<string | null>(null)
   const [notifOn, setNotifOn] = useState(notificationsGranted())
@@ -170,9 +173,10 @@ export default function DriverHome() {
   }, [profile?.id, activeRide, navigate, setActiveRide])
 
   // أوقف الخدمة الأمامية عند مغادرة الشاشة إن لم يعد متصلاً (احتياط).
+  // نقرأ الحالة من المرجع الحيّ لا من إغلاق قديم، وإلا تُوقَف الخدمة والسائق متصل.
   useEffect(() => {
     return () => {
-      if (!online) void stopCaptainBg()
+      if (!onlineRef.current) void stopCaptainBg()
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
@@ -299,7 +303,10 @@ export default function DriverHome() {
       setAcceptMsg('اعتُذر — أُخذ هذا الطلب من سائق آخر.')
       return
     }
-    setActiveRide({ ...ride, driver_id: userId, status: 'accepted' })
+    // صفّ القائمة مختصر (بلا نقاط توقّف ولا رقم راكب فعلي) — نجلب الرحلة كاملة
+    // كي تظهر نقاط التوقّف على الخريطة ويعمل الاتصال بالراكب في «رحلة لشخص آخر».
+    const full = await getActiveDriverRide(userId)
+    setActiveRide(full ?? { ...ride, driver_id: userId, status: 'accepted' })
     navigate('/driver/trip')
   }
 
