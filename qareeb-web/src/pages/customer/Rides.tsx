@@ -63,7 +63,15 @@ export default function Rides() {
             return (
               <div key={r.id} className="card p-4">
                 <div className="flex items-center justify-between">
-                  <p className="font-bold text-royal">{service?.name ?? r.service_id}</p>
+                  <p className="flex items-center gap-1.5 font-bold text-royal">
+                    {r.is_package && <span title="توصيل طرد">📦</span>}
+                    {r.is_package ? 'توصيل طرد' : (service?.name ?? r.service_id)}
+                    {r.intercity && (
+                      <span className="rounded-md bg-royal-soft px-1.5 py-0.5 text-[10px] font-bold text-royal">
+                        بين المدن
+                      </span>
+                    )}
+                  </p>
                   <p
                     className={`font-extrabold ${isCancelled ? 'text-ink-muted line-through' : 'text-royal'}`}
                   >

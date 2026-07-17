@@ -4607,3 +4607,6 @@ returns table (
   order by r.created_at asc;
 $$;
 grant execute on function public.list_available_rides() to authenticated;
+
+-- مضاعف سعر الرحلات بين المدن (#2) — يُطبَّق على الأجرة عند intercity=true.
+alter table public.settings add column if not exists intercity_multiplier numeric(4,2) not null default 1.5;

@@ -355,9 +355,12 @@ export default function SelectLocation() {
       }
       if (!alive) return
       // النموذج الجديد (فترات) إن توفّر، وإلا التسعير القديم (شرائح).
-      const baseFare = periodRate
+      const rawFare = periodRate
         ? computeFare(km, min, periodRate)
         : estimateFare({ distanceKm: km, durationMin: min, pricing, settings }).total
+      // مضاعف الرحلات بين المدن (يُطبَّق قبل الذروة).
+      const interMult = isIntercity ? (settings?.intercity_multiplier ?? 1) : 1
+      const baseFare = interMult > 1 ? Math.round((rawFare * interMult) / 100) * 100 : rawFare
       // مضاعف الذروة (تلقائي/يدوي) يُطبَّق على الأجرة ويُقرّب لأقرب 100.
       const fare = surge > 1 ? Math.round((baseFare * surge) / 100) * 100 : baseFare
       setQuote({ distanceKm: km, durationMin: min, fare, real: anyReal })
@@ -367,7 +370,7 @@ export default function SelectLocation() {
       clearTimeout(t)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pickupPos, dropoffPos, pickupSet, dropoffSet, pricing, settings, periodRate, surge, JSON.stringify(stops)])
+  }, [pickupPos, dropoffPos, pickupSet, dropoffSet, pricing, settings, periodRate, surge, isIntercity, JSON.stringify(stops)])
 
   const activePos = active === 'pickup' ? pickupPos : dropoffPos
   const setActivePos = active === 'pickup' ? setPickupPos : setDropoffPos
@@ -895,6 +898,14 @@ export default function SelectLocation() {
             <div className="mt-2 flex items-center gap-1.5 rounded-xl bg-warning/10 px-3 py-2 text-[12px] font-bold text-warning">
               <RouteIcon className="h-4 w-4" strokeWidth={2.2} />
               تسعير ذروة ×{surge} — الطلب مرتفع حالياً.
+            </div>
+          )}
+
+          {/* شارة الرحلة بين المدن — يعرف العميل أن التسعير أعلى للمسافات البعيدة */}
+          {isIntercity && quote && destChosen && (settings?.intercity_multiplier ?? 1) > 1 && (
+            <div className="mt-2 flex items-center gap-1.5 rounded-xl bg-royal-soft px-3 py-2 text-[12px] font-bold text-royal">
+              <span className="text-sm">🏙️</span>
+              رحلة بين المدن — تسعير ×{settings?.intercity_multiplier} للمسافات البعيدة.
             </div>
           )}
 

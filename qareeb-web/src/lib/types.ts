@@ -143,6 +143,7 @@ export interface Settings {
   loyalty_point_value: number // قيمة نقطة الولاء عند الاستبدال (ج.س)
   auto_surge_enabled: boolean // تسعير ذروة تلقائي حسب الطلب
   auto_surge_max: number // سقف مضاعف الذروة التلقائي
+  intercity_multiplier: number // مضاعف سعر الرحلات بين المدن
   updated_at: string
 }
 

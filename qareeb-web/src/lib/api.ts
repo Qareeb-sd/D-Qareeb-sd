@@ -62,6 +62,7 @@ const demoSettings: Settings = {
   loyalty_point_value: 0,
   auto_surge_enabled: false,
   auto_surge_max: 2.0,
+  intercity_multiplier: 1.5,
   updated_at: new Date().toISOString(),
 }
 

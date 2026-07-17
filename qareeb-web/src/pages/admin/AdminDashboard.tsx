@@ -1530,6 +1530,7 @@ export default function AdminDashboard() {
       loyalty_point_value: settings.loyalty_point_value,
       auto_surge_enabled: settings.auto_surge_enabled,
       auto_surge_max: settings.auto_surge_max,
+      intercity_multiplier: settings.intercity_multiplier,
     })
     setSavedMsg(error ? `خطأ: ${error}` : 'تم حفظ الإعدادات ✓')
   }
@@ -3959,6 +3960,17 @@ export default function AdminDashboard() {
                     value={settings.auto_surge_max}
                     onChange={(v) => setSettings({ ...settings, auto_surge_max: v })}
                   />
+                </div>
+                <div>
+                  <NumField
+                    label="مضاعف الرحلات بين المدن"
+                    step={0.1}
+                    value={settings.intercity_multiplier}
+                    onChange={(v) => setSettings({ ...settings, intercity_multiplier: v })}
+                  />
+                  <p className="mt-1 text-xs text-ink-muted">
+                    يُطبَّق على أجرة الرحلات بين المدن (مثال: ١٫٥ يعني +٥٠٪). اجعله ١ لتعطيله.
+                  </p>
                 </div>
                 {savedMsg && <p className="text-sm text-green">{savedMsg}</p>}
                 <button className="btn-primary w-full" type="submit">
