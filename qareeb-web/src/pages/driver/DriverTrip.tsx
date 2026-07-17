@@ -19,6 +19,7 @@ import {
   Flag,
   ChevronUp,
   ChevronDown,
+  Navigation2,
 } from 'lucide-react'
 import Screen from '@/components/Screen'
 import MapView from '@/components/MapView'
@@ -284,13 +285,27 @@ export default function DriverTrip() {
     const prev = lastRouteRef.current
     const movedM = prev ? haversineKm(prev.origin, rOrigin) * 1000 : Infinity
     if (prev && prev.destKey === destKey && movedM < 45) return
+    // تغيّرت الوجهة (مثلاً ضغط «بدء الرحلة») → امسح مسار المرحلة السابقة فوراً حتى لا
+    // تظهر مناورة قديمة تخصّ الوصول للراكب أثناء حساب مسار المشوار.
+    const destChanged = !prev || prev.destKey !== destKey
+    if (destChanged) {
+      setRoutePts([])
+      setNavSteps([])
+      setEta(null)
+    }
     lastRouteRef.current = { origin: rOrigin, destKey }
     let alive = true
     void fetchRouteNav(rOrigin, rDest).then((r) => {
-      if (alive && r) {
+      if (!alive) return
+      if (r) {
         setRoutePts(r.points)
         setEta({ km: r.distanceKm, min: r.durationMin })
         setNavSteps(r.steps)
+      } else {
+        // تعذّر خادم التوجيه (قد يحدث في السودان) → تقدير مباشر للمسافة/الزمن حتى
+        // يبقى الوقت ظاهراً، مع خطّ المسار الاحتياطي المباشر (عبر displayRoute).
+        const km = haversineKm(rOrigin, rDest) * 1.3
+        setEta({ km, min: (km / 25) * 60 })
       }
     })
     return () => {
@@ -504,9 +519,22 @@ export default function DriverTrip() {
               </div>
             </div>
           ) : (
-            <div className={`px-4 py-3 text-white ${heading === 'pickup' ? 'bg-green' : 'bg-royal'}`}>
+            <div
+              className={`flex items-center gap-3 px-4 py-3 text-white ${
+                heading === 'pickup' ? 'bg-green' : 'bg-royal'
+              }`}
+            >
+              {pos && displayRoute.length > 1 && (
+                <span className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl bg-white/15">
+                  <Navigation2 className="h-6 w-6" strokeWidth={2.4} />
+                </span>
+              )}
               <p className="text-sm font-bold text-white/90">
-                {pos ? 'جارٍ حساب المسار…' : 'جارٍ تحديد موقعك…'}
+                {!pos
+                  ? 'جارٍ تحديد موقعك…'
+                  : displayRoute.length > 1
+                    ? `اتبع المسار ${heading === 'pickup' ? 'إلى الراكب' : 'إلى الوجهة'}`
+                    : 'جارٍ حساب المسار…'}
               </p>
             </div>
           )}
