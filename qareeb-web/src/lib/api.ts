@@ -193,6 +193,8 @@ export async function createServicePricing(
 /** يحذف خدمة (يُفضّل استخدام الحالة «مخفي» بدل الحذف للحفاظ على السجلّات). */
 export async function deleteServicePricing(serviceId: string): Promise<{ error?: string }> {
   if (!isSupabaseConfigured) return {}
+  // نحذف أيضاً صفوف تسعير الفترات لهذا النوع حتى لا تبقى يتيمة (وتُعاد إن أُعيد المعرّف).
+  await supabase.from('service_pricing_periods').delete().eq('service_id', serviceId)
   const { error } = await supabase.from('service_pricing').delete().eq('service_id', serviceId)
   return error ? { error: error.message } : {}
 }
@@ -691,12 +693,13 @@ const demoPendingTopups: Topup[] = [
 
 export async function listPendingTopups(): Promise<Topup[]> {
   if (!isSupabaseConfigured) return demoPendingTopups
+  // نجلب صاحب المحفظة (اسم/هاتف) ليتحقّق الأدمن من هوية المُعبِّئ قبل اعتماد المال.
   const { data } = await supabase
     .from('topups')
-    .select('*')
+    .select('*, wallets ( users ( full_name, phone ) )')
     .eq('status', 'pending')
     .order('created_at', { ascending: true })
-  return data ?? []
+  return (data as Topup[]) ?? []
 }
 
 export async function approveTopup(id: string): Promise<{ error?: string }> {
@@ -1528,7 +1531,10 @@ export interface PromoResult {
 /** يتحقّق من كود خصم ويعيد قيمة الخصم والسعر النهائي (بلا كشف الأكواد). */
 export async function validatePromo(code: string, fare: number): Promise<PromoResult> {
   if (!isSupabaseConfigured) return { valid: false, discount: 0, final: fare, message: 'غير متاح' }
-  const { data, error } = await supabase.rpc('validate_promo', { p_code: code, p_fare: fare })
+  const { data, error } = await supabase.rpc('validate_promo', {
+    p_code: code.trim().toUpperCase(),
+    p_fare: fare,
+  })
   const row = Array.isArray(data) ? data[0] : data
   if (error || !row) return { valid: false, discount: 0, final: fare, message: 'تعذّر التحقّق' }
   return {
@@ -1549,7 +1555,10 @@ export async function listPromos(): Promise<PromoCode[]> {
 /** إنشاء/تعديل كود خصم (أدمن — صلاحية settings). */
 export async function upsertPromo(promo: Partial<PromoCode> & { code: string }): Promise<{ error?: string }> {
   if (!isSupabaseConfigured) return {}
-  const { error } = await supabase.from('promo_codes').upsert({ ...promo, code: promo.code.trim() })
+  // نُوحّد الرمز بأحرف كبيرة (تخزيناً وتحقّقاً) فيطابق إدخال العميل مهما كانت حالته.
+  const { error } = await supabase
+    .from('promo_codes')
+    .upsert({ ...promo, code: promo.code.trim().toUpperCase() })
   return error ? { error: error.message } : {}
 }
 
@@ -1650,16 +1659,27 @@ export async function rejectVipRequest(
 // ---------- مدفوعات العملاء: سحب بنكي أو تحويل إلى الرصيد ----------
 export interface DriverRideStats {
   today: number
+  today_count: number
+  today_net: number
   month: number
   total: number
   count: number
 }
 
-/** إحصاء قيم مشاوير السائق (اليوم/الشهر/الكلي + العدد). */
+const EMPTY_DRIVER_STATS: DriverRideStats = {
+  today: 0,
+  today_count: 0,
+  today_net: 0,
+  month: 0,
+  total: 0,
+  count: 0,
+}
+
+/** إحصاء قيم مشاوير السائق (اليوم/الشهر/الكلي + عدد اليوم + صافي اليوم — يشمل الكاش). */
 export async function getDriverRideStats(): Promise<DriverRideStats> {
-  if (!isSupabaseConfigured) return { today: 0, month: 0, total: 0, count: 0 }
+  if (!isSupabaseConfigured) return EMPTY_DRIVER_STATS
   const { data } = await supabase.rpc('driver_ride_stats')
-  return (data as DriverRideStats) ?? { today: 0, month: 0, total: 0, count: 0 }
+  return { ...EMPTY_DRIVER_STATS, ...((data as Partial<DriverRideStats>) ?? {}) }
 }
 
 /** طلب سحب بنكي من مدفوعات العملاء — يُخصم فوراً كحجز ويعتمده الأدمن. */

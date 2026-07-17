@@ -112,6 +112,8 @@ export interface Topup {
   status: TopupStatus
   reviewed_by: string | null
   created_at: string
+  /** صاحب المحفظة (اسم/هاتف) — مضمّن في قائمة الأدمن للتحقّق من الهوية. */
+  wallets?: { users?: { full_name: string | null; phone: string | null } | null } | null
 }
 
 export interface Settings {

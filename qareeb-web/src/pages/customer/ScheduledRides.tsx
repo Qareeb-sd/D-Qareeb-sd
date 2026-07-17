@@ -13,14 +13,22 @@ export default function ScheduledRides() {
   const userId = profile?.id ?? 'demo-user'
   const [rides, setRides] = useState<ScheduledRide[] | null>(null)
   const [busyId, setBusyId] = useState<string | null>(null)
+  const [loadErr, setLoadErr] = useState(false)
 
-  const load = () => void listScheduledRides(userId).then(setRides)
+  const load = () => {
+    setLoadErr(false)
+    void listScheduledRides(userId)
+      .then(setRides)
+      .catch(() => setLoadErr(true))
+  }
   useEffect(load, [userId])
 
   const cancel = async (id: string) => {
+    if (!window.confirm('إلغاء هذه الرحلة المجدولة؟')) return
     setBusyId(id)
-    await cancelScheduledRide(id)
+    const { error } = await cancelScheduledRide(id)
     setBusyId(null)
+    if (error) return alert(error)
     load()
   }
 
@@ -35,7 +43,14 @@ export default function ScheduledRides() {
 
   return (
     <Screen title="رحلاتي المجدولة" back>
-      {rides === null ? (
+      {loadErr ? (
+        <div className="card p-6 text-center">
+          <p className="text-sm text-ink-soft">تعذّر تحميل الرحلات المجدولة.</p>
+          <button onClick={load} className="mt-3 text-sm font-bold text-royal">
+            إعادة المحاولة
+          </button>
+        </div>
+      ) : rides === null ? (
         <div className="card h-24 animate-pulse" />
       ) : rides.length === 0 ? (
         <p className="card p-6 text-center text-sm text-ink-muted">

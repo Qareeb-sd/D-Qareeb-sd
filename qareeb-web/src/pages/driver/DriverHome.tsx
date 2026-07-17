@@ -14,9 +14,10 @@ import {
   listAvailableRides,
   acceptRide,
   getWallet,
-  listDriverTransactions,
   updateMyLocation,
   getSettings,
+  getActiveDriverRide,
+  getDriverRideStats,
 } from '@/lib/api'
 import { subscribeToRides } from '@/lib/realtime'
 import {
@@ -36,8 +37,10 @@ import type { Driver, Ride } from '@/lib/types'
 export default function DriverHome() {
   const navigate = useNavigate()
   const { profile } = useAuth()
-  const { setActiveRide } = useDriver()
+  const { activeRide, setActiveRide } = useDriver()
   const userId = profile?.id ?? 'demo-user'
+  // نتحقّق أوّلاً إن كان للسائق رحلة جارية قبل عرض شاشة الطلبات (منع الوميض).
+  const [checkingActive, setCheckingActive] = useState(true)
 
   const [driver, setDriver] = useState<Driver | null>(null)
   const [online, setOnline] = useState(false)
@@ -55,17 +58,15 @@ export default function DriverHome() {
   const { data: settings } = useQuery({ queryKey: ['settings'], queryFn: getSettings })
   const minBalance = settings?.min_driver_balance ?? 0
   const lowBalance = wallet != null && minBalance > 0 && (wallet.balance ?? 0) < minBalance
-  const { data: txs = [] } = useQuery({
-    queryKey: ['driver-transactions', wallet?.id],
-    queryFn: () => listDriverTransactions(wallet!.id),
-    enabled: Boolean(wallet?.id),
+  // ملخّص اليوم من جدول الرحلات (يشمل الكاش، لا من دفتر المعاملات الذي يُغفل أرباح
+  // الكاش لأنّ settle_ride لا يسجّل «ride_earning» للرحلات النقدية).
+  const { data: rideStats } = useQuery({
+    queryKey: ['driver-ride-stats', userId],
+    queryFn: getDriverRideStats,
+    refetchInterval: 30000,
   })
-  const todayKey = new Date().toDateString()
-  const todayTx = txs.filter((t) => new Date(t.created_at).toDateString() === todayKey)
-  const tripsToday = todayTx.filter((t) => t.type === 'ride_earning').length
-  const earnToday = todayTx
-    .filter((t) => t.type === 'ride_earning' || t.type === 'commission')
-    .reduce((s, t) => s + t.amount, 0)
+  const tripsToday = rideStats?.today_count ?? 0
+  const earnToday = rideStats?.today_net ?? 0
 
   useEffect(() => {
     void getDriver(userId).then((d) => {
@@ -82,6 +83,32 @@ export default function DriverHome() {
     // تسجيل رمز FCM (محاولة موثوقة بعد جهوز التطبيق) — لإشعارات الاعتماد والطلبات.
     if (userId) void registerPush(userId)
   }, [userId])
+
+  // رحلة جارية؟ أعِد السائق إليها فوراً — يمنع فقدان الرحلة عند الضغط على «رجوع»
+  // أو الخروج من التطبيق ثم العودة (كان يهبط على شاشة الطلبات ولا يجد رحلته).
+  useEffect(() => {
+    if (!profile?.id) {
+      setCheckingActive(false)
+      return
+    }
+    if (activeRide) {
+      navigate('/driver/trip', { replace: true })
+      return
+    }
+    let alive = true
+    void getActiveDriverRide(profile.id).then((ride) => {
+      if (!alive) return
+      if (ride) {
+        setActiveRide(ride)
+        navigate('/driver/trip', { replace: true })
+      } else {
+        setCheckingActive(false)
+      }
+    })
+    return () => {
+      alive = false
+    }
+  }, [profile?.id, activeRide, navigate, setActiveRide])
 
   // أوقف الخدمة الأمامية عند مغادرة الشاشة إن لم يعد متصلاً (احتياط).
   useEffect(() => {
@@ -174,20 +201,24 @@ export default function DriverHome() {
     }
   }, [online])
 
+  const [toggling, setToggling] = useState(false)
   const toggleOnline = async () => {
+    if (toggling) return
     const next = !online
-    setOnline(next)
     setAcceptMsg('')
-    // الخادم يفرض الحدّ الأدنى للرصيد عند الاتصال — نتحقّق أولاً قبل تشغيل الخدمات.
+    // لا نُغيّر الحالة (ولا نبدأ الاستطلاع/البثّ) إلا بعد تأكيد الخادم — الخادم يفرض
+    // الحدّ الأدنى للرصيد عند الاتصال، فقد يرفض. هذا يمنع ظهور السائق «متصلاً» لحظياً.
+    setToggling(true)
     if (driver) {
       const { error } = await setDriverOnline(driver.id, next)
       if (error) {
-        // رُفض الاتصال (رصيد غير كافٍ) — أعِد الحالة وأبلغ السائق.
-        setOnline(!next)
-        setAcceptMsg(error)
+        setToggling(false)
+        setAcceptMsg(error) // رُفض الاتصال (رصيد غير كافٍ)
         return
       }
     }
+    setOnline(next)
+    setToggling(false)
     // الخدمة الأمامية أثناء «متصل» فقط. رمز FCM يبقى محفوظاً (إشعارات الطلبات
     // تُرسَل للمتصلين فقط عبر الخادم، فلا يصل غير المتصل طلباً رغم بقاء رمزه).
     if (next) void startCaptainBg()
@@ -213,6 +244,15 @@ export default function DriverHome() {
     navigate('/driver/trip')
   }
 
+  // أثناء التحقّق من وجود رحلة جارية — نعرض مؤشّراً بدل وميض شاشة الطلبات.
+  if (checkingActive) {
+    return (
+      <div className="screen items-center justify-center bg-ivory">
+        <div className="h-10 w-10 animate-spin rounded-full border-4 border-royal-soft border-t-royal" />
+      </div>
+    )
+  }
+
   return (
     <div className="screen bg-ivory font-plex">
       <header className="flex items-center gap-3 border-b border-hairline bg-white px-4 py-4">
@@ -222,6 +262,9 @@ export default function DriverHome() {
           <p className="flex items-center gap-1 text-xs text-ink-muted">
             <Star className="h-3.5 w-3.5 text-sand" strokeWidth={2} fill="currentColor" />
             {driver?.rating ?? '—'}
+            <span className="ml-1 text-[9px] text-ink-muted/70" dir="ltr">
+              · {__BUILD_STAMP__}
+            </span>
           </p>
         </div>
         {/* زر تفعيل تنبيهات الطلبات (صوت + إشعار) */}

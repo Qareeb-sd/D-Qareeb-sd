@@ -17,6 +17,7 @@ export default function Rate() {
   const [complaint, setComplaint] = useState('')
   const [showComplaint, setShowComplaint] = useState(false)
   const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState('')
   const [driver, setDriver] = useState<RideDriverInfo | null>(null)
   // للأمان: هل السائق/المركبة نفس المسجّل؟ (عدم التطابق = مخالفة حساب مُعار)
   const [driverSame, setDriverSame] = useState(true)
@@ -36,6 +37,7 @@ export default function Rate() {
 
   const finish = async () => {
     setBusy(true)
+    setErr('')
     if (rideId) {
       const { error } = await submitReview(
         rideId,
@@ -45,12 +47,19 @@ export default function Rate() {
         { tags, comment },
       )
       if (error) {
+        // لا نحبس العميل في شاشة التقييم — نعرض الخطأ ونتيح المتابعة للرئيسية.
         setBusy(false)
-        return alert(error)
+        setErr(error)
+        return
       }
     }
     reset()
     // استبدال: بعد التقييم لا يجوز الرجوع لصفحة التقييم بزرّ الرجوع.
+    navigate('/home', { replace: true })
+  }
+
+  const skip = () => {
+    reset()
     navigate('/home', { replace: true })
   }
 
@@ -158,9 +167,20 @@ export default function Rate() {
         <Row label="الإجمالي" value={money(total)} strong />
       </div>
 
+      {err && (
+        <p className="mt-4 rounded-xl border border-danger/40 bg-danger/5 px-3 py-2 text-center text-sm font-medium text-danger">
+          {err}
+        </p>
+      )}
+
       <button className="btn-primary mt-6 w-full" onClick={finish} disabled={busy}>
         {busy ? '…' : 'تم'}
       </button>
+      {err && (
+        <button className="mt-2 w-full py-2 text-center text-sm text-ink-muted" onClick={skip}>
+          تخطّي والعودة للرئيسية
+        </button>
+      )}
     </Screen>
   )
 }

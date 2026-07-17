@@ -3804,3 +3804,41 @@ begin
   return v_surge;
 end $$;
 grant execute on function public.current_surge() to authenticated;
+
+-- ============================================================================
+-- [مراجعة] ملخّص اليوم للسائق يشمل الرحلات النقدية
+-- المشكلة: settle_ride لا يسجّل «ride_earning» للرحلات النقدية (السائق يحصّل كاش
+-- مباشرة)، فكان ملخّص «رحلات/أرباح اليوم» في تطبيق الكابتن يُظهر صفراً لأيّام
+-- الكاش. الحل: نُرجع عدد رحلات اليوم وصافي أرباح اليوم محسوبَين من جدول الرحلات
+-- (يشمل الكاش) مطروحاً منه عمولة اليوم (المسجّلة لكل الرحلات كاشاً كانت أم محفظة).
+-- آمن للتشغيل وحده (create or replace، نفس نوع الإرجاع jsonb).
+-- ============================================================================
+create or replace function public.driver_ride_stats()
+returns jsonb language plpgsql security definer set search_path = public as $$
+declare
+  tz text := 'Africa/Khartoum';
+  v_uid uuid := auth.uid();
+  v_wallet uuid := (select id from public.wallets where user_id = v_uid);
+  v_today_gross numeric := coalesce((select sum(fare) from public.rides
+     where driver_id = v_uid and status = 'completed'
+       and (created_at at time zone tz)::date = (now() at time zone tz)::date), 0);
+  v_today_comm numeric := coalesce((select -sum(amount) from public.transactions
+     where wallet_id = v_wallet and type = 'commission'
+       and (created_at at time zone tz)::date = (now() at time zone tz)::date), 0);
+begin
+  return jsonb_build_object(
+    'today', round(v_today_gross),
+    'today_count', coalesce((select count(*) from public.rides
+       where driver_id = v_uid and status = 'completed'
+         and (created_at at time zone tz)::date = (now() at time zone tz)::date), 0),
+    'today_net', round(v_today_gross - v_today_comm),
+    'month', coalesce((select round(sum(fare)) from public.rides
+       where driver_id = v_uid and status = 'completed'
+         and date_trunc('month', created_at at time zone tz) = date_trunc('month', now() at time zone tz)), 0),
+    'total', coalesce((select round(sum(fare)) from public.rides
+       where driver_id = v_uid and status = 'completed'), 0),
+    'count', coalesce((select count(*) from public.rides
+       where driver_id = v_uid and status = 'completed'), 0)
+  );
+end $$;
+grant execute on function public.driver_ride_stats() to authenticated;

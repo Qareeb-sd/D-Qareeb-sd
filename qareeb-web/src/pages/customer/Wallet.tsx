@@ -31,7 +31,11 @@ export default function Wallet() {
     ...live,
   })
   const { data: settings } = useQuery({ queryKey: ['settings'], queryFn: getSettings })
-  const { data: txs = [], isLoading: txLoading } = useQuery({
+  const {
+    data: txs = [],
+    isLoading: txLoading,
+    isError: txError,
+  } = useQuery({
     queryKey: ['transactions', wallet?.id],
     queryFn: () => listTransactions(wallet!.id),
     enabled: Boolean(wallet?.id),
@@ -65,12 +69,17 @@ export default function Wallet() {
 
   const topupMut = useMutation({
     mutationFn: async () => {
+      // مبلغ صحيح موجب (يمنع NaN من نصّ غير رقمي، والصفر/السالب).
+      const amt = Number(amount)
+      if (!Number.isFinite(amt) || amt < 500) {
+        throw new Error('أدخل مبلغاً صحيحاً (٥٠٠ ج.س على الأقل)')
+      }
       // إرفاق صورة الإيصال إلزامي — لا يُقبل الطلب بدونها.
       if (!proof) throw new Error('يجب إرفاق صورة إيصال التحويل قبل الإرسال')
       const up = await uploadTopupProof(userId, proof)
       if (up.error) throw new Error(`تعذّر رفع الإثبات: ${up.error}`)
       const proofPath = up.path ?? null
-      const { error } = await createTopup(wallet!.id, Number(amount), proofPath)
+      const { error } = await createTopup(wallet!.id, amt, proofPath)
       if (error) throw new Error(error)
     },
     onSuccess: () => {
@@ -196,6 +205,8 @@ export default function Wallet() {
         <h2 className="mb-2 mt-6 font-bold">سجل المعاملات</h2>
         {loading ? (
           <div className="card h-24 animate-pulse" />
+        ) : txError ? (
+          <p className="card p-4 text-center text-sm text-ink-soft">تعذّر تحميل سجلّ المعاملات.</p>
         ) : txs.length === 0 ? (
           <p className="card p-4 text-center text-sm text-ink-muted">لا توجد معاملات بعد</p>
         ) : (

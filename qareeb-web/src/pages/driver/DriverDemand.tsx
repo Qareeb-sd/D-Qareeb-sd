@@ -13,13 +13,15 @@ export default function DriverDemand() {
   const [center, setCenter] = useState(loadLastPos() ?? KHARTOUM)
   const [heat, setHeat] = useState<{ lat: number; lng: number }[]>([])
   const [loading, setLoading] = useState(true)
+  const [err, setErr] = useState(false)
 
   const load = () => {
     setLoading(true)
-    void getDemandHotspots(3).then((pts) => {
-      setHeat(pts)
-      setLoading(false)
-    })
+    setErr(false)
+    void getDemandHotspots(3)
+      .then((pts) => setHeat(pts))
+      .catch(() => setErr(true)) // اتصال ضعيف — لا نترك المؤشّر يدور للأبد
+      .finally(() => setLoading(false))
   }
 
   useEffect(() => {
@@ -48,11 +50,13 @@ export default function DriverDemand() {
         <div className="pointer-events-none absolute inset-x-3 top-3 flex justify-center">
           <span className="flex items-center gap-1.5 rounded-full bg-white/95 px-4 py-2 text-xs font-bold text-royal shadow-float">
             <Flame className="h-4 w-4 text-orange-500" strokeWidth={2.4} />
-            {heat.length > 0
-              ? `${heat.length} طلب خلال آخر ٣ ساعات — المناطق الأكثر برتقالية أكثر طلباً`
-              : loading
-                ? 'جارٍ تحميل مناطق الطلب…'
-                : 'لا طلبات حديثة في آخر ٣ ساعات'}
+            {err
+              ? 'تعذّر تحميل مناطق الطلب — اضغط التحديث للمحاولة'
+              : heat.length > 0
+                ? `${heat.length} طلب خلال آخر ٣ ساعات — المناطق الأكثر برتقالية أكثر طلباً`
+                : loading
+                  ? 'جارٍ تحميل مناطق الطلب…'
+                  : 'لا طلبات حديثة في آخر ٣ ساعات'}
           </span>
         </div>
       </div>

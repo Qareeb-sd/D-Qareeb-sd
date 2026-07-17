@@ -43,6 +43,8 @@ const isNative = Capacitor.isNativePlatform()
 // بلا مفتاح → Leaflet/CARTO. الطبقة الأصلية تبقى خياراً صريحاً (VITE_USE_NATIVE_MAPS=1).
 const hasGoogleKey = Boolean(GOOGLE_MAPS_API_KEY)
 const nativeEnabled = import.meta.env.VITE_USE_NATIVE_MAPS === '1'
+// شارة التشخيص للخريطة الأصلية — تظهر فقط عند تفعيل VITE_MAP_DIAG (لا تُشحن للسائق).
+const showMapDiag = import.meta.env.VITE_MAP_DIAG === '1'
 const useNative = isNative && nativeEnabled && hasGoogleKey
 const useGoogleJs = !useNative && hasGoogleKey
 
@@ -246,8 +248,10 @@ function NativeGoogleMap({
   // فلا نغلّفه حتى لا ينهار ارتفاعه إلى صفر. الشارات أبناء له.
   return (
     <div ref={divRef} dir="ltr" className={`overflow-hidden bg-transparent ${className}`}>
-      {status === 'creating' && <DiagBadge text={`native creating… ${diag}`} tone="warn" />}
-      {status === 'ready' && <DiagBadge text={`native READY ✓ ${diag}`} tone="ok" />}
+      {showMapDiag && status === 'creating' && (
+        <DiagBadge text={`native creating… ${diag}`} tone="warn" />
+      )}
+      {showMapDiag && status === 'ready' && <DiagBadge text={`native READY ✓ ${diag}`} tone="ok" />}
       {status === 'error' && <DiagBadge text={`native ERROR: ${errMsg}`} tone="err" />}
     </div>
   )

@@ -105,7 +105,8 @@ export default function Trip() {
 
   // Realtime: تابع تقدّم الرحلة وموقع السائق والانتقالات (اكتمال / تخلّي / إلغاء).
   useEffect(() => {
-    const unsub = subscribeToRide(rideId ?? '', (ride) => {
+    if (!rideId) return // لا نشترك قبل استرجاع مُعرّف الرحلة (يتجنّب اشتراكاً على '')
+    const unsub = subscribeToRide(rideId, (ride) => {
       setStatus(ride.status)
       if (ride.driver_lat != null && ride.driver_lng != null)
         setDriverPos({ lat: ride.driver_lat, lng: ride.driver_lng })

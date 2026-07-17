@@ -285,6 +285,7 @@ export default function AdminDashboard() {
   const [empForm, setEmpForm] = useState({ name: '', role: '', phone: '', salary: '' })
   const [accForm, setAccForm] = useState({ name: '', bank: '', number: '', balance: '' })
   const [hrMsg, setHrMsg] = useState('')
+  const [salaryAccId, setSalaryAccId] = useState('')
   const [budget, setBudgetState] = useState<BudgetRow[]>([])
   const [budgetScope, setBudgetScope] = useState<'month' | 'year'>('month')
   const [fin, setFin] = useState<CompanyFinance | null>(null)
@@ -295,6 +296,8 @@ export default function AdminDashboard() {
   const [rideQuery, setRideQuery] = useState('')
   const [rideStatus, setRideStatus] = useState('')
   const [rideViolationsOnly, setRideViolationsOnly] = useState(false)
+  const [rideFrom, setRideFrom] = useState('')
+  const [rideTo, setRideTo] = useState('')
   const [driverQuery, setDriverQuery] = useState('')
   const [driverFilter, setDriverFilter] = useState<'all' | 'online' | 'offline'>('all')
   const [customerQuery, setCustomerQuery] = useState('')
@@ -349,7 +352,7 @@ export default function AdminDashboard() {
         listServicePricing(),
         listDriverApplications('pending'),
         listAllRides(500),
-        adminListRides(500),
+        adminListRides(1500), // نطاق أوسع لتقارير الفترات (فلترة التاريخ محليّاً)
         getAdminAnalytics(),
       ])
       if (!alive) return
@@ -373,12 +376,17 @@ export default function AdminDashboard() {
     // كبديل موثوق عن Realtime، فتظهر الطلبات الجديدة دون الحاجة لتحديث الصفحة.
     // كما يصدر تنبيهاً عند ازدياد عدد الطلبات المعلّقة (طلب جديد وصل).
     let prevPending = -1 // -1 = لم يُهيّأ بعد (أول قياس لا يُنبّه)
+    // سياق صوت واحد يُعاد استخدامه — إنشاؤه لكل تنبيه يُراكم سياقات حتى يتوقّف الصوت
+    // (المتصفّح يحدّ عددها). نُنشئه كسولاً مرّة واحدة.
+    let audioCtx: AudioContext | null = null
     const beep = () => {
       try {
         const AC =
           window.AudioContext ||
           (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext
-        const ctx = new AC()
+        if (!audioCtx) audioCtx = new AC()
+        const ctx = audioCtx
+        if (ctx.state === 'suspended') void ctx.resume()
         const osc = ctx.createOscillator()
         const gain = ctx.createGain()
         osc.connect(gain)
@@ -414,10 +422,16 @@ export default function AdminDashboard() {
       prevPending = total
     }
     void refreshPending()
+    // نوقف الاستقصاء عندما تكون اللوحة في الخلفية (تبويب مخفي) — يوفّر ضغط الشبكة
+    // والخادم طوال ساعات العمل، ويستأنف فور عودة الأدمن للتبويب.
+    const active = () => typeof document === 'undefined' || !document.hidden
     // الطلبات المعلّقة: استقصاء سريع (٤ ثوانٍ) ليظهر الطلب الجديد فوراً تقريباً.
-    const ivFast = setInterval(() => void refreshPending(), 4000)
+    const ivFast = setInterval(() => {
+      if (active()) void refreshPending()
+    }, 4000)
     // الإحصاءات والملخّص المالي أثقل → استقصاء أبطأ (٣٠ ثانية).
     const ivSlow = setInterval(() => {
+      if (!active()) return
       void getAdminStats()
         .then((x) => alive && setStats(x))
         .catch(() => {})
@@ -428,6 +442,11 @@ export default function AdminDashboard() {
         .then((x) => alive && x && setAnalyticsRaw(x))
         .catch(() => {})
     }, 30000)
+    // عند العودة للتبويب حدّث فوراً بدل انتظار الدورة القادمة.
+    const onVisible = () => {
+      if (active()) void refreshPending()
+    }
+    document.addEventListener('visibilitychange', onVisible)
     // Realtime عند توفّره = تحديث فوري (يمرّ عبر نفس refreshPending فلا تنبيه مكرّر).
     const unTopup = subscribeToTopups(() => void refreshPending())
     const unApp = subscribeToDriverApplications(() => void refreshPending())
@@ -435,6 +454,7 @@ export default function AdminDashboard() {
       alive = false
       clearInterval(ivFast)
       clearInterval(ivSlow)
+      document.removeEventListener('visibilitychange', onVisible)
       unTopup()
       unApp()
     }
@@ -550,8 +570,8 @@ export default function AdminDashboard() {
     if (total === 0) return setHrMsg('لا يوجد موظفون برواتب لصرفها')
     if (!window.confirm(`صرف رواتب الموظفين النشطين؟ الإجمالي ${money(total)}`)) return
     setHrMsg('')
-    // يخصم من أول حساب إن وُجد.
-    const acc = accounts?.[0]?.id ?? null
+    // الحساب المختار (وإلا أوّل حساب) — كي يحدّد الأدمن خزينة الصرف.
+    const acc = salaryAccId || accounts?.[0]?.id || null
     const { total: paid, error } = await paySalaries(acc, 'راتب شهري')
     if (error) return setHrMsg(error)
     setHrMsg(`تم صرف رواتب بمجموع ${money(paid ?? 0)} ✓`)
@@ -582,6 +602,14 @@ export default function AdminDashboard() {
   const filteredDetailRides = (detailRides ?? []).filter((r) => {
     const okStatus = !rideStatus || r.status === rideStatus
     const okViolation = !rideViolationsOnly || r.driver_mismatch || r.vehicle_mismatch
+    // نطاق تاريخ (شامل ليوم النهاية) — يمكّن من سحب تقرير فترة محدّدة.
+    const okDate = (() => {
+      if (!rideFrom && !rideTo) return true
+      const d = new Date(r.created_at).getTime()
+      if (rideFrom && d < new Date(rideFrom).getTime()) return false
+      if (rideTo && d > new Date(rideTo).getTime() + 86_400_000) return false
+      return true
+    })()
     const q = rideQuery.trim().toLowerCase()
     const serviceName = getService(r.service_id)?.name ?? r.service_id
     const okQuery =
@@ -596,7 +624,7 @@ export default function AdminDashboard() {
         r.dropoff_address,
         serviceName,
       ].some((f) => (f ?? '').toLowerCase().includes(q))
-    return okStatus && okViolation && okQuery
+    return okStatus && okViolation && okQuery && okDate
   })
   const filteredDrivers = (drivers ?? []).filter((d) => {
     const q = driverQuery.trim()
@@ -1111,6 +1139,16 @@ export default function AdminDashboard() {
   }
 
   const review = async (id: string, approve: boolean) => {
+    if (approve) {
+      const t = topups.find((x) => x.id === id)
+      const who = t?.wallets?.users?.full_name ? ` (${t.wallets.users.full_name})` : ''
+      if (
+        !window.confirm(
+          `اعتماد تعبئة بقيمة ${t ? money(t.amount) : ''}${who}؟ سيُضاف الرصيد فوراً ولا يمكن التراجع.`,
+        )
+      )
+        return
+    }
     setBusyId(id)
     const { error } = approve ? await approveTopup(id) : await rejectTopup(id)
     if (approve && !error) void notifyTopupApproved(id) // إشعار صاحب التعبئة
@@ -1136,6 +1174,16 @@ export default function AdminDashboard() {
   // اعتماد/رفض طلب سحب أرباح (الرفض يعيد المبلغ لمحفظة السائق).
   const reviewWithdraw = async (id: string, approve: boolean) => {
     let note: string | null = null
+    if (approve) {
+      const w = withdrawReqs.find((x) => x.id === id)
+      const who = w?.users?.full_name ? ` للسائق ${w.users.full_name}` : ''
+      if (
+        !window.confirm(
+          `اعتماد صرف سحب بقيمة ${w ? money(w.amount) : ''}${who}؟ عملية مالية لا يمكن التراجع عنها.`,
+        )
+      )
+        return
+    }
     if (!approve) note = window.prompt('سبب الرفض (اختياري):', '') || null
     setBusyId(id)
     const { error } = approve ? await approveWithdrawal(id) : await rejectWithdrawal(id, note)
@@ -1277,7 +1325,10 @@ export default function AdminDashboard() {
   }
 
   const commissionPct = settings ? Math.round(settings.commission_rate * 100) : 0
-  const pendingCount = topups.length + driverApps.length
+  // يشمل كل ما ينتظر إجراءً: تعبئة العملاء + طلبات السائقين + سحوبات + اشتراكات VIP —
+  // كي تعكس الشارة/العنوان/المؤشّر أيّ سائق ينتظر صرف أمواله لا التعبئة فقط.
+  const pendingCount =
+    topups.length + driverApps.length + withdrawReqs.length + vipReqs.length
 
   // عنوان التبويب في المتصفح يعكس الطلبات المعلّقة (يظهر حتى لو اللوحة بالخلفية).
   useEffect(() => {
@@ -1594,11 +1645,18 @@ export default function AdminDashboard() {
                 <div className="divide-y divide-hairline">
                   {topups.map((t) => (
                     <div key={t.id} className="flex items-center gap-3 py-3">
-                      <div className="flex-1">
-                        <p className="font-bold text-green">{money(t.amount)}</p>
-                        <p className="text-xs text-ink-muted">
-                          محفظة {t.wallet_id.slice(0, 8)} ·{' '}
-                          {new Date(t.created_at).toLocaleDateString('ar-SD')}
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate font-bold text-royal">
+                          {t.wallets?.users?.full_name ?? `محفظة ${t.wallet_id.slice(0, 8)}`}
+                        </p>
+                        <p className="text-xs text-ink-muted" dir="ltr">
+                          {t.wallets?.users?.phone ?? '—'}
+                        </p>
+                        <p className="text-xs font-bold text-green">
+                          {money(t.amount)} ·{' '}
+                          <span className="font-normal text-ink-muted">
+                            {new Date(t.created_at).toLocaleDateString('ar-SD')}
+                          </span>
                         </p>
                       </div>
                       {t.proof_url && (
@@ -2117,6 +2175,33 @@ export default function AdminDashboard() {
                   onChange={(e) => setRideQuery(e.target.value)}
                   placeholder="🔍 بحث بالاسم/الهاتف/اللوحة/العنوان"
                 />
+                <span className="flex items-center gap-1 text-xs text-ink-muted">
+                  من
+                  <input
+                    type="date"
+                    className="field w-auto"
+                    value={rideFrom}
+                    onChange={(e) => setRideFrom(e.target.value)}
+                  />
+                  إلى
+                  <input
+                    type="date"
+                    className="field w-auto"
+                    value={rideTo}
+                    onChange={(e) => setRideTo(e.target.value)}
+                  />
+                </span>
+                {(rideFrom || rideTo) && (
+                  <button
+                    onClick={() => {
+                      setRideFrom('')
+                      setRideTo('')
+                    }}
+                    className="text-xs font-bold text-royal"
+                  >
+                    مسح التاريخ
+                  </button>
+                )}
               </div>
             </div>
             {detailRides === null ? (
@@ -2508,7 +2593,26 @@ export default function AdminDashboard() {
             <div className="card p-4">
               <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
                 <p className="font-bold">الموظفون (كشف الرواتب)</p>
-                <button onClick={runPaySalaries} className="btn-gold px-4 py-1.5 text-sm">💸 صرف رواتب الشهر</button>
+                <div className="flex items-center gap-2">
+                  {accounts && accounts.length > 0 && (
+                    <select
+                      value={salaryAccId}
+                      onChange={(e) => setSalaryAccId(e.target.value)}
+                      className="rounded-lg border border-hairline bg-white px-2 py-1.5 text-sm"
+                      aria-label="حساب الصرف"
+                    >
+                      <option value="">حساب الصرف: الأول</option>
+                      {accounts.map((a) => (
+                        <option key={a.id} value={a.id}>
+                          {a.name}
+                        </option>
+                      ))}
+                    </select>
+                  )}
+                  <button onClick={runPaySalaries} className="btn-gold px-4 py-1.5 text-sm">
+                    💸 صرف رواتب الشهر
+                  </button>
+                </div>
               </div>
               <div className="mb-3 grid gap-2 md:grid-cols-5">
                 <input className="field" placeholder="الاسم" value={empForm.name} onChange={(e) => setEmpForm({ ...empForm, name: e.target.value })} />
@@ -3581,6 +3685,12 @@ function NumField({
   onChange: (v: number) => void
   step?: number
 }) {
+  // نحتفظ بنصّ محلّي حتى لا يُحوّل حقلٌ فارغ مؤقّتاً إلى 0 ويُحفظ. لا نُبلّغ الأب إلا
+  // بقيمة رقمية صالحة؛ وعند مغادرة حقلٍ فارغ/غير صالح نُعيد آخر قيمة صحيحة.
+  const [text, setText] = useState(String(value))
+  useEffect(() => {
+    setText(String(value))
+  }, [value])
   return (
     <label className="block">
       <span className="mb-1 block text-xs text-ink-soft">{label}</span>
@@ -3589,8 +3699,17 @@ function NumField({
         inputMode="decimal"
         step={step}
         min={0}
-        value={value}
-        onChange={(e) => onChange(Number(e.target.value))}
+        value={text}
+        onChange={(e) => {
+          const t = e.target.value
+          setText(t)
+          const n = Number(t)
+          if (t !== '' && Number.isFinite(n) && n >= 0) onChange(n)
+        }}
+        onBlur={() => {
+          const n = Number(text)
+          if (text === '' || !Number.isFinite(n) || n < 0) setText(String(value))
+        }}
         className="w-full rounded-xl border border-hairline bg-white px-3 py-2 text-ink outline-none focus:border-green"
       />
     </label>
