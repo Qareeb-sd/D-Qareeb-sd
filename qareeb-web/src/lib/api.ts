@@ -844,6 +844,67 @@ export async function deleteDriver(userId: string): Promise<{ error?: string }> 
   return error ? { error: error.message } : {}
 }
 
+/** إيقاف/إلغاء إيقاف سائق عن العمل (يمنعه من الاتصال والقبول). */
+export async function adminSuspendDriver(
+  userId: string,
+  suspend: boolean,
+  note?: string | null,
+): Promise<{ error?: string }> {
+  if (!isSupabaseConfigured) return {}
+  const { error } = await supabase.rpc('admin_suspend_driver', {
+    p_user: userId,
+    p_suspend: suspend,
+    p_note: note ?? null,
+  })
+  return error ? { error: error.message } : {}
+}
+
+/** تجميد سائق مؤقّتاً حتى تاريخ (until=null لفكّ التجميد). */
+export async function adminFreezeDriver(
+  userId: string,
+  until: string | null,
+  note?: string | null,
+): Promise<{ error?: string }> {
+  if (!isSupabaseConfigured) return {}
+  const { error } = await supabase.rpc('admin_freeze_driver', {
+    p_user: userId,
+    p_until: until,
+    p_note: note ?? null,
+  })
+  return error ? { error: error.message } : {}
+}
+
+/** إرسال تحذير لسائق (يصله كإشعار + يُخزّن). */
+export async function adminWarnDriver(
+  userId: string,
+  message: string,
+): Promise<{ error?: string }> {
+  if (!isSupabaseConfigured) return {}
+  const { error } = await supabase.rpc('admin_warn_driver', {
+    p_user: userId,
+    p_message: message,
+  })
+  return error ? { error: error.message } : {}
+}
+
+export interface DriverWarning {
+  id: string
+  message: string
+  created_at: string
+}
+
+/** تحذيرات السائق (يراها في تطبيقه — سياسة RLS تقصرها على صاحبها). */
+export async function getMyDriverWarnings(driverUserId: string): Promise<DriverWarning[]> {
+  if (!isSupabaseConfigured) return []
+  const { data } = await supabase
+    .from('driver_warnings')
+    .select('id, message, created_at')
+    .eq('driver_id', driverUserId)
+    .order('created_at', { ascending: false })
+    .limit(5)
+  return (data as DriverWarning[]) ?? []
+}
+
 // ------------------------- الموظفون (صلاحيات اللوحة) -------------------------
 
 /** صلاحياتي في لوحة الإدارة: أدمن (مالك) أم موظف بصلاحيات محدودة؟ */

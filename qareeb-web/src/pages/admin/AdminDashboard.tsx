@@ -71,6 +71,9 @@ import {
   adminListRides,
   listActiveRides,
   deleteDriver,
+  adminSuspendDriver,
+  adminFreezeDriver,
+  adminWarnDriver,
   getFinancialSummary,
   getAdminAnalytics,
   type AdminAnalytics,
@@ -933,6 +936,60 @@ export default function AdminDashboard() {
 
   // ===== VIP وإعفاء العمولة للسائقين =====
   const reloadDrivers = () => void listAllDrivers().then(setDrivers)
+
+  // ===== إدارة سائق: تحذير / إيقاف / تجميد =====
+  const warnDriver = async (d: AdminDriverRow) => {
+    const msg = window.prompt(`نصّ التحذير للسائق «${d.users?.full_name ?? ''}»:`, '')
+    if (!msg || !msg.trim()) return
+    setBusyId(d.user_id)
+    const { error } = await adminWarnDriver(d.user_id, msg.trim())
+    setBusyId(null)
+    if (error) return alert(error)
+    setToast('تم إرسال التحذير للسائق ✓')
+  }
+
+  const toggleSuspend = async (d: AdminDriverRow) => {
+    const next = !d.suspended
+    if (next) {
+      const note = window.prompt('سبب الإيقاف (يصل السائق كإشعار):', '')
+      if (note === null) return
+      if (!window.confirm(`إيقاف «${d.users?.full_name ?? 'السائق'}» عن العمل؟`)) return
+      setBusyId(d.user_id)
+      const { error } = await adminSuspendDriver(d.user_id, true, note || null)
+      setBusyId(null)
+      if (error) return alert(error)
+    } else {
+      setBusyId(d.user_id)
+      const { error } = await adminSuspendDriver(d.user_id, false)
+      setBusyId(null)
+      if (error) return alert(error)
+    }
+    reloadDrivers()
+  }
+
+  const freezeDriver = async (d: AdminDriverRow) => {
+    const frozen = d.frozen_until && new Date(d.frozen_until) > new Date()
+    if (frozen) {
+      if (!window.confirm('فكّ تجميد هذا السائق؟')) return
+      setBusyId(d.user_id)
+      const { error } = await adminFreezeDriver(d.user_id, null)
+      setBusyId(null)
+      if (error) return alert(error)
+      return reloadDrivers()
+    }
+    const daysStr = window.prompt('تجميد لكم يوماً؟', '3')
+    if (daysStr === null) return
+    const days = Number(daysStr)
+    if (!Number.isFinite(days) || days <= 0) return alert('أدخل عدد أيام صحيحاً')
+    const note = window.prompt('سبب التجميد (يصل السائق كإشعار):', '')
+    if (note === null) return
+    const until = new Date(Date.now() + days * 86400000).toISOString()
+    setBusyId(d.user_id)
+    const { error } = await adminFreezeDriver(d.user_id, until, note || null)
+    setBusyId(null)
+    if (error) return alert(error)
+    reloadDrivers()
+  }
 
   const toggleVip = async (d: AdminDriverRow) => {
     setBusyId(d.user_id)
@@ -1981,10 +2038,23 @@ export default function AdminDashboard() {
                             VIP
                           </span>
                         )}
+                        {d.suspended && (
+                          <span className="mr-2 rounded-md bg-danger/15 px-1.5 py-0.5 text-[10px] font-bold text-danger">
+                            موقوف
+                          </span>
+                        )}
+                        {!d.suspended && d.frozen_until && new Date(d.frozen_until) > new Date() && (
+                          <span className="mr-2 rounded-md bg-sand-soft px-1.5 py-0.5 text-[10px] font-bold text-sand-ink">
+                            مجمّد حتى {new Date(d.frozen_until).toLocaleDateString('ar-SD')}
+                          </span>
+                        )}
                       </p>
                       <p className="truncate text-xs text-ink-muted" dir="ltr">
                         {d.users?.phone ?? '—'}
                       </p>
+                      {d.admin_note && (d.suspended || (d.frozen_until && new Date(d.frozen_until) > new Date())) && (
+                        <p className="truncate text-[11px] text-danger">📝 {d.admin_note}</p>
+                      )}
                       {d.vip && (
                         <p
                           className={`truncate text-[11px] font-medium ${
@@ -2038,6 +2108,40 @@ export default function AdminDashboard() {
                           إعفاء عمولة
                         </button>
                       )}
+                      <button
+                        onClick={() => warnDriver(d)}
+                        disabled={busyId === d.user_id}
+                        title="إرسال تحذير للسائق"
+                        className="rounded-lg border border-sand/50 bg-sand-soft/50 px-2.5 py-1 text-xs font-bold text-sand-ink hover:bg-sand-soft"
+                      >
+                        ⚠ تحذير
+                      </button>
+                      <button
+                        onClick={() => freezeDriver(d)}
+                        disabled={busyId === d.user_id}
+                        title="تجميد مؤقّت"
+                        className={`rounded-lg px-2.5 py-1 text-xs font-bold ${
+                          d.frozen_until && new Date(d.frozen_until) > new Date()
+                            ? 'bg-sand text-white'
+                            : 'border border-hairline text-ink-soft hover:bg-green-soft'
+                        }`}
+                      >
+                        {d.frozen_until && new Date(d.frozen_until) > new Date()
+                          ? 'فكّ التجميد'
+                          : 'تجميد'}
+                      </button>
+                      <button
+                        onClick={() => toggleSuspend(d)}
+                        disabled={busyId === d.user_id}
+                        title="إيقاف عن العمل"
+                        className={`rounded-lg px-2.5 py-1 text-xs font-bold ${
+                          d.suspended
+                            ? 'bg-danger text-white'
+                            : 'border border-danger/40 text-danger hover:bg-danger/5'
+                        }`}
+                      >
+                        {d.suspended ? 'تشغيل' : 'إيقاف'}
+                      </button>
                       <button
                         onClick={() => removeDriver(d.user_id, d.users?.full_name ?? 'سائق')}
                         disabled={busyId === d.user_id}
