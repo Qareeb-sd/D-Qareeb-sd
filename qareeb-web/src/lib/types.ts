@@ -241,6 +241,42 @@ export interface AdminRewardRedemption {
   created_at: string
 }
 
+/** تذكرة دعم داخل التطبيق. */
+export interface SupportTicket {
+  id: string
+  user_id: string
+  subject: string
+  status: 'open' | 'closed'
+  last_message_at: string
+  unread_admin: boolean
+  unread_user: boolean
+  created_at: string
+}
+
+/** رسالة داخل تذكرة دعم. */
+export interface SupportMessage {
+  id: string
+  ticket_id: string
+  sender: 'user' | 'admin'
+  body: string
+  created_at: string
+}
+
+/** صفّ تذكرة دعم في لوحة الأدمن. */
+export interface AdminSupportTicket {
+  id: string
+  user_id: string
+  user_name: string | null
+  user_phone: string
+  user_role: string
+  subject: string
+  status: 'open' | 'closed'
+  unread_admin: boolean
+  last_message_at: string
+  last_body: string | null
+  created_at: string
+}
+
 export interface ServicePricing {
   service_id: string
   name: string

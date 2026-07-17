@@ -13,6 +13,7 @@ import DriverIncentives from '@/pages/driver/DriverIncentives'
 import DriverDemand from '@/pages/driver/DriverDemand'
 import DriverCommute from '@/pages/driver/DriverCommute'
 import DriverProfile from '@/pages/driver/DriverProfile'
+import DriverSupport from '@/pages/driver/DriverSupport'
 import TrackRide from '@/pages/shared/TrackRide'
 
 const driverGuard = (el: React.ReactNode) => <DriverRoute>{el}</DriverRoute>
@@ -40,6 +41,7 @@ export default function DriverRoutes() {
       <Route path="/driver/incentives" element={driverGuard(<DriverIncentives />)} />
       <Route path="/driver/demand" element={driverGuard(<DriverDemand />)} />
       <Route path="/driver/profile" element={driverGuard(<DriverProfile />)} />
+      <Route path="/driver/support" element={driverGuard(<DriverSupport />)} />
 
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>

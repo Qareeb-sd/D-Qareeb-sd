@@ -32,6 +32,7 @@ import {
   Download,
   Gift,
   Trash2,
+  MessageSquare,
   type LucideIcon,
 } from 'lucide-react'
 import Logo from '@/components/Logo'
@@ -87,6 +88,10 @@ import {
   adminDeleteReward,
   adminListRewardRedemptions,
   adminFulfillRedemption,
+  adminListSupportTickets,
+  adminSetTicketStatus,
+  listSupportMessages,
+  sendSupportMessage,
   getFinancialSummary,
   getAdminAnalytics,
   type AdminAnalytics,
@@ -161,6 +166,8 @@ import type {
   PromoCode,
   Reward,
   AdminRewardRedemption,
+  AdminSupportTicket,
+  SupportMessage,
 } from '@/lib/types'
 
 type Tab =
@@ -170,6 +177,7 @@ type Tab =
   | 'drivers'
   | 'customers'
   | 'announcements'
+  | 'support'
   | 'rides'
   | 'complaints'
   | 'finance'
@@ -192,6 +200,7 @@ const tabs: { id: Tab; label: string; perm: StaffPerm | null; ownerOnly?: boolea
   { id: 'drivers', label: 'السائقون', perm: 'drivers', Icon: Car },
   { id: 'customers', label: 'العملاء', perm: 'drivers', Icon: Users },
   { id: 'announcements', label: 'الإشعارات', perm: 'requests', Icon: Megaphone },
+  { id: 'support', label: 'الدعم', perm: 'requests', Icon: MessageSquare },
   { id: 'rides', label: 'الرحلات', perm: 'rides', Icon: Route },
   { id: 'complaints', label: 'الشكاوى', perm: 'requests', Icon: Flag },
   { id: 'finance', label: 'المالية', perm: null, ownerOnly: true, Icon: Wallet },
@@ -339,6 +348,12 @@ export default function AdminDashboard() {
   }>({ title: '', description: '', cost_points: '', kind: 'wallet', value: '', active: true, sort: '0' })
   const [rewardBusy, setRewardBusy] = useState(false)
   const [rewardMsg, setRewardMsg] = useState('')
+  // الدعم داخل التطبيق
+  const [tickets, setTickets] = useState<AdminSupportTicket[] | null>(null)
+  const [activeTicket, setActiveTicket] = useState<AdminSupportTicket | null>(null)
+  const [ticketMsgs, setTicketMsgs] = useState<SupportMessage[] | null>(null)
+  const [ticketReply, setTicketReply] = useState('')
+  const [ticketBusy, setTicketBusy] = useState(false)
   const [complaints, setComplaints] = useState<Complaint[] | null>(null)
   const [rides, setRides] = useState<Ride[] | null>(null)
   const [detailRides, setDetailRides] = useState<AdminRideRow[] | null>(null)
@@ -562,7 +577,8 @@ export default function AdminDashboard() {
       if (rewardRedemptions === null)
         void adminListRewardRedemptions().then(setRewardRedemptions)
     }
-  }, [tab, drivers, customers, complaints, announcements, rewards, rewardRedemptions])
+    if (tab === 'support' && tickets === null) void adminListSupportTickets().then(setTickets)
+  }, [tab, drivers, customers, complaints, announcements, rewards, rewardRedemptions, tickets])
 
   // صلاحياتي + قائمة الموظفين (للمالك).
   useEffect(() => {
@@ -1163,6 +1179,36 @@ export default function AdminDashboard() {
     setRewardBusy(false)
     if (error) return alert(error)
     void adminListRewardRedemptions().then(setRewardRedemptions)
+  }
+
+  // ===== الدعم داخل التطبيق =====
+  const openTicket = async (t: AdminSupportTicket) => {
+    setActiveTicket(t)
+    setTicketMsgs(null)
+    setTicketMsgs(await listSupportMessages(t.id))
+    // إزالة شارة «غير مقروءة» محليّاً + في القائمة.
+    setTickets((prev) => prev?.map((x) => (x.id === t.id ? { ...x, unread_admin: false } : x)) ?? prev)
+  }
+
+  const sendTicketReply = async () => {
+    if (!activeTicket || !ticketReply.trim()) return
+    setTicketBusy(true)
+    const { error } = await sendSupportMessage(activeTicket.id, ticketReply.trim())
+    setTicketBusy(false)
+    if (error) return alert(error)
+    setTicketReply('')
+    setTicketMsgs(await listSupportMessages(activeTicket.id))
+  }
+
+  const toggleTicketStatus = async () => {
+    if (!activeTicket) return
+    const next = activeTicket.status === 'open' ? 'closed' : 'open'
+    setTicketBusy(true)
+    const { error } = await adminSetTicketStatus(activeTicket.id, next)
+    setTicketBusy(false)
+    if (error) return alert(error)
+    setActiveTicket({ ...activeTicket, status: next })
+    setTickets((prev) => prev?.map((x) => (x.id === activeTicket.id ? { ...x, status: next } : x)) ?? prev)
   }
 
   // ===== إدارة عميل: تحذير / حظر =====
@@ -2603,6 +2649,152 @@ export default function AdminDashboard() {
                     </div>
                   ))}
                 </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {tab === 'support' && (
+          <div className="grid gap-4 lg:grid-cols-[minmax(0,340px)_1fr]">
+            {/* قائمة التذاكر */}
+            <div className="card p-3">
+              <div className="mb-2 flex items-center gap-2 px-1">
+                <MessageSquare className="h-5 w-5 text-royal" strokeWidth={2} />
+                <p className="font-bold">تذاكر الدعم</p>
+                <button
+                  onClick={() => void adminListSupportTickets().then(setTickets)}
+                  className="ms-auto text-xs font-bold text-royal"
+                >
+                  تحديث
+                </button>
+              </div>
+              {tickets === null ? (
+                <div className="h-16 animate-pulse rounded-xl bg-ivory" />
+              ) : tickets.length === 0 ? (
+                <p className="py-6 text-center text-sm text-ink-muted">لا توجد تذاكر</p>
+              ) : (
+                <div className="max-h-[70vh] space-y-1 overflow-y-auto">
+                  {tickets.map((t) => (
+                    <button
+                      key={t.id}
+                      onClick={() => void openTicket(t)}
+                      className={`w-full rounded-xl border p-3 text-right ${
+                        activeTicket?.id === t.id
+                          ? 'border-royal bg-royal-soft/40'
+                          : 'border-hairline hover:bg-ivory'
+                      }`}
+                    >
+                      <div className="flex items-center gap-2">
+                        <p className="flex-1 truncate font-bold text-ink">{t.subject}</p>
+                        {t.unread_admin && <span className="h-2 w-2 rounded-full bg-danger" />}
+                        <span
+                          className={`rounded-md px-1.5 py-0.5 text-[10px] font-bold ${
+                            t.status === 'closed'
+                              ? 'bg-ink-muted/10 text-ink-muted'
+                              : 'bg-green/10 text-green'
+                          }`}
+                        >
+                          {t.status === 'closed' ? 'مغلقة' : 'مفتوحة'}
+                        </span>
+                      </div>
+                      <p className="mt-0.5 truncate text-xs text-ink-muted">
+                        {t.user_name ?? '—'} · {t.user_role === 'driver' ? 'سائق' : 'عميل'}
+                      </p>
+                      {t.last_body && (
+                        <p className="mt-0.5 truncate text-xs text-ink-soft">{t.last_body}</p>
+                      )}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* المحادثة */}
+            <div className="card flex min-h-[60vh] flex-col p-4">
+              {!activeTicket ? (
+                <div className="grid flex-1 place-items-center text-center text-sm text-ink-muted">
+                  اختر تذكرة لعرض المحادثة والرد
+                </div>
+              ) : (
+                <>
+                  <div className="mb-3 flex items-center gap-2 border-b border-hairline pb-3">
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate font-bold text-ink">{activeTicket.subject}</p>
+                      <p className="text-xs text-ink-muted">
+                        {activeTicket.user_name ?? '—'} ·{' '}
+                        <a href={`tel:${activeTicket.user_phone}`} className="text-royal" dir="ltr">
+                          {activeTicket.user_phone}
+                        </a>
+                      </p>
+                    </div>
+                    <button
+                      onClick={toggleTicketStatus}
+                      disabled={ticketBusy}
+                      className={`rounded-lg px-3 py-1.5 text-xs font-bold ${
+                        activeTicket.status === 'open'
+                          ? 'bg-ink-muted/10 text-ink-soft'
+                          : 'bg-green text-white'
+                      }`}
+                    >
+                      {activeTicket.status === 'open' ? 'إغلاق' : 'إعادة فتح'}
+                    </button>
+                  </div>
+
+                  <div className="min-h-[240px] flex-1 space-y-2 overflow-y-auto rounded-2xl bg-ivory p-3">
+                    {ticketMsgs === null ? (
+                      <div className="h-16 animate-pulse rounded-xl bg-white" />
+                    ) : (
+                      ticketMsgs.map((m) => (
+                        <div
+                          key={m.id}
+                          className={`flex ${m.sender === 'admin' ? 'justify-end' : 'justify-start'}`}
+                        >
+                          <div
+                            className={`max-w-[80%] rounded-2xl px-3 py-2 text-sm ${
+                              m.sender === 'admin'
+                                ? 'bg-royal text-white'
+                                : 'border border-hairline bg-white text-ink'
+                            }`}
+                          >
+                            <p className="whitespace-pre-wrap leading-relaxed">{m.body}</p>
+                            <p
+                              className={`mt-0.5 text-[10px] ${
+                                m.sender === 'admin' ? 'text-white/70' : 'text-ink-muted'
+                              }`}
+                            >
+                              {new Date(m.created_at).toLocaleString('ar-SD', {
+                                hour: '2-digit',
+                                minute: '2-digit',
+                                day: 'numeric',
+                                month: 'numeric',
+                              })}
+                            </p>
+                          </div>
+                        </div>
+                      ))
+                    )}
+                  </div>
+
+                  <div className="mt-3 flex items-center gap-2">
+                    <input
+                      className="field flex-1"
+                      placeholder="اكتب ردّك…"
+                      value={ticketReply}
+                      onChange={(e) => setTicketReply(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') void sendTicketReply()
+                      }}
+                    />
+                    <button
+                      onClick={() => void sendTicketReply()}
+                      disabled={ticketBusy || !ticketReply.trim()}
+                      className="grid h-11 w-11 shrink-0 place-items-center rounded-full bg-royal text-white disabled:opacity-50"
+                      aria-label="إرسال"
+                    >
+                      <Send className="h-5 w-5" strokeWidth={2} />
+                    </button>
+                  </div>
+                </>
               )}
             </div>
           </div>

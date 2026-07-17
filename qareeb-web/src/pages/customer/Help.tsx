@@ -1,5 +1,6 @@
 import { useState } from 'react'
-import { ChevronDown } from 'lucide-react'
+import { ChevronDown, MessageSquare, ChevronLeft } from 'lucide-react'
+import { useNavigate } from 'react-router-dom'
 import Screen from '@/components/Screen'
 
 /** الأسئلة الشائعة — تجيب عن أكثر ما يشغل الراكب دون الحاجة لتواصل. */
@@ -33,8 +34,24 @@ const FAQ: { q: string; a: string }[] = [
 /** المساعدة والدعم — أسئلة شائعة قابلة للطيّ. */
 export default function Help() {
   const [open, setOpen] = useState<number | null>(0)
+  const navigate = useNavigate()
   return (
     <Screen title="المساعدة والدعم" back>
+      {/* تواصل مباشر مع الدعم */}
+      <button
+        onClick={() => navigate('/support')}
+        className="mb-4 flex w-full items-center gap-3 rounded-2xl bg-royal px-4 py-3.5 text-right text-white"
+      >
+        <span className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-white/15">
+          <MessageSquare className="h-5 w-5" strokeWidth={2} />
+        </span>
+        <span className="flex-1">
+          <span className="block font-bold">تواصل مع الدعم</span>
+          <span className="block text-xs text-white/70">راسل فريقنا مباشرة داخل التطبيق</span>
+        </span>
+        <ChevronLeft className="h-5 w-5 text-white/70" strokeWidth={2} />
+      </button>
+
       <p className="mb-3 text-sm text-ink-soft">إجابات سريعة لأكثر الأسئلة تكراراً.</p>
       <div className="space-y-2">
         {FAQ.map((item, i) => {

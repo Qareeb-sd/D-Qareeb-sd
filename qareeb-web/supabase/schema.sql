@@ -4425,3 +4425,150 @@ begin
   return v;
 end $$;
 grant execute on function public.admin_deep_analytics(int) to authenticated;
+
+-- ============================================================
+--  الدعم داخل التطبيق (#9): تذاكر + محادثة العميل/السائق مع الإدارة.
+--  شغّل هذا القسم كاملاً مرّة واحدة.
+-- ============================================================
+create table if not exists public.support_tickets (
+  id              uuid primary key default gen_random_uuid(),
+  user_id         uuid not null references public.users(id) on delete cascade,
+  subject         text not null,
+  status          text not null default 'open' check (status in ('open', 'closed')),
+  last_message_at timestamptz not null default now(),
+  unread_admin    boolean not null default true,   -- رسالة جديدة لم يقرأها الأدمن
+  unread_user     boolean not null default false,  -- ردّ جديد لم يقرأه المستخدم
+  created_at      timestamptz not null default now()
+);
+alter table public.support_tickets enable row level security;
+drop policy if exists "user read own tickets" on public.support_tickets;
+create policy "user read own tickets" on public.support_tickets
+  for select using (user_id = auth.uid() or public.is_staff_or_admin());
+
+create table if not exists public.support_messages (
+  id         uuid primary key default gen_random_uuid(),
+  ticket_id  uuid not null references public.support_tickets(id) on delete cascade,
+  sender     text not null check (sender in ('user', 'admin')),
+  body       text not null,
+  created_at timestamptz not null default now()
+);
+alter table public.support_messages enable row level security;
+drop policy if exists "read ticket messages" on public.support_messages;
+create policy "read ticket messages" on public.support_messages
+  for select using (
+    public.is_staff_or_admin()
+    or exists (select 1 from public.support_tickets t
+               where t.id = ticket_id and t.user_id = auth.uid())
+  );
+
+-- فتح تذكرة جديدة (المستخدم) — عنوان + أوّل رسالة.
+create or replace function public.open_support_ticket(p_subject text, p_body text)
+returns uuid language plpgsql security definer set search_path = public as $$
+declare v_uid uuid := auth.uid(); v_id uuid;
+begin
+  if v_uid is null then raise exception 'غير مصرّح'; end if;
+  if coalesce(btrim(p_subject), '') = '' or coalesce(btrim(p_body), '') = '' then
+    raise exception 'العنوان والرسالة مطلوبان';
+  end if;
+  insert into public.support_tickets (user_id, subject) values (v_uid, left(p_subject, 120))
+    returning id into v_id;
+  insert into public.support_messages (ticket_id, sender, body) values (v_id, 'user', p_body);
+  return v_id;
+end $$;
+grant execute on function public.open_support_ticket(text, text) to authenticated;
+
+-- إرسال رسالة (المستخدم لتذكرته، أو الأدمن لأي تذكرة).
+create or replace function public.send_support_message(p_ticket uuid, p_body text)
+returns void language plpgsql security definer set search_path = public as $$
+declare v_uid uuid := auth.uid(); v_owner uuid; v_staff boolean := public.is_staff_or_admin();
+begin
+  if v_uid is null then raise exception 'غير مصرّح'; end if;
+  if coalesce(btrim(p_body), '') = '' then raise exception 'الرسالة فارغة'; end if;
+  select user_id into v_owner from public.support_tickets where id = p_ticket;
+  if v_owner is null then raise exception 'التذكرة غير موجودة'; end if;
+  if v_owner <> v_uid and not v_staff then raise exception 'غير مصرّح'; end if;
+
+  insert into public.support_messages (ticket_id, sender, body)
+    values (p_ticket, case when v_staff and v_owner <> v_uid then 'admin' else 'user' end, p_body);
+  update public.support_tickets set
+    last_message_at = now(),
+    status = 'open',
+    unread_admin = case when v_staff and v_owner <> v_uid then unread_admin else true end,
+    unread_user  = case when v_staff and v_owner <> v_uid then true else unread_user end
+    where id = p_ticket;
+
+  -- إشعار المستخدم عند ردّ الإدارة.
+  if v_staff and v_owner <> v_uid then
+    begin
+      perform net.http_post(
+        url := 'https://yjdidwnnlyeisaahfmlr.supabase.co/functions/v1/notify-user-fcm',
+        headers := '{"Content-Type": "application/json"}'::jsonb,
+        body := jsonb_build_object('user_id', v_owner, 'title', 'ردّ من دعم قريب',
+                                   'body', left(p_body, 120), 'data', jsonb_build_object('type', 'support'))
+      );
+    exception when others then null; end;
+  end if;
+end $$;
+grant execute on function public.send_support_message(uuid, text) to authenticated;
+
+-- تذاكر المستخدم الحالي.
+create or replace function public.my_support_tickets()
+returns setof public.support_tickets language sql security definer set search_path = public stable as $$
+  select * from public.support_tickets where user_id = auth.uid() order by last_message_at desc;
+$$;
+grant execute on function public.my_support_tickets() to authenticated;
+
+-- رسائل تذكرة واحدة (يملكها المستخدم أو الأدمن) — ويعلّمها مقروءة للطرف القارئ.
+create or replace function public.support_ticket_messages(p_ticket uuid)
+returns setof public.support_messages language plpgsql security definer set search_path = public as $$
+declare v_uid uuid := auth.uid(); v_owner uuid; v_staff boolean := public.is_staff_or_admin();
+begin
+  select user_id into v_owner from public.support_tickets where id = p_ticket;
+  if v_owner is null then raise exception 'التذكرة غير موجودة'; end if;
+  if v_owner <> v_uid and not v_staff then raise exception 'غير مصرّح'; end if;
+  if v_staff and v_owner <> v_uid then
+    update public.support_tickets set unread_admin = false where id = p_ticket;
+  else
+    update public.support_tickets set unread_user = false where id = p_ticket;
+  end if;
+  return query select * from public.support_messages where ticket_id = p_ticket order by created_at;
+end $$;
+grant execute on function public.support_ticket_messages(uuid) to authenticated;
+
+-- أدمن: كل التذاكر مع اسم/هاتف المستخدم وآخر رسالة.
+create or replace function public.admin_list_support_tickets()
+returns table (
+  id uuid, user_id uuid, user_name text, user_phone text, user_role text,
+  subject text, status text, unread_admin boolean,
+  last_message_at timestamptz, last_body text, created_at timestamptz
+) language sql security definer set search_path = public stable as $$
+  select t.id, t.user_id, u.full_name, u.phone, u.role,
+         t.subject, t.status, t.unread_admin, t.last_message_at,
+         (select m.body from public.support_messages m
+           where m.ticket_id = t.id order by m.created_at desc limit 1),
+         t.created_at
+  from public.support_tickets t
+  join public.users u on u.id = t.user_id
+  where public.is_staff_or_admin()
+  order by t.unread_admin desc, t.last_message_at desc;
+$$;
+grant execute on function public.admin_list_support_tickets() to authenticated;
+
+-- أدمن: إغلاق/إعادة فتح تذكرة.
+create or replace function public.admin_set_ticket_status(p_ticket uuid, p_status text)
+returns void language plpgsql security definer set search_path = public as $$
+begin
+  if not public.is_staff_or_admin() then raise exception 'غير مصرّح'; end if;
+  if p_status not in ('open', 'closed') then raise exception 'حالة غير صالحة'; end if;
+  update public.support_tickets set status = p_status where id = p_ticket;
+end $$;
+grant execute on function public.admin_set_ticket_status(uuid, text) to authenticated;
+
+-- عدد التذاكر غير المقروءة (شارة للأدمن).
+create or replace function public.admin_unread_tickets_count()
+returns int language sql security definer set search_path = public stable as $$
+  select case when public.is_staff_or_admin()
+    then (select count(*)::int from public.support_tickets where unread_admin and status = 'open')
+    else 0 end;
+$$;
+grant execute on function public.admin_unread_tickets_count() to authenticated;

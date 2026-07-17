@@ -30,6 +30,9 @@ import type {
   Reward,
   RewardRedemption,
   AdminRewardRedemption,
+  SupportTicket,
+  SupportMessage,
+  AdminSupportTicket,
 } from './types'
 import { services as seedServices, type Service, type VehicleArt } from '@/data/services'
 
@@ -1495,6 +1498,72 @@ export async function adminFulfillRedemption(id: string): Promise<{ error?: stri
   if (!isSupabaseConfigured) return { error: 'غير متاح' }
   const { error } = await supabase.rpc('admin_fulfill_redemption', { p_id: id })
   return error ? { error: error.message } : {}
+}
+
+// ---------- الدعم داخل التطبيق ----------
+/** فتح تذكرة دعم جديدة (عنوان + أوّل رسالة). */
+export async function openSupportTicket(
+  subject: string,
+  body: string,
+): Promise<{ id?: string; error?: string }> {
+  if (!isSupabaseConfigured) return { error: 'غير متاح' }
+  const { data, error } = await supabase.rpc('open_support_ticket', {
+    p_subject: subject,
+    p_body: body,
+  })
+  if (error) return { error: error.message }
+  return { id: data as string }
+}
+
+/** إرسال رسالة داخل تذكرة (المستخدم أو الأدمن). */
+export async function sendSupportMessage(
+  ticketId: string,
+  body: string,
+): Promise<{ error?: string }> {
+  if (!isSupabaseConfigured) return { error: 'غير متاح' }
+  const { error } = await supabase.rpc('send_support_message', { p_ticket: ticketId, p_body: body })
+  return error ? { error: error.message } : {}
+}
+
+/** تذاكر المستخدم الحالي. */
+export async function listMySupportTickets(): Promise<SupportTicket[]> {
+  if (!isSupabaseConfigured) return []
+  const { data } = await supabase.rpc('my_support_tickets')
+  return (data as SupportTicket[]) ?? []
+}
+
+/** رسائل تذكرة واحدة (تعلّمها مقروءة للطرف القارئ). */
+export async function listSupportMessages(ticketId: string): Promise<SupportMessage[]> {
+  if (!isSupabaseConfigured) return []
+  const { data } = await supabase.rpc('support_ticket_messages', { p_ticket: ticketId })
+  return (data as SupportMessage[]) ?? []
+}
+
+/** أدمن: كل تذاكر الدعم. */
+export async function adminListSupportTickets(): Promise<AdminSupportTicket[]> {
+  if (!isSupabaseConfigured) return []
+  const { data } = await supabase.rpc('admin_list_support_tickets')
+  return (data as AdminSupportTicket[]) ?? []
+}
+
+/** أدمن: إغلاق/إعادة فتح تذكرة. */
+export async function adminSetTicketStatus(
+  ticketId: string,
+  status: 'open' | 'closed',
+): Promise<{ error?: string }> {
+  if (!isSupabaseConfigured) return { error: 'غير متاح' }
+  const { error } = await supabase.rpc('admin_set_ticket_status', {
+    p_ticket: ticketId,
+    p_status: status,
+  })
+  return error ? { error: error.message } : {}
+}
+
+/** أدمن: عدد التذاكر غير المقروءة (شارة). */
+export async function adminUnreadTicketsCount(): Promise<number> {
+  if (!isSupabaseConfigured) return 0
+  const { data } = await supabase.rpc('admin_unread_tickets_count')
+  return (data as number) ?? 0
 }
 
 /** نقاط كثافة الطلب الأخيرة (لخريطة السائق الحرارية). */

@@ -22,6 +22,7 @@ import Addresses from '@/pages/customer/Addresses'
 import ScheduledRides from '@/pages/customer/ScheduledRides'
 import Referral from '@/pages/customer/Referral'
 import Help from '@/pages/customer/Help'
+import Support from '@/pages/customer/Support'
 import About from '@/pages/customer/About'
 import TrackRide from '@/pages/shared/TrackRide'
 
@@ -58,6 +59,7 @@ export default function CustomerRoutes() {
       <Route path="/scheduled" element={guard(<ScheduledRides />)} />
       <Route path="/referral" element={guard(<Referral />)} />
       <Route path="/help" element={guard(<Help />)} />
+      <Route path="/support" element={guard(<Support />)} />
       <Route path="/about" element={guard(<About />)} />
 
       <Route path="*" element={<Navigate to="/" replace />} />
