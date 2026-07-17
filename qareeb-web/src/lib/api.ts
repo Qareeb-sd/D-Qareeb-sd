@@ -193,6 +193,8 @@ export async function createServicePricing(
 /** يحذف خدمة (يُفضّل استخدام الحالة «مخفي» بدل الحذف للحفاظ على السجلّات). */
 export async function deleteServicePricing(serviceId: string): Promise<{ error?: string }> {
   if (!isSupabaseConfigured) return {}
+  // نحذف أيضاً صفوف تسعير الفترات لهذا النوع حتى لا تبقى يتيمة (وتُعاد إن أُعيد المعرّف).
+  await supabase.from('service_pricing_periods').delete().eq('service_id', serviceId)
   const { error } = await supabase.from('service_pricing').delete().eq('service_id', serviceId)
   return error ? { error: error.message } : {}
 }
