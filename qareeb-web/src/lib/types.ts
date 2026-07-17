@@ -456,6 +456,8 @@ export interface AdminCustomer {
   rating: number | null
   ratings_count: number
   rides_count: number
+  banned?: boolean
+  ban_note?: string | null
   created_at: string
 }
 

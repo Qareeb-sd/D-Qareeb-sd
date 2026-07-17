@@ -4034,3 +4034,92 @@ begin
   exception when others then null; end;
 end $$;
 grant execute on function public.admin_warn_driver(uuid, text) to authenticated;
+
+-- ============================================================================
+-- [أدمن] إدارة العملاء: تحذير + حظر من طلب الرحلات
+-- الحظر يمنع العميل من إنشاء أي رحلة (فرض على الخادم عبر مُشغِّل على rides).
+-- كتلة معزولة آمنة للتشغيل وحدها.
+-- ============================================================================
+alter table public.users add column if not exists banned   boolean not null default false;
+alter table public.users add column if not exists ban_note text;
+
+create table if not exists public.customer_warnings (
+  id          uuid primary key default gen_random_uuid(),
+  customer_id uuid not null references public.users(id) on delete cascade,
+  message     text not null,
+  created_by  uuid references public.users(id) on delete set null,
+  created_at  timestamptz not null default now()
+);
+create index if not exists customer_warnings_cust_idx on public.customer_warnings(customer_id);
+alter table public.customer_warnings enable row level security;
+drop policy if exists "own or staff cwarnings" on public.customer_warnings;
+create policy "own or staff cwarnings" on public.customer_warnings
+  for select using (customer_id = auth.uid() or public.is_staff_or_admin());
+
+-- منع العميل المحظور من إنشاء رحلة (مُشغِّل على الإدراج).
+create or replace function public.block_banned_ride()
+returns trigger language plpgsql security definer set search_path = public as $$
+begin
+  if exists (select 1 from public.users where id = new.customer_id and banned) then
+    raise exception 'حسابك محظور من طلب الرحلات — تواصل مع إدارة قريب';
+  end if;
+  return new;
+end $$;
+drop trigger if exists trg_block_banned_ride on public.rides;
+create trigger trg_block_banned_ride before insert on public.rides
+  for each row execute function public.block_banned_ride();
+
+-- قائمة العملاء تشمل حالة الحظر (تغيّرت الأعمدة → drop أولاً).
+drop function if exists public.admin_list_customers();
+create or replace function public.admin_list_customers()
+returns table (
+  id uuid, full_name text, phone text, rating numeric,
+  ratings_count int, rides_count bigint, banned boolean, ban_note text, created_at timestamptz
+) language sql security definer set search_path = public as $$
+  select u.id, u.full_name, u.phone, u.rating, u.ratings_count,
+         (select count(*) from public.rides r where r.customer_id = u.id),
+         coalesce(u.banned, false), u.ban_note, u.created_at
+    from public.users u
+   where u.role = 'customer' and public.is_staff_or_admin()
+   order by u.created_at desc
+$$;
+grant execute on function public.admin_list_customers() to authenticated;
+
+-- إجراءات الأدمن (صلاحية «drivers» أو أدمن) — مع إشعار العميل.
+create or replace function public.admin_ban_customer(p_user uuid, p_ban boolean, p_note text default null)
+returns void language plpgsql security definer set search_path = public as $$
+begin
+  if not (public.is_admin() or public.has_perm('drivers')) then raise exception 'غير مصرّح'; end if;
+  update public.users set banned = p_ban, ban_note = coalesce(p_note, ban_note)
+   where id = p_user and role = 'customer';
+  perform public.log_action(case when p_ban then 'حظر عميل' else 'فكّ حظر عميل' end, coalesce(p_note, ''));
+  if p_ban then
+    begin
+      perform net.http_post(
+        url := 'https://yjdidwnnlyeisaahfmlr.supabase.co/functions/v1/notify-user-fcm',
+        headers := '{"Content-Type": "application/json"}'::jsonb,
+        body := jsonb_build_object('user_id', p_user, 'title', 'حظر الحساب',
+          'body', coalesce(nullif(trim(p_note), ''), 'تم حظر حسابك من طلب الرحلات — تواصل مع إدارة قريب'))
+      );
+    exception when others then null; end;
+  end if;
+end $$;
+grant execute on function public.admin_ban_customer(uuid, boolean, text) to authenticated;
+
+create or replace function public.admin_warn_customer(p_user uuid, p_message text)
+returns void language plpgsql security definer set search_path = public as $$
+begin
+  if not (public.is_admin() or public.has_perm('drivers')) then raise exception 'غير مصرّح'; end if;
+  if coalesce(trim(p_message), '') = '' then raise exception 'نصّ التحذير فارغ'; end if;
+  insert into public.customer_warnings (customer_id, message, created_by)
+    values (p_user, p_message, auth.uid());
+  perform public.log_action('تحذير عميل', left(p_message, 60));
+  begin
+    perform net.http_post(
+      url := 'https://yjdidwnnlyeisaahfmlr.supabase.co/functions/v1/notify-user-fcm',
+      headers := '{"Content-Type": "application/json"}'::jsonb,
+      body := jsonb_build_object('user_id', p_user, 'title', '⚠️ تحذير من إدارة قريب', 'body', p_message)
+    );
+  exception when others then null; end;
+end $$;
+grant execute on function public.admin_warn_customer(uuid, text) to authenticated;

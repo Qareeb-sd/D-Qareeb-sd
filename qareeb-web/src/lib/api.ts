@@ -905,6 +905,46 @@ export async function getMyDriverWarnings(driverUserId: string): Promise<DriverW
   return (data as DriverWarning[]) ?? []
 }
 
+/** حظر/فكّ حظر عميل من طلب الرحلات. */
+export async function adminBanCustomer(
+  userId: string,
+  ban: boolean,
+  note?: string | null,
+): Promise<{ error?: string }> {
+  if (!isSupabaseConfigured) return {}
+  const { error } = await supabase.rpc('admin_ban_customer', {
+    p_user: userId,
+    p_ban: ban,
+    p_note: note ?? null,
+  })
+  return error ? { error: error.message } : {}
+}
+
+/** إرسال تحذير لعميل (يصله كإشعار + يُخزّن). */
+export async function adminWarnCustomer(
+  userId: string,
+  message: string,
+): Promise<{ error?: string }> {
+  if (!isSupabaseConfigured) return {}
+  const { error } = await supabase.rpc('admin_warn_customer', {
+    p_user: userId,
+    p_message: message,
+  })
+  return error ? { error: error.message } : {}
+}
+
+/** تحذيرات العميل (يراها في تطبيقه — RLS تقصرها على صاحبها). */
+export async function getMyCustomerWarnings(customerId: string): Promise<DriverWarning[]> {
+  if (!isSupabaseConfigured) return []
+  const { data } = await supabase
+    .from('customer_warnings')
+    .select('id, message, created_at')
+    .eq('customer_id', customerId)
+    .order('created_at', { ascending: false })
+    .limit(5)
+  return (data as DriverWarning[]) ?? []
+}
+
 // ------------------------- الموظفون (صلاحيات اللوحة) -------------------------
 
 /** صلاحياتي في لوحة الإدارة: أدمن (مالك) أم موظف بصلاحيات محدودة؟ */
