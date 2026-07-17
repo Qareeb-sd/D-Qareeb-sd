@@ -30,6 +30,9 @@ import {
   Star,
   Check,
   Download,
+  Gift,
+  Trash2,
+  MessageSquare,
   type LucideIcon,
 } from 'lucide-react'
 import Logo from '@/components/Logo'
@@ -80,9 +83,20 @@ import {
   adminWarnCustomer,
   adminBroadcast,
   listAnnouncements,
+  adminListRewards,
+  adminUpsertReward,
+  adminDeleteReward,
+  adminListRewardRedemptions,
+  adminFulfillRedemption,
+  adminListSupportTickets,
+  adminSetTicketStatus,
+  listSupportMessages,
+  sendSupportMessage,
   getFinancialSummary,
   getAdminAnalytics,
   type AdminAnalytics,
+  getAdminDeepAnalytics,
+  type AdminDeepAnalytics,
   listSosAlerts,
   resolveSos,
   getMyAdminAccess,
@@ -150,6 +164,10 @@ import type {
   Complaint,
   ServiceState,
   PromoCode,
+  Reward,
+  AdminRewardRedemption,
+  AdminSupportTicket,
+  SupportMessage,
 } from '@/lib/types'
 
 type Tab =
@@ -159,6 +177,7 @@ type Tab =
   | 'drivers'
   | 'customers'
   | 'announcements'
+  | 'support'
   | 'rides'
   | 'complaints'
   | 'finance'
@@ -169,6 +188,7 @@ type Tab =
   | 'subs'
   | 'topup'
   | 'promo'
+  | 'rewards'
   | 'staff'
   | 'audit'
 
@@ -180,6 +200,7 @@ const tabs: { id: Tab; label: string; perm: StaffPerm | null; ownerOnly?: boolea
   { id: 'drivers', label: 'السائقون', perm: 'drivers', Icon: Car },
   { id: 'customers', label: 'العملاء', perm: 'drivers', Icon: Users },
   { id: 'announcements', label: 'الإشعارات', perm: 'requests', Icon: Megaphone },
+  { id: 'support', label: 'الدعم', perm: 'requests', Icon: MessageSquare },
   { id: 'rides', label: 'الرحلات', perm: 'rides', Icon: Route },
   { id: 'complaints', label: 'الشكاوى', perm: 'requests', Icon: Flag },
   { id: 'finance', label: 'المالية', perm: null, ownerOnly: true, Icon: Wallet },
@@ -190,6 +211,7 @@ const tabs: { id: Tab; label: string; perm: StaffPerm | null; ownerOnly?: boolea
   { id: 'subs', label: 'الاشتراكات', perm: 'settings', Icon: Crown },
   { id: 'topup', label: 'تعبئة العملاء', perm: 'settings', Icon: CreditCard },
   { id: 'promo', label: 'البريمو كود', perm: 'settings', Icon: BadgePercent },
+  { id: 'rewards', label: 'متجر المكافآت', perm: 'settings', Icon: Gift },
   { id: 'staff', label: 'الموظفون', perm: null, ownerOnly: true, Icon: ShieldCheck },
   { id: 'audit', label: 'سجلّ النشاط', perm: null, ownerOnly: true, Icon: ScrollText },
 ]
@@ -204,6 +226,35 @@ const STATE_OPTS: { value: ServiceState; label: string; color: string }[] = [
 
 /** ترتيب الفترات الزمنية للعرض: صباحاً ← ظهراً ← مساءً ← ليلاً. */
 const PERIOD_ORDER: ServicePeriod['period'][] = ['morning', 'afternoon', 'evening', 'night']
+
+/** يحوّل ساعات الذروة (0..23) إلى أعمدة كل ٣ ساعات لعرض أوضح. */
+function peakHourBars(hours: { hour: number; value: number }[]): { label: string; value: number }[] {
+  const buckets = [
+    { label: '٠-٣', from: 0 },
+    { label: '٣-٦', from: 3 },
+    { label: '٦-٩', from: 6 },
+    { label: '٩-١٢', from: 9 },
+    { label: '١٢-١٥', from: 12 },
+    { label: '١٥-١٨', from: 15 },
+    { label: '١٨-٢١', from: 18 },
+    { label: '٢١-٢٤', from: 21 },
+  ]
+  const val = (h: number) => hours.find((x) => x.hour === h)?.value ?? 0
+  return buckets.map((b) => ({ label: b.label, value: val(b.from) + val(b.from + 1) + val(b.from + 2) }))
+}
+
+/** يعرض إيراد ٣٠ يوماً كأعمدة أسبوعية (٥ أعمدة) لتجنّب ازدحام المحور. */
+function revenueBars(days: { d: string; value: number }[]): { label: string; value: number }[] {
+  const out: { label: string; value: number }[] = []
+  for (let i = 0; i < days.length; i += 6) {
+    const chunk = days.slice(i, i + 6)
+    const sum = chunk.reduce((s, x) => s + x.value, 0)
+    const first = chunk[0]?.d ?? ''
+    const label = first ? new Date(`${first}T00:00:00`).toLocaleDateString('ar-SD', { day: 'numeric', month: 'numeric' }) : ''
+    out.push({ label, value: sum })
+  }
+  return out
+}
 
 /**
  * جدول التسعير الموصى به (per_min=56، per_km=طلب المشوار). أربع مجموعات أسعار
@@ -282,10 +333,32 @@ export default function AdminDashboard() {
   const [annAudience, setAnnAudience] = useState<'customers' | 'drivers' | 'all'>('customers')
   const [annBusy, setAnnBusy] = useState(false)
   const [annMsg, setAnnMsg] = useState('')
+  // متجر المكافآت
+  const [rewards, setRewards] = useState<Reward[] | null>(null)
+  const [rewardRedemptions, setRewardRedemptions] = useState<AdminRewardRedemption[] | null>(null)
+  const [rewardDraft, setRewardDraft] = useState<{
+    id?: string
+    title: string
+    description: string
+    cost_points: string
+    kind: 'wallet' | 'perk'
+    value: string
+    active: boolean
+    sort: string
+  }>({ title: '', description: '', cost_points: '', kind: 'wallet', value: '', active: true, sort: '0' })
+  const [rewardBusy, setRewardBusy] = useState(false)
+  const [rewardMsg, setRewardMsg] = useState('')
+  // الدعم داخل التطبيق
+  const [tickets, setTickets] = useState<AdminSupportTicket[] | null>(null)
+  const [activeTicket, setActiveTicket] = useState<AdminSupportTicket | null>(null)
+  const [ticketMsgs, setTicketMsgs] = useState<SupportMessage[] | null>(null)
+  const [ticketReply, setTicketReply] = useState('')
+  const [ticketBusy, setTicketBusy] = useState(false)
   const [complaints, setComplaints] = useState<Complaint[] | null>(null)
   const [rides, setRides] = useState<Ride[] | null>(null)
   const [detailRides, setDetailRides] = useState<AdminRideRow[] | null>(null)
   const [analyticsRaw, setAnalyticsRaw] = useState<AdminAnalytics | null>(null)
+  const [deepAnalytics, setDeepAnalytics] = useState<AdminDeepAnalytics | null>(null)
   const [activeRides, setActiveRides] = useState<Ride[]>([])
   const [onlineDrivers, setOnlineDrivers] = useState<AdminOnlineDriver[]>([])
   const [sos, setSos] = useState<SosAlert[]>([])
@@ -376,6 +449,7 @@ export default function AdminDashboard() {
         listAllRides(500),
         adminListRides(1500), // نطاق أوسع لتقارير الفترات (فلترة التاريخ محليّاً)
         getAdminAnalytics(),
+        getAdminDeepAnalytics(30),
       ])
       if (!alive) return
       if (r[0].status === 'fulfilled') setStats(r[0].value)
@@ -387,6 +461,7 @@ export default function AdminDashboard() {
       if (r[6].status === 'fulfilled') setRides(r[6].value)
       if (r[7].status === 'fulfilled') setDetailRides(r[7].value)
       if (r[8].status === 'fulfilled') setAnalyticsRaw(r[8].value)
+      if (r[9].status === 'fulfilled') setDeepAnalytics(r[9].value)
       setLoadErr(
         r.some((x) => x.status === 'rejected')
           ? 'تعذّر تحميل بعض البيانات — تحقّق من الاتصال ثم حدّث الصفحة.'
@@ -497,7 +572,13 @@ export default function AdminDashboard() {
       void listComplaints().then((c) => setComplaints(c as Complaint[]))
     if (tab === 'promo') void listPromos().then(setPromos)
     if (tab === 'pricing') void listServicePeriods().then(setPeriods)
-  }, [tab, drivers, customers, complaints, announcements])
+    if (tab === 'rewards') {
+      if (rewards === null) void adminListRewards().then(setRewards)
+      if (rewardRedemptions === null)
+        void adminListRewardRedemptions().then(setRewardRedemptions)
+    }
+    if (tab === 'support' && tickets === null) void adminListSupportTickets().then(setTickets)
+  }, [tab, drivers, customers, complaints, announcements, rewards, rewardRedemptions, tickets])
 
   // صلاحياتي + قائمة الموظفين (للمالك).
   useEffect(() => {
@@ -1027,6 +1108,107 @@ export default function AdminDashboard() {
     setAnnBody('')
     setAnnMsg('تم إرسال الإشعار ✓')
     void listAnnouncements().then(setAnnouncements)
+  }
+
+  // ===== متجر المكافآت =====
+  const resetRewardDraft = () =>
+    setRewardDraft({
+      title: '',
+      description: '',
+      cost_points: '',
+      kind: 'wallet',
+      value: '',
+      active: true,
+      sort: '0',
+    })
+
+  const saveReward = async () => {
+    const cost = Number(rewardDraft.cost_points)
+    if (!rewardDraft.title.trim() || !Number.isFinite(cost) || cost <= 0) {
+      setRewardMsg('اكتب العنوان وعدد نقاط صحيح')
+      return
+    }
+    const val = Number(rewardDraft.value) || 0
+    if (rewardDraft.kind === 'wallet' && val <= 0) {
+      setRewardMsg('حدّد مبلغ الرصيد (ج.س) للمكافأة')
+      return
+    }
+    setRewardBusy(true)
+    setRewardMsg('')
+    const { error } = await adminUpsertReward({
+      id: rewardDraft.id ?? null,
+      title: rewardDraft.title.trim(),
+      description: rewardDraft.description.trim() || null,
+      cost_points: Math.round(cost),
+      kind: rewardDraft.kind,
+      value: val,
+      active: rewardDraft.active,
+      sort: Math.round(Number(rewardDraft.sort) || 0),
+    })
+    setRewardBusy(false)
+    if (error) return setRewardMsg(`خطأ: ${error}`)
+    resetRewardDraft()
+    setRewardMsg('تم الحفظ ✓')
+    void adminListRewards().then(setRewards)
+  }
+
+  const editReward = (r: Reward) =>
+    setRewardDraft({
+      id: r.id,
+      title: r.title,
+      description: r.description ?? '',
+      cost_points: String(r.cost_points),
+      kind: r.kind,
+      value: String(r.value),
+      active: r.active,
+      sort: String(r.sort),
+    })
+
+  const removeReward = async (r: Reward) => {
+    if (!window.confirm(`حذف المكافأة «${r.title}»؟`)) return
+    setRewardBusy(true)
+    const { error } = await adminDeleteReward(r.id)
+    setRewardBusy(false)
+    if (error) return alert(error)
+    void adminListRewards().then(setRewards)
+  }
+
+  const fulfillRedemption = async (id: string) => {
+    setRewardBusy(true)
+    const { error } = await adminFulfillRedemption(id)
+    setRewardBusy(false)
+    if (error) return alert(error)
+    void adminListRewardRedemptions().then(setRewardRedemptions)
+  }
+
+  // ===== الدعم داخل التطبيق =====
+  const openTicket = async (t: AdminSupportTicket) => {
+    setActiveTicket(t)
+    setTicketMsgs(null)
+    setTicketMsgs(await listSupportMessages(t.id))
+    // إزالة شارة «غير مقروءة» محليّاً + في القائمة.
+    setTickets((prev) => prev?.map((x) => (x.id === t.id ? { ...x, unread_admin: false } : x)) ?? prev)
+  }
+
+  const sendTicketReply = async () => {
+    if (!activeTicket || !ticketReply.trim()) return
+    setTicketBusy(true)
+    const { error } = await sendSupportMessage(activeTicket.id, ticketReply.trim())
+    setTicketBusy(false)
+    if (error) return alert(error)
+    setTicketReply('')
+    setTicketMsgs(await listSupportMessages(activeTicket.id))
+  }
+
+  const toggleTicketStatus = async () => {
+    if (!activeTicket) return
+    const next = activeTicket.status === 'open' ? 'closed' : 'open'
+    setTicketBusy(true)
+    const { error } = await adminSetTicketStatus(activeTicket.id, next)
+    setTicketBusy(false)
+    if (error) return alert(error)
+    setActiveTicket({ ...activeTicket, status: next })
+    setTickets((prev) => prev?.map((x) => (x.id === activeTicket.id ? { ...x, status: next } : x)) ?? prev)
   }
 
   // ===== إدارة عميل: تحذير / حظر =====
@@ -1669,6 +1851,55 @@ export default function AdminDashboard() {
                 <DonutChart segments={analytics.vehicle} />
               </ChartCard>
             </div>
+
+            {/* تحليلات أعمق: ساعات الذروة + إيراد ٣٠ يوماً + أكثر المناطق */}
+            {deepAnalytics && (
+              <>
+                <div className="grid gap-4 lg:grid-cols-2">
+                  <ChartCard title="ساعات الذروة" subtitle="عدد الطلبات حسب ساعة اليوم (٣٠ يوماً)">
+                    <BarChart
+                      data={peakHourBars(deepAnalytics.peakHours)}
+                      color="#A88528"
+                    />
+                  </ChartCard>
+                  <ChartCard title="الإيراد آخر ٣٠ يوماً" subtitle="إيراد الرحلات المكتملة يومياً">
+                    <BarChart
+                      data={revenueBars(deepAnalytics.revenue30)}
+                      format={(v) => money(v)}
+                    />
+                  </ChartCard>
+                </div>
+
+                <div className="card p-4">
+                  <p className="mb-3 font-bold">أكثر مناطق الانطلاق طلباً (٣٠ يوماً)</p>
+                  {deepAnalytics.topAreas.length === 0 ? (
+                    <p className="py-4 text-center text-sm text-ink-muted">لا توجد بيانات كافية</p>
+                  ) : (
+                    <div className="space-y-2">
+                      {deepAnalytics.topAreas.map((a, i) => {
+                        const max = deepAnalytics.topAreas[0]?.value || 1
+                        return (
+                          <div key={i} className="flex items-center gap-3">
+                            <span className="w-40 shrink-0 truncate text-sm font-medium text-ink">
+                              {a.area}
+                            </span>
+                            <div className="h-2.5 flex-1 overflow-hidden rounded-full bg-ivory">
+                              <div
+                                className="h-full rounded-full bg-royal"
+                                style={{ width: `${Math.round((a.value / max) * 100)}%` }}
+                              />
+                            </div>
+                            <span className="w-10 shrink-0 text-left text-sm font-bold text-royal">
+                              {a.value}
+                            </span>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  )}
+                </div>
+              </>
+            )}
 
             {/* الطلبات النشطة الآن */}
             <div className="card p-4">
@@ -2415,6 +2646,360 @@ export default function AdminDashboard() {
                       <p className="mt-0.5 text-[11px] text-ink-muted">
                         {new Date(a.created_at).toLocaleString('ar-SD')}
                       </p>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {tab === 'support' && (
+          <div className="grid gap-4 lg:grid-cols-[minmax(0,340px)_1fr]">
+            {/* قائمة التذاكر */}
+            <div className="card p-3">
+              <div className="mb-2 flex items-center gap-2 px-1">
+                <MessageSquare className="h-5 w-5 text-royal" strokeWidth={2} />
+                <p className="font-bold">تذاكر الدعم</p>
+                <button
+                  onClick={() => void adminListSupportTickets().then(setTickets)}
+                  className="ms-auto text-xs font-bold text-royal"
+                >
+                  تحديث
+                </button>
+              </div>
+              {tickets === null ? (
+                <div className="h-16 animate-pulse rounded-xl bg-ivory" />
+              ) : tickets.length === 0 ? (
+                <p className="py-6 text-center text-sm text-ink-muted">لا توجد تذاكر</p>
+              ) : (
+                <div className="max-h-[70vh] space-y-1 overflow-y-auto">
+                  {tickets.map((t) => (
+                    <button
+                      key={t.id}
+                      onClick={() => void openTicket(t)}
+                      className={`w-full rounded-xl border p-3 text-right ${
+                        activeTicket?.id === t.id
+                          ? 'border-royal bg-royal-soft/40'
+                          : 'border-hairline hover:bg-ivory'
+                      }`}
+                    >
+                      <div className="flex items-center gap-2">
+                        <p className="flex-1 truncate font-bold text-ink">{t.subject}</p>
+                        {t.unread_admin && <span className="h-2 w-2 rounded-full bg-danger" />}
+                        <span
+                          className={`rounded-md px-1.5 py-0.5 text-[10px] font-bold ${
+                            t.status === 'closed'
+                              ? 'bg-ink-muted/10 text-ink-muted'
+                              : 'bg-green/10 text-green'
+                          }`}
+                        >
+                          {t.status === 'closed' ? 'مغلقة' : 'مفتوحة'}
+                        </span>
+                      </div>
+                      <p className="mt-0.5 truncate text-xs text-ink-muted">
+                        {t.user_name ?? '—'} · {t.user_role === 'driver' ? 'سائق' : 'عميل'}
+                      </p>
+                      {t.last_body && (
+                        <p className="mt-0.5 truncate text-xs text-ink-soft">{t.last_body}</p>
+                      )}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* المحادثة */}
+            <div className="card flex min-h-[60vh] flex-col p-4">
+              {!activeTicket ? (
+                <div className="grid flex-1 place-items-center text-center text-sm text-ink-muted">
+                  اختر تذكرة لعرض المحادثة والرد
+                </div>
+              ) : (
+                <>
+                  <div className="mb-3 flex items-center gap-2 border-b border-hairline pb-3">
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate font-bold text-ink">{activeTicket.subject}</p>
+                      <p className="text-xs text-ink-muted">
+                        {activeTicket.user_name ?? '—'} ·{' '}
+                        <a href={`tel:${activeTicket.user_phone}`} className="text-royal" dir="ltr">
+                          {activeTicket.user_phone}
+                        </a>
+                      </p>
+                    </div>
+                    <button
+                      onClick={toggleTicketStatus}
+                      disabled={ticketBusy}
+                      className={`rounded-lg px-3 py-1.5 text-xs font-bold ${
+                        activeTicket.status === 'open'
+                          ? 'bg-ink-muted/10 text-ink-soft'
+                          : 'bg-green text-white'
+                      }`}
+                    >
+                      {activeTicket.status === 'open' ? 'إغلاق' : 'إعادة فتح'}
+                    </button>
+                  </div>
+
+                  <div className="min-h-[240px] flex-1 space-y-2 overflow-y-auto rounded-2xl bg-ivory p-3">
+                    {ticketMsgs === null ? (
+                      <div className="h-16 animate-pulse rounded-xl bg-white" />
+                    ) : (
+                      ticketMsgs.map((m) => (
+                        <div
+                          key={m.id}
+                          className={`flex ${m.sender === 'admin' ? 'justify-end' : 'justify-start'}`}
+                        >
+                          <div
+                            className={`max-w-[80%] rounded-2xl px-3 py-2 text-sm ${
+                              m.sender === 'admin'
+                                ? 'bg-royal text-white'
+                                : 'border border-hairline bg-white text-ink'
+                            }`}
+                          >
+                            <p className="whitespace-pre-wrap leading-relaxed">{m.body}</p>
+                            <p
+                              className={`mt-0.5 text-[10px] ${
+                                m.sender === 'admin' ? 'text-white/70' : 'text-ink-muted'
+                              }`}
+                            >
+                              {new Date(m.created_at).toLocaleString('ar-SD', {
+                                hour: '2-digit',
+                                minute: '2-digit',
+                                day: 'numeric',
+                                month: 'numeric',
+                              })}
+                            </p>
+                          </div>
+                        </div>
+                      ))
+                    )}
+                  </div>
+
+                  <div className="mt-3 flex items-center gap-2">
+                    <input
+                      className="field flex-1"
+                      placeholder="اكتب ردّك…"
+                      value={ticketReply}
+                      onChange={(e) => setTicketReply(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') void sendTicketReply()
+                      }}
+                    />
+                    <button
+                      onClick={() => void sendTicketReply()}
+                      disabled={ticketBusy || !ticketReply.trim()}
+                      className="grid h-11 w-11 shrink-0 place-items-center rounded-full bg-royal text-white disabled:opacity-50"
+                      aria-label="إرسال"
+                    >
+                      <Send className="h-5 w-5" strokeWidth={2} />
+                    </button>
+                  </div>
+                </>
+              )}
+            </div>
+          </div>
+        )}
+
+        {tab === 'rewards' && (
+          <div className="space-y-4">
+            {/* إضافة/تعديل مكافأة */}
+            <div className="card p-4">
+              <p className="mb-3 flex items-center gap-2 font-bold">
+                <Gift className="h-5 w-5 text-royal" strokeWidth={2} />
+                {rewardDraft.id ? 'تعديل مكافأة' : 'إضافة مكافأة'}
+              </p>
+              <div className="space-y-2.5">
+                <input
+                  className="field"
+                  placeholder="العنوان (مثال: رصيد 1000 ج.س)"
+                  maxLength={60}
+                  value={rewardDraft.title}
+                  onChange={(e) => setRewardDraft({ ...rewardDraft, title: e.target.value })}
+                />
+                <input
+                  className="field"
+                  placeholder="وصف مختصر (اختياري)"
+                  maxLength={120}
+                  value={rewardDraft.description}
+                  onChange={(e) => setRewardDraft({ ...rewardDraft, description: e.target.value })}
+                />
+                <div>
+                  <label className="mb-1 block text-xs text-ink-soft">نوع المكافأة</label>
+                  <div className="flex gap-2">
+                    {(
+                      [
+                        { v: 'wallet', l: 'رصيد محفظة' },
+                        { v: 'perk', l: 'مكافأة عينية (رمز)' },
+                      ] as const
+                    ).map((o) => (
+                      <button
+                        key={o.v}
+                        onClick={() => setRewardDraft({ ...rewardDraft, kind: o.v })}
+                        className={`flex-1 rounded-xl px-3 py-2 text-sm font-bold ${
+                          rewardDraft.kind === o.v
+                            ? 'bg-royal text-white'
+                            : 'border border-hairline text-ink-soft hover:bg-green-soft'
+                        }`}
+                      >
+                        {o.l}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <label className="mb-1 block text-xs text-ink-soft">كلفة النقاط</label>
+                    <input
+                      className="field"
+                      inputMode="numeric"
+                      placeholder="مثال: 100"
+                      value={rewardDraft.cost_points}
+                      onChange={(e) =>
+                        setRewardDraft({ ...rewardDraft, cost_points: e.target.value })
+                      }
+                    />
+                  </div>
+                  {rewardDraft.kind === 'wallet' && (
+                    <div>
+                      <label className="mb-1 block text-xs text-ink-soft">قيمة الرصيد (ج.س)</label>
+                      <input
+                        className="field"
+                        inputMode="numeric"
+                        placeholder="مثال: 1000"
+                        value={rewardDraft.value}
+                        onChange={(e) => setRewardDraft({ ...rewardDraft, value: e.target.value })}
+                      />
+                    </div>
+                  )}
+                </div>
+                <div className="flex items-center gap-3">
+                  <label className="flex items-center gap-2 text-sm">
+                    <input
+                      type="checkbox"
+                      checked={rewardDraft.active}
+                      onChange={(e) => setRewardDraft({ ...rewardDraft, active: e.target.checked })}
+                    />
+                    مفعّلة
+                  </label>
+                  <div className="flex items-center gap-1 text-sm text-ink-soft">
+                    ترتيب:
+                    <input
+                      className="field w-16 px-2 py-1"
+                      inputMode="numeric"
+                      value={rewardDraft.sort}
+                      onChange={(e) => setRewardDraft({ ...rewardDraft, sort: e.target.value })}
+                    />
+                  </div>
+                </div>
+                {rewardMsg && (
+                  <p
+                    className={`text-sm font-medium ${
+                      rewardMsg.startsWith('خطأ') ? 'text-danger' : 'text-green'
+                    }`}
+                  >
+                    {rewardMsg}
+                  </p>
+                )}
+                <div className="flex gap-2">
+                  <button
+                    onClick={saveReward}
+                    disabled={rewardBusy}
+                    className="btn-primary flex-1"
+                  >
+                    {rewardBusy ? '…' : rewardDraft.id ? 'حفظ التعديل' : 'إضافة'}
+                  </button>
+                  {rewardDraft.id && (
+                    <button
+                      onClick={resetRewardDraft}
+                      className="rounded-xl border border-hairline px-4 py-2 text-sm font-bold text-ink-soft"
+                    >
+                      إلغاء
+                    </button>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            {/* قائمة المكافآت */}
+            <div className="card p-4">
+              <p className="mb-3 font-bold">المكافآت الحالية</p>
+              {rewards === null ? (
+                <div className="h-16 animate-pulse rounded-xl bg-ivory" />
+              ) : rewards.length === 0 ? (
+                <p className="py-4 text-center text-sm text-ink-muted">لا توجد مكافآت بعد</p>
+              ) : (
+                <div className="divide-y divide-hairline">
+                  {rewards.map((r) => (
+                    <div key={r.id} className="flex items-center gap-2 py-2.5">
+                      <div className="min-w-0 flex-1">
+                        <p className="flex items-center gap-2 font-bold text-royal">
+                          {r.title}
+                          {!r.active && (
+                            <span className="rounded-md bg-ink-muted/10 px-1.5 py-0.5 text-[10px] font-bold text-ink-muted">
+                              معطّلة
+                            </span>
+                          )}
+                        </p>
+                        <p className="text-xs text-ink-muted">
+                          {r.cost_points} نقطة ·{' '}
+                          {r.kind === 'wallet' ? `رصيد ${money(r.value)}` : 'مكافأة عينية'}
+                        </p>
+                      </div>
+                      <button
+                        onClick={() => editReward(r)}
+                        className="rounded-lg border border-hairline px-3 py-1.5 text-xs font-bold text-royal"
+                      >
+                        تعديل
+                      </button>
+                      <button
+                        onClick={() => void removeReward(r)}
+                        className="rounded-lg border border-danger/40 px-2 py-1.5 text-danger"
+                        aria-label="حذف"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* طلبات المكافآت العينية */}
+            <div className="card p-4">
+              <p className="mb-3 font-bold">طلبات الاستلام (مكافآت عينية)</p>
+              {rewardRedemptions === null ? (
+                <div className="h-16 animate-pulse rounded-xl bg-ivory" />
+              ) : rewardRedemptions.length === 0 ? (
+                <p className="py-4 text-center text-sm text-ink-muted">لا توجد طلبات</p>
+              ) : (
+                <div className="divide-y divide-hairline">
+                  {rewardRedemptions.map((rr) => (
+                    <div key={rr.id} className="flex items-center gap-2 py-2.5">
+                      <div className="min-w-0 flex-1">
+                        <p className="font-bold text-royal">{rr.title}</p>
+                        <p className="text-xs text-ink-muted">
+                          {rr.user_name ?? '—'} · {rr.user_phone}
+                          {rr.code && (
+                            <>
+                              {' '}
+                              · رمز: <span className="font-bold text-sand-ink">{rr.code}</span>
+                            </>
+                          )}
+                        </p>
+                      </div>
+                      {rr.status === 'pending' ? (
+                        <button
+                          onClick={() => void fulfillRedemption(rr.id)}
+                          disabled={rewardBusy}
+                          className="rounded-lg bg-green px-3 py-1.5 text-xs font-bold text-white"
+                        >
+                          تأكيد التسليم
+                        </button>
+                      ) : (
+                        <span className="flex items-center gap-1 rounded-md bg-green/10 px-1.5 py-0.5 text-xs font-bold text-green">
+                          <Check className="h-3.5 w-3.5" /> تم
+                        </span>
+                      )}
                     </div>
                   ))}
                 </div>
@@ -3374,6 +3959,15 @@ export default function AdminDashboard() {
                     value={settings.auto_surge_max}
                     onChange={(v) => setSettings({ ...settings, auto_surge_max: v })}
                   />
+                </div>
+                {/* الطرود والسفر بين المدن تُسعَّر كخدمات مستقلّة في جدول «التسعير
+                    حسب الفترة الزمنية» أدناه (توصيل طرد / سفر بين المدن). */}
+                <div className="rounded-2xl border border-sand/40 bg-sand-soft/30 p-3 text-xs leading-relaxed text-ink-soft">
+                  <p className="font-bold text-royal">🏙️📦 توصيل الطرود والسفر بين المدن</p>
+                  <p className="mt-1">
+                    لهما تسعيرهما الكامل بالمسافة والزمن وحسب الفترات — عدّلهما من جدول «التسعير حسب
+                    الفترة الزمنية» أدناه ضمن «توصيل طرد» و«سفر بين المدن»، تماماً كبقية المركبات.
+                  </p>
                 </div>
                 {savedMsg && <p className="text-sm text-green">{savedMsg}</p>}
                 <button className="btn-primary w-full" type="submit">

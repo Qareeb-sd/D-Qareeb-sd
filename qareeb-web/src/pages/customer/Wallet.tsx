@@ -14,13 +14,15 @@ import {
   getMyLoyalty,
   redeemLoyalty,
 } from '@/lib/api'
-import { Award } from 'lucide-react'
+import { Award, Gift } from 'lucide-react'
+import { useNavigate } from 'react-router-dom'
 
 /** محفظة قريب: الرصيد + التعبئة بتحويل بنكي ورفع إثبات + سجل المعاملات. */
 export default function Wallet() {
   const { profile } = useAuth()
   const userId = profile?.id ?? 'demo-user'
   const qc = useQueryClient()
+  const navigate = useNavigate()
 
   // قراءات عبر react-query — إعادة محاولة تلقائية وتخزين مؤقت (يناسب الشبكة الضعيفة).
   // إعادة جلب دورية (وعند العودة للتطبيق) ليظهر الرصيد فور اعتماد الأدمن.
@@ -123,23 +125,32 @@ export default function Wallet() {
 
         {/* نقاط الولاء — تظهر عند تفعيلها من الأدمن */}
         {loyalty && loyalty.point_value > 0 && (
-          <div className="card mt-4 flex items-center gap-3 p-4">
-            <span className="grid h-11 w-11 shrink-0 place-items-center rounded-full bg-sand-soft text-sand-ink">
-              <Award className="h-6 w-6" strokeWidth={1.9} />
-            </span>
-            <div className="flex-1">
-              <p className="font-bold text-royal">نقاط الولاء</p>
-              <p className="text-xs text-ink-muted">
-                لديك <span className="font-bold text-sand-ink">{loyalty.points}</span> نقطة ={' '}
-                {money(loyalty.points * loyalty.point_value)}
-              </p>
+          <div className="card mt-4 p-4">
+            <div className="flex items-center gap-3">
+              <span className="grid h-11 w-11 shrink-0 place-items-center rounded-full bg-sand-soft text-sand-ink">
+                <Award className="h-6 w-6" strokeWidth={1.9} />
+              </span>
+              <div className="flex-1">
+                <p className="font-bold text-royal">نقاط الولاء</p>
+                <p className="text-xs text-ink-muted">
+                  لديك <span className="font-bold text-sand-ink">{loyalty.points}</span> نقطة ={' '}
+                  {money(loyalty.points * loyalty.point_value)}
+                </p>
+              </div>
+              <button
+                onClick={redeem}
+                disabled={redeeming || loyalty.points <= 0}
+                className="rounded-xl bg-royal px-4 py-2 text-sm font-bold text-white disabled:opacity-50"
+              >
+                {redeeming ? '…' : 'نقداً'}
+              </button>
             </div>
             <button
-              onClick={redeem}
-              disabled={redeeming || loyalty.points <= 0}
-              className="rounded-xl bg-royal px-4 py-2 text-sm font-bold text-white disabled:opacity-50"
+              onClick={() => navigate('/rewards')}
+              className="mt-3 flex w-full items-center justify-center gap-2 rounded-xl border border-sand/50 bg-gold-soft py-2.5 text-sm font-bold text-sand-ink"
             >
-              {redeeming ? '…' : 'استبدال'}
+              <Gift className="h-4 w-4" strokeWidth={2} />
+              متجر المكافآت
             </button>
           </div>
         )}

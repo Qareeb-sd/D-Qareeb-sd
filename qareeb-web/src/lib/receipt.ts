@@ -115,6 +115,27 @@ export async function shareRideReceipt(ride: Ride, serviceName: string): Promise
   setTimeout(() => URL.revokeObjectURL(url), 4000)
 }
 
+/** يصيغ ملخّص إيصال نصّياً ويفتح واتساب لمشاركته. */
+export function shareReceiptWhatsApp(ride: Ride, serviceName: string): void {
+  const lines = [
+    '🚗 *إيصال رحلة قريب*',
+    '',
+    `📅 ${fmtDate(ride.created_at)}`,
+    `🚕 الخدمة: ${serviceName}`,
+    `📍 من: ${ride.pickup_address ?? '—'}`,
+    `🏁 إلى: ${ride.dropoff_address ?? '—'}`,
+    `💳 الدفع: ${payLabel(ride.payment_method)}`,
+    ...(ride.rider_name ? [`👤 الراكب: ${ride.rider_name}`] : []),
+    '',
+    `💰 *الإجمالي: ${Math.round(ride.fare ?? 0).toLocaleString('en')} ج.س*`,
+    '',
+    `رقم الرحلة: ${ride.id.slice(0, 8)}`,
+    'شكراً لاستخدامك قريب 🙏',
+  ]
+  const text = encodeURIComponent(lines.join('\n'))
+  window.open(`https://wa.me/?text=${text}`, '_blank', 'noopener')
+}
+
 function fmtDate(iso: string): string {
   return new Date(iso).toLocaleString('ar-SD', {
     year: 'numeric',

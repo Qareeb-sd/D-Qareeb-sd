@@ -537,7 +537,14 @@ export default function DriverHome() {
                   <div className="flex items-center gap-3">
                     {service && <VehicleImage service={service} className="h-12 w-16" />}
                     <div className="flex-1">
-                      <p className="font-bold text-royal">{service?.name ?? r.service_id}</p>
+                      <p className="flex items-center gap-1.5 font-bold text-royal">
+                        {r.is_package && <span>📦</span>}
+                        {r.is_package
+                          ? 'توصيل طرد'
+                          : r.intercity
+                            ? `${service?.name ?? r.service_id} · بين المدن`
+                            : (service?.name ?? r.service_id)}
+                      </p>
                       <p className="text-sm text-ink-soft">
                         {r.pickup_address} ← {r.dropoff_address}
                       </p>

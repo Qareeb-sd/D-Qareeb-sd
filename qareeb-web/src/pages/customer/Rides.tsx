@@ -1,13 +1,13 @@
 import { useQuery } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
-import { Star, RotateCcw, Share2 } from 'lucide-react'
+import { Star, RotateCcw, Share2, MessageCircle } from 'lucide-react'
 import Screen from '@/components/Screen'
 import { useAuth } from '@/store/AuthContext'
 import { useRide } from '@/store/RideContext'
 import { listRides } from '@/lib/api'
 import { getService } from '@/data/services'
 import { money } from '@/lib/format'
-import { shareRideReceipt } from '@/lib/receipt'
+import { shareRideReceipt, shareReceiptWhatsApp } from '@/lib/receipt'
 import type { Ride } from '@/lib/types'
 
 /** رحلاتي السابقة. */
@@ -63,7 +63,15 @@ export default function Rides() {
             return (
               <div key={r.id} className="card p-4">
                 <div className="flex items-center justify-between">
-                  <p className="font-bold text-royal">{service?.name ?? r.service_id}</p>
+                  <p className="flex items-center gap-1.5 font-bold text-royal">
+                    {r.is_package && <span title="توصيل طرد">📦</span>}
+                    {r.is_package ? 'توصيل طرد' : (service?.name ?? r.service_id)}
+                    {r.intercity && (
+                      <span className="rounded-md bg-royal-soft px-1.5 py-0.5 text-[10px] font-bold text-royal">
+                        بين المدن
+                      </span>
+                    )}
+                  </p>
                   <p
                     className={`font-extrabold ${isCancelled ? 'text-ink-muted line-through' : 'text-royal'}`}
                   >
@@ -98,13 +106,23 @@ export default function Rides() {
                       </button>
                     )}
                     {isCompleted && (
-                      <button
-                        onClick={() => void shareRideReceipt(r, service?.name ?? r.service_id)}
-                        className="flex items-center justify-center gap-1.5 rounded-xl border border-hairline px-4 py-2.5 text-sm font-bold text-royal"
-                      >
-                        <Share2 className="h-4 w-4" strokeWidth={2} />
-                        الإيصال
-                      </button>
+                      <>
+                        <button
+                          onClick={() => void shareRideReceipt(r, service?.name ?? r.service_id)}
+                          className="flex items-center justify-center gap-1.5 rounded-xl border border-hairline px-4 py-2.5 text-sm font-bold text-royal"
+                        >
+                          <Share2 className="h-4 w-4" strokeWidth={2} />
+                          الإيصال
+                        </button>
+                        <button
+                          onClick={() => shareReceiptWhatsApp(r, service?.name ?? r.service_id)}
+                          aria-label="مشاركة عبر واتساب"
+                          className="flex items-center justify-center gap-1.5 rounded-xl border border-green/40 bg-green-mint px-4 py-2.5 text-sm font-bold text-green"
+                        >
+                          <MessageCircle className="h-4 w-4" strokeWidth={2.2} />
+                          واتساب
+                        </button>
+                      </>
                     )}
                   </div>
                 )}

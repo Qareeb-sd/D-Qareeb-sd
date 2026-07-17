@@ -16,11 +16,13 @@ import Commute from '@/pages/customer/Commute'
 import CommuteOrder from '@/pages/customer/CommuteOrder'
 import CommuteJoin from '@/pages/customer/CommuteJoin'
 import Rides from '@/pages/customer/Rides'
+import Rewards from '@/pages/customer/Rewards'
 import Profile from '@/pages/customer/Profile'
 import Addresses from '@/pages/customer/Addresses'
 import ScheduledRides from '@/pages/customer/ScheduledRides'
 import Referral from '@/pages/customer/Referral'
 import Help from '@/pages/customer/Help'
+import Support from '@/pages/customer/Support'
 import About from '@/pages/customer/About'
 import TrackRide from '@/pages/shared/TrackRide'
 
@@ -51,11 +53,13 @@ export default function CustomerRoutes() {
       <Route path="/commute/join/:code" element={guard(<CommuteJoin />)} />
       <Route path="/commute/:id" element={guard(<CommuteOrder />)} />
       <Route path="/rides" element={guard(<Rides />)} />
+      <Route path="/rewards" element={guard(<Rewards />)} />
       <Route path="/profile" element={guard(<Profile />)} />
       <Route path="/addresses" element={guard(<Addresses />)} />
       <Route path="/scheduled" element={guard(<ScheduledRides />)} />
       <Route path="/referral" element={guard(<Referral />)} />
       <Route path="/help" element={guard(<Help />)} />
+      <Route path="/support" element={guard(<Support />)} />
       <Route path="/about" element={guard(<About />)} />
 
       <Route path="*" element={<Navigate to="/" replace />} />

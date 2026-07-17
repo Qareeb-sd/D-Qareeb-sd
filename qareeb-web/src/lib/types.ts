@@ -53,6 +53,8 @@ export interface Driver {
   commission_free_until?: string | null // إعفاء عمولة مؤقّت حتى هذا التاريخ
   suspended?: boolean // موقوف عن العمل (لا يتّصل ولا يقبل)
   frozen_until?: string | null // مجمّد مؤقّتاً حتى هذا التاريخ
+  accepts_packages?: boolean // يستقبل طلبات توصيل الطرود
+  accepts_intercity?: boolean // يستقبل رحلات السفر بين المدن
   admin_note?: string | null // ملاحظة إدارية (سبب الإيقاف/التجميد)
   photo_url?: string | null
   vehicle_photo_url?: string | null
@@ -82,6 +84,11 @@ export interface Ride {
   rider_name?: string | null // راكب فعليّ مختلف عن صاحب الحساب (رحلة لشخص آخر)
   rider_phone?: string | null
   stops?: { lat: number; lng: number; address?: string | null }[] | null // نقاط توقّف متوسّطة
+  is_package?: boolean | null // رحلة توصيل طرد (لا راكب)
+  package_note?: string | null // وصف الطرد
+  recipient_name?: string | null // اسم المستلِم عند التسليم
+  recipient_phone?: string | null // هاتف المستلِم
+  intercity?: boolean | null // رحلة بين المدن
   created_at: string
   // تظهر فقط في قائمة الطلبات المتاحة للسائق (من list_available_rides).
   customer_name?: string | null
@@ -138,6 +145,9 @@ export interface Settings {
   loyalty_point_value: number // قيمة نقطة الولاء عند الاستبدال (ج.س)
   auto_surge_enabled: boolean // تسعير ذروة تلقائي حسب الطلب
   auto_surge_max: number // سقف مضاعف الذروة التلقائي
+  intercity_multiplier: number // مضاعف سعر الرحلات بين المدن
+  package_multiplier: number // مضاعف سعر توصيل الطرود
+  package_fee: number // رسم ثابت يُضاف لتوصيل الطرود (ج.س)
   updated_at: string
 }
 
@@ -197,6 +207,83 @@ export interface PromoCode {
   max_uses: number | null
   min_fare: number
   expires_at: string | null
+  created_at: string
+}
+
+/** مكافأة في متجر النقاط (تُدار من لوحة الأدمن). */
+export interface Reward {
+  id: string
+  title: string
+  description: string | null
+  cost_points: number
+  kind: 'wallet' | 'perk' // wallet = رصيد محفظة، perk = مكافأة عينية برمز استلام
+  value: number // مبلغ ج.س عند kind='wallet'
+  active: boolean
+  sort: number
+  created_at: string
+}
+
+/** استبدال مكافأة من متجر النقاط. */
+export interface RewardRedemption {
+  id: string
+  user_id: string
+  reward_id: string | null
+  title: string
+  cost_points: number
+  kind: 'wallet' | 'perk'
+  value: number
+  code: string | null
+  status: 'pending' | 'fulfilled' | 'cancelled'
+  created_at: string
+}
+
+/** صفّ طلب مكافأة عينية معلّق (عرض الأدمن). */
+export interface AdminRewardRedemption {
+  id: string
+  user_name: string | null
+  user_phone: string
+  title: string
+  cost_points: number
+  kind: 'wallet' | 'perk'
+  value: number
+  code: string | null
+  status: 'pending' | 'fulfilled' | 'cancelled'
+  created_at: string
+}
+
+/** تذكرة دعم داخل التطبيق. */
+export interface SupportTicket {
+  id: string
+  user_id: string
+  subject: string
+  status: 'open' | 'closed'
+  last_message_at: string
+  unread_admin: boolean
+  unread_user: boolean
+  created_at: string
+}
+
+/** رسالة داخل تذكرة دعم. */
+export interface SupportMessage {
+  id: string
+  ticket_id: string
+  sender: 'user' | 'admin'
+  body: string
+  created_at: string
+}
+
+/** صفّ تذكرة دعم في لوحة الأدمن. */
+export interface AdminSupportTicket {
+  id: string
+  user_id: string
+  user_name: string | null
+  user_phone: string
+  user_role: string
+  subject: string
+  status: 'open' | 'closed'
+  unread_admin: boolean
+  last_message_at: string
+  last_body: string | null
   created_at: string
 }
 

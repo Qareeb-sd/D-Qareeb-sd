@@ -27,6 +27,12 @@ import type {
   RideMessage,
   DriverIncentive,
   MyIncentive,
+  Reward,
+  RewardRedemption,
+  AdminRewardRedemption,
+  SupportTicket,
+  SupportMessage,
+  AdminSupportTicket,
 } from './types'
 import { services as seedServices, type Service, type VehicleArt } from '@/data/services'
 
@@ -56,6 +62,9 @@ const demoSettings: Settings = {
   loyalty_point_value: 0,
   auto_surge_enabled: false,
   auto_surge_max: 2.0,
+  intercity_multiplier: 1.5,
+  package_multiplier: 1.0,
+  package_fee: 0,
   updated_at: new Date().toISOString(),
 }
 
@@ -1210,6 +1219,20 @@ export async function getAdminAnalytics(): Promise<AdminAnalytics | null> {
   return data as AdminAnalytics
 }
 
+/** تحليلات أعمق: ساعات الذروة + إيراد 30 يوماً + أكثر المناطق طلباً. */
+export interface AdminDeepAnalytics {
+  peakHours: { hour: number; value: number }[]
+  revenue30: { d: string; value: number }[]
+  topAreas: { area: string; value: number }[]
+}
+
+export async function getAdminDeepAnalytics(days = 30): Promise<AdminDeepAnalytics | null> {
+  if (!isSupabaseConfigured) return null
+  const { data, error } = await supabase.rpc('admin_deep_analytics', { p_days: days })
+  if (error || !data) return null
+  return data as AdminDeepAnalytics
+}
+
 export async function updateSettings(
   patch: Partial<Settings>,
 ): Promise<{ error?: string }> {
@@ -1239,6 +1262,19 @@ export async function getDriver(userId: string): Promise<Driver | null> {
   if (!isSupabaseConfigured) return demoDriver
   const { data } = await supabase.from('drivers').select('*').eq('user_id', userId).maybeSingle()
   return data ?? null
+}
+
+/** يضبط تفضيلات السائق: استقبال طلبات الطرود / السفر بين المدن. */
+export async function setDriverServicePrefs(
+  packages: boolean,
+  intercity: boolean,
+): Promise<{ error?: string }> {
+  if (!isSupabaseConfigured) return {}
+  const { error } = await supabase.rpc('set_driver_service_prefs', {
+    p_packages: packages,
+    p_intercity: intercity,
+  })
+  return error ? { error: error.message } : {}
 }
 
 // ============================================================
@@ -1399,6 +1435,151 @@ export async function redeemLoyalty(points: number): Promise<{ amount?: number; 
   const { data, error } = await supabase.rpc('redeem_loyalty', { p_points: points })
   if (error) return { error: error.message }
   return { amount: (data as { amount?: number })?.amount ?? 0 }
+}
+
+/** متجر المكافآت: قائمة المكافآت المتاحة للعميل. */
+export async function listRewards(): Promise<Reward[]> {
+  if (!isSupabaseConfigured) return []
+  const { data } = await supabase.rpc('list_rewards')
+  return (data as Reward[]) ?? []
+}
+
+/** استبدال مكافأة من المتجر (رصيد محفظة أو مكافأة عينية برمز). */
+export async function redeemReward(
+  rewardId: string,
+): Promise<{ kind?: 'wallet' | 'perk'; value?: number; code?: string; error?: string }> {
+  if (!isSupabaseConfigured) return { error: 'غير متاح' }
+  const { data, error } = await supabase.rpc('redeem_reward', { p_reward_id: rewardId })
+  if (error) return { error: error.message }
+  const r = data as { kind: 'wallet' | 'perk'; value?: number; code?: string }
+  return { kind: r?.kind, value: r?.value, code: r?.code }
+}
+
+/** سجلّ استبدالات العميل الحالي. */
+export async function listMyRedemptions(): Promise<RewardRedemption[]> {
+  if (!isSupabaseConfigured) return []
+  const { data } = await supabase.rpc('my_reward_redemptions')
+  return (data as RewardRedemption[]) ?? []
+}
+
+/** أدمن: كل المكافآت (شاملة المعطّلة). */
+export async function adminListRewards(): Promise<Reward[]> {
+  if (!isSupabaseConfigured) return []
+  const { data } = await supabase.rpc('admin_list_rewards')
+  return (data as Reward[]) ?? []
+}
+
+/** أدمن: إضافة/تعديل مكافأة. */
+export async function adminUpsertReward(r: {
+  id?: string | null
+  title: string
+  description?: string | null
+  cost_points: number
+  kind: 'wallet' | 'perk'
+  value: number
+  active: boolean
+  sort: number
+}): Promise<{ id?: string; error?: string }> {
+  if (!isSupabaseConfigured) return { error: 'غير متاح' }
+  const { data, error } = await supabase.rpc('admin_upsert_reward', {
+    p_id: r.id ?? null,
+    p_title: r.title,
+    p_description: r.description ?? null,
+    p_cost_points: r.cost_points,
+    p_kind: r.kind,
+    p_value: r.value,
+    p_active: r.active,
+    p_sort: r.sort,
+  })
+  if (error) return { error: error.message }
+  return { id: data as string }
+}
+
+/** أدمن: حذف مكافأة. */
+export async function adminDeleteReward(id: string): Promise<{ error?: string }> {
+  if (!isSupabaseConfigured) return { error: 'غير متاح' }
+  const { error } = await supabase.rpc('admin_delete_reward', { p_id: id })
+  return error ? { error: error.message } : {}
+}
+
+/** أدمن: طلبات المكافآت العينية (للتسليم). */
+export async function adminListRewardRedemptions(): Promise<AdminRewardRedemption[]> {
+  if (!isSupabaseConfigured) return []
+  const { data } = await supabase.rpc('admin_list_reward_redemptions')
+  return (data as AdminRewardRedemption[]) ?? []
+}
+
+/** أدمن: تأكيد تسليم مكافأة عينية. */
+export async function adminFulfillRedemption(id: string): Promise<{ error?: string }> {
+  if (!isSupabaseConfigured) return { error: 'غير متاح' }
+  const { error } = await supabase.rpc('admin_fulfill_redemption', { p_id: id })
+  return error ? { error: error.message } : {}
+}
+
+// ---------- الدعم داخل التطبيق ----------
+/** فتح تذكرة دعم جديدة (عنوان + أوّل رسالة). */
+export async function openSupportTicket(
+  subject: string,
+  body: string,
+): Promise<{ id?: string; error?: string }> {
+  if (!isSupabaseConfigured) return { error: 'غير متاح' }
+  const { data, error } = await supabase.rpc('open_support_ticket', {
+    p_subject: subject,
+    p_body: body,
+  })
+  if (error) return { error: error.message }
+  return { id: data as string }
+}
+
+/** إرسال رسالة داخل تذكرة (المستخدم أو الأدمن). */
+export async function sendSupportMessage(
+  ticketId: string,
+  body: string,
+): Promise<{ error?: string }> {
+  if (!isSupabaseConfigured) return { error: 'غير متاح' }
+  const { error } = await supabase.rpc('send_support_message', { p_ticket: ticketId, p_body: body })
+  return error ? { error: error.message } : {}
+}
+
+/** تذاكر المستخدم الحالي. */
+export async function listMySupportTickets(): Promise<SupportTicket[]> {
+  if (!isSupabaseConfigured) return []
+  const { data } = await supabase.rpc('my_support_tickets')
+  return (data as SupportTicket[]) ?? []
+}
+
+/** رسائل تذكرة واحدة (تعلّمها مقروءة للطرف القارئ). */
+export async function listSupportMessages(ticketId: string): Promise<SupportMessage[]> {
+  if (!isSupabaseConfigured) return []
+  const { data } = await supabase.rpc('support_ticket_messages', { p_ticket: ticketId })
+  return (data as SupportMessage[]) ?? []
+}
+
+/** أدمن: كل تذاكر الدعم. */
+export async function adminListSupportTickets(): Promise<AdminSupportTicket[]> {
+  if (!isSupabaseConfigured) return []
+  const { data } = await supabase.rpc('admin_list_support_tickets')
+  return (data as AdminSupportTicket[]) ?? []
+}
+
+/** أدمن: إغلاق/إعادة فتح تذكرة. */
+export async function adminSetTicketStatus(
+  ticketId: string,
+  status: 'open' | 'closed',
+): Promise<{ error?: string }> {
+  if (!isSupabaseConfigured) return { error: 'غير متاح' }
+  const { error } = await supabase.rpc('admin_set_ticket_status', {
+    p_ticket: ticketId,
+    p_status: status,
+  })
+  return error ? { error: error.message } : {}
+}
+
+/** أدمن: عدد التذاكر غير المقروءة (شارة). */
+export async function adminUnreadTicketsCount(): Promise<number> {
+  if (!isSupabaseConfigured) return 0
+  const { data } = await supabase.rpc('admin_unread_tickets_count')
+  return (data as number) ?? 0
 }
 
 /** نقاط كثافة الطلب الأخيرة (لخريطة السائق الحرارية). */
@@ -1841,6 +2022,25 @@ export async function getDriverRideStats(): Promise<DriverRideStats> {
   if (!isSupabaseConfigured) return EMPTY_DRIVER_STATS
   const { data } = await supabase.rpc('driver_ride_stats')
   return { ...EMPTY_DRIVER_STATS, ...((data as Partial<DriverRideStats>) ?? {}) }
+}
+
+/** صفّ كشف حساب أسبوعي للسائق. */
+export interface WeeklyStatement {
+  week_start: string
+  week_end: string
+  rides: number
+  gross: number
+  commission: number
+  net: number
+  cash_gross: number
+  wallet_gross: number
+}
+
+/** كشف حساب أسبوعي للسائق — آخر N أسابيع (السبت→الجمعة). */
+export async function getDriverWeeklyStatement(weeks = 8): Promise<WeeklyStatement[]> {
+  if (!isSupabaseConfigured) return []
+  const { data } = await supabase.rpc('driver_weekly_statement', { p_weeks: weeks })
+  return (data as WeeklyStatement[]) ?? []
 }
 
 /** طلب سحب بنكي من مدفوعات العملاء — يُخصم فوراً كحجز ويعتمده الأدمن. */
