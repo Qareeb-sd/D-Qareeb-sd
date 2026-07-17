@@ -74,6 +74,8 @@ import {
   adminSuspendDriver,
   adminFreezeDriver,
   adminWarnDriver,
+  adminBanCustomer,
+  adminWarnCustomer,
   getFinancialSummary,
   getAdminAnalytics,
   type AdminAnalytics,
@@ -989,6 +991,35 @@ export default function AdminDashboard() {
     setBusyId(null)
     if (error) return alert(error)
     reloadDrivers()
+  }
+
+  // ===== إدارة عميل: تحذير / حظر =====
+  const reloadCustomers = () =>
+    void listAdminCustomers().then((c) => setCustomers(c as AdminCustomer[]))
+
+  const warnCustomer = async (c: AdminCustomer) => {
+    const msg = window.prompt(`نصّ التحذير للعميل «${c.full_name ?? ''}»:`, '')
+    if (!msg || !msg.trim()) return
+    setBusyId(c.id)
+    const { error } = await adminWarnCustomer(c.id, msg.trim())
+    setBusyId(null)
+    if (error) return alert(error)
+    setToast('تم إرسال التحذير للعميل ✓')
+  }
+
+  const toggleBanCustomer = async (c: AdminCustomer) => {
+    const next = !c.banned
+    let note: string | null = null
+    if (next) {
+      note = window.prompt('سبب الحظر (يصل العميل كإشعار):', '')
+      if (note === null) return
+      if (!window.confirm(`حظر «${c.full_name ?? 'العميل'}» من طلب الرحلات؟`)) return
+    }
+    setBusyId(c.id)
+    const { error } = await adminBanCustomer(c.id, next, note)
+    setBusyId(null)
+    if (error) return alert(error)
+    reloadCustomers()
   }
 
   const toggleVip = async (d: AdminDriverRow) => {
@@ -2192,15 +2223,25 @@ export default function AdminDashboard() {
             ) : (
               <div className="divide-y divide-hairline">
                 {filteredCustomers.map((c) => (
-                  <div key={c.id} className="flex items-center gap-3 py-3">
+                  <div key={c.id} className="flex flex-wrap items-center gap-3 py-3">
                     <div className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-green-soft text-green">
                       <UserRound className="h-5 w-5" strokeWidth={1.8} />
                     </div>
                     <div className="min-w-0 flex-1">
-                      <p className="truncate font-bold">{c.full_name ?? 'عميل'}</p>
+                      <p className="truncate font-bold">
+                        {c.full_name ?? 'عميل'}
+                        {c.banned && (
+                          <span className="mr-2 rounded-md bg-danger/15 px-1.5 py-0.5 text-[10px] font-bold text-danger">
+                            محظور
+                          </span>
+                        )}
+                      </p>
                       <p className="truncate text-xs text-ink-muted" dir="ltr">
                         {c.phone}
                       </p>
+                      {c.banned && c.ban_note && (
+                        <p className="truncate text-[11px] text-danger">📝 {c.ban_note}</p>
+                      )}
                     </div>
                     <div className="text-left text-xs text-ink-soft">
                       <p className="flex items-center justify-start gap-1 font-medium text-gold">
@@ -2209,6 +2250,32 @@ export default function AdminDashboard() {
                         <span className="text-ink-muted">({c.ratings_count})</span>
                       </p>
                       <p className="text-ink-muted">{c.rides_count} رحلة</p>
+                    </div>
+                    <div className="flex shrink-0 items-center gap-1.5">
+                      <a
+                        href={`tel:${c.phone}`}
+                        className="rounded-lg border border-hairline px-2.5 py-1 text-xs font-bold text-royal"
+                      >
+                        اتصال
+                      </a>
+                      <button
+                        onClick={() => warnCustomer(c)}
+                        disabled={busyId === c.id}
+                        className="rounded-lg border border-sand/50 bg-sand-soft/50 px-2.5 py-1 text-xs font-bold text-sand-ink hover:bg-sand-soft"
+                      >
+                        ⚠ تحذير
+                      </button>
+                      <button
+                        onClick={() => toggleBanCustomer(c)}
+                        disabled={busyId === c.id}
+                        className={`rounded-lg px-2.5 py-1 text-xs font-bold ${
+                          c.banned
+                            ? 'bg-danger text-white'
+                            : 'border border-danger/40 text-danger hover:bg-danger/5'
+                        }`}
+                      >
+                        {c.banned ? 'فكّ الحظر' : 'حظر'}
+                      </button>
                     </div>
                   </div>
                 ))}

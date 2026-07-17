@@ -6,7 +6,13 @@ import MapView from '@/components/MapView'
 import VehicleImage from '@/components/VehicleImage'
 import ServiceStateOverlay from '@/components/ServiceStateOverlay'
 import Logo from '@/components/Logo'
-import { listServicePricing, listServicePeriods, nearbyOnlineDrivers } from '@/lib/api'
+import {
+  listServicePricing,
+  listServicePeriods,
+  nearbyOnlineDrivers,
+  getMyCustomerWarnings,
+  type DriverWarning,
+} from '@/lib/api'
 import { currentPeriod } from '@/lib/pricing'
 import { money } from '@/lib/format'
 import { getCurrentPos, loadLastPos } from '@/lib/geo'
@@ -36,11 +42,39 @@ export default function Home() {
   const [selected, setSelected] = useState('standard')
   const [mapCenter, setMapCenter] = useState(loadLastPos() ?? KHARTOUM)
   const [nearby, setNearby] = useState<{ lat: number; lng: number; icon?: string }[]>([])
+  const [warning, setWarning] = useState<DriverWarning | null>(null)
 
   // تسجيل رمز الإشعارات عند فتح الرئيسية (محاولة موثوقة بعد جهوز التطبيق).
   useEffect(() => {
     if (profile?.id) void registerPush(profile.id)
   }, [profile?.id])
+
+  // تحذير الإدارة — أحدث تحذير لم يُطّلع عليه (يُخفى بعد الإغلاق محليّاً).
+  useEffect(() => {
+    if (!profile?.id) return
+    void getMyCustomerWarnings(profile.id).then((ws) => {
+      let seen: string[] = []
+      try {
+        seen = JSON.parse(localStorage.getItem('qareeb_seen_cwarnings') ?? '[]')
+      } catch {
+        seen = []
+      }
+      const fresh = ws.find((w) => !seen.includes(w.id))
+      if (fresh) setWarning(fresh)
+    })
+  }, [profile?.id])
+
+  const dismissWarning = () => {
+    if (!warning) return
+    try {
+      const seen: string[] = JSON.parse(localStorage.getItem('qareeb_seen_cwarnings') ?? '[]')
+      seen.push(warning.id)
+      localStorage.setItem('qareeb_seen_cwarnings', JSON.stringify(seen.slice(-50)))
+    } catch {
+      /* لا يهمّ */
+    }
+    setWarning(null)
+  }
 
   useEffect(() => {
     // السعر المعروض = الحدّ الأدنى للفترة الحالية (وإلا فتح العداد القديم).
@@ -161,6 +195,25 @@ export default function Home() {
         <div className="rounded-t-[28px] bg-white px-5 pb-4 pt-3 shadow-soft">
           {/* مقبض ذهبي */}
           <div className="mx-auto mb-4 h-1 w-10 rounded-full bg-sand/60" />
+
+          {/* تحذير من إدارة قريب */}
+          {warning && (
+            <div className="mb-3 rounded-2xl border border-sand/50 bg-sand-soft/60 p-3">
+              <div className="flex items-start gap-2.5">
+                <span className="text-lg">⚠️</span>
+                <div className="flex-1">
+                  <p className="text-sm font-bold text-sand-ink">تحذير من إدارة قريب</p>
+                  <p className="mt-0.5 text-[13px] text-ink">{warning.message}</p>
+                </div>
+              </div>
+              <button
+                onClick={dismissWarning}
+                className="mt-2 w-full rounded-xl bg-sand py-2 text-sm font-bold text-royal"
+              >
+                اطّلعت وفهمت
+              </button>
+            </div>
+          )}
 
           {/* بحث الوجهة — بتوقيع خط المسار */}
           <button
