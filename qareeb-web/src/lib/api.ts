@@ -1925,6 +1925,25 @@ export async function getDriverRideStats(): Promise<DriverRideStats> {
   return { ...EMPTY_DRIVER_STATS, ...((data as Partial<DriverRideStats>) ?? {}) }
 }
 
+/** صفّ كشف حساب أسبوعي للسائق. */
+export interface WeeklyStatement {
+  week_start: string
+  week_end: string
+  rides: number
+  gross: number
+  commission: number
+  net: number
+  cash_gross: number
+  wallet_gross: number
+}
+
+/** كشف حساب أسبوعي للسائق — آخر N أسابيع (السبت→الجمعة). */
+export async function getDriverWeeklyStatement(weeks = 8): Promise<WeeklyStatement[]> {
+  if (!isSupabaseConfigured) return []
+  const { data } = await supabase.rpc('driver_weekly_statement', { p_weeks: weeks })
+  return (data as WeeklyStatement[]) ?? []
+}
+
 /** طلب سحب بنكي من مدفوعات العملاء — يُخصم فوراً كحجز ويعتمده الأدمن. */
 export async function requestWithdrawal(
   amount: number,

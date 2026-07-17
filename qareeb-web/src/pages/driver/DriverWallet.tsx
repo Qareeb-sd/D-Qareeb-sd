@@ -10,6 +10,7 @@ import {
   ArrowDownToLine,
   Trophy,
   ChevronLeft,
+  FileText,
 } from 'lucide-react'
 import Logo from '@/components/Logo'
 import DriverNav from '@/components/DriverNav'
@@ -172,6 +173,21 @@ export default function DriverWallet() {
         <p className="mt-2 text-center text-[11px] text-ink-muted">
           إجمالي رحلاتك المكتملة: {stats?.count ?? 0}
         </p>
+
+        {/* كشف الحساب الأسبوعي */}
+        <button
+          onClick={() => navigate('/driver/statement')}
+          className="mt-5 flex w-full items-center gap-3 rounded-2xl border border-royal/20 bg-royal-soft/40 px-4 py-3.5 text-right"
+        >
+          <span className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-royal/10">
+            <FileText className="h-5 w-5 text-royal" strokeWidth={2} />
+          </span>
+          <span className="flex-1">
+            <span className="block font-bold text-royal">كشف الحساب الأسبوعي</span>
+            <span className="block text-xs text-ink-muted">أرباحك والعمولة والصافي لكل أسبوع</span>
+          </span>
+          <ChevronLeft className="h-5 w-5 text-ink-muted" strokeWidth={2} />
+        </button>
 
         {/* حوافز ومكافآت */}
         <button
