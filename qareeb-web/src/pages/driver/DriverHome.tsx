@@ -260,6 +260,9 @@ export default function DriverHome() {
           <p className="flex items-center gap-1 text-xs text-ink-muted">
             <Star className="h-3.5 w-3.5 text-sand" strokeWidth={2} fill="currentColor" />
             {driver?.rating ?? '—'}
+            <span className="ml-1 text-[9px] text-ink-muted/70" dir="ltr">
+              · {__BUILD_STAMP__}
+            </span>
           </p>
         </div>
         {/* زر تفعيل تنبيهات الطلبات (صوت + إشعار) */}

@@ -11,3 +11,6 @@ interface ImportMetaEnv {
 interface ImportMeta {
   readonly env: ImportMetaEnv
 }
+
+/** ختم البناء المحقون وقت البناء (vite define) — للتحقّق من وصول النسخة الجديدة. */
+declare const __BUILD_STAMP__: string
