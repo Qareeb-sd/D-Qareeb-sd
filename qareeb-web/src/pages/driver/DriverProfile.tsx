@@ -81,6 +81,11 @@ export default function DriverProfile() {
             <p className="text-sm text-ink-soft" dir="ltr">
               {profile?.phone ?? '—'}
             </p>
+            {profile?.member_no != null && (
+              <span className="mt-1 inline-block rounded-full bg-sand-soft px-2.5 py-0.5 text-xs font-bold text-sand-ink">
+                عضو رقم {profile.member_no}
+              </span>
+            )}
           </div>
         </div>
 
