@@ -82,7 +82,7 @@ export default function Profile() {
           </p>
           {profile?.member_no != null && (
             <span className="mt-1.5 inline-block rounded-full bg-gold-soft px-2.5 py-0.5 text-xs font-bold text-sand-ink">
-              عضو رقم {profile.member_no}
+              عضوية: ع‑{profile.member_no}
             </span>
           )}
         </div>
