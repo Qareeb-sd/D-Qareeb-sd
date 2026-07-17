@@ -64,8 +64,16 @@ const STEPS = [
 ]
 
 /** سهم اتجاه كبير للمناورة التالية — يُشتقّ من نوع/اتجاه مناورة OSRM. */
-function ManeuverArrow({ type, modifier }: { type?: string; modifier?: string }) {
-  const cls = 'h-7 w-7'
+function ManeuverArrow({
+  type,
+  modifier,
+  className = 'h-7 w-7',
+}: {
+  type?: string
+  modifier?: string
+  className?: string
+}) {
+  const cls = className
   const sw = 2.6
   if (type === 'arrive') return <Flag className={cls} strokeWidth={sw} />
   if (type === 'roundabout' || type === 'rotary') return <RefreshCw className={cls} strokeWidth={sw} />
@@ -249,9 +257,13 @@ export default function DriverTrip() {
       ? { lat: activeRide.dropoff_lat, lng: activeRide.dropoff_lng }
       : null
 
-  // خطّ المسار: من موقع السائق للهدف إن توفّر، وإلا نظرة عامّة (التقاط ← وجهة).
+  // خطّ المسار يحترم المرحلة دائماً:
+  // • مرحلة الوصول للراكب: موقع السائق ← نقطة الالتقاط (لا تُرسم رحلة العميل بعد).
+  // • مرحلة الرحلة: موقع السائق ← الوجهة.
+  // قبل جهوزية الـGPS في مرحلة الالتقاط لا نرسم شيئاً (كي لا يظهر مسار الرحلة مبكّراً)؛
+  // وفي مرحلة الرحلة فقط نعرض نظرة عامّة (التقاط ← وجهة) ريثما يجهز الموقع.
   const rOrigin = pos ?? pickupPt
-  const rDest = pos ? target : dropoffPt
+  const rDest = pos ? target : heading === 'dropoff' ? dropoffPt : null
   useEffect(() => {
     if (!rOrigin || !rDest) {
       setRoutePts([])
@@ -400,48 +412,82 @@ export default function DriverTrip() {
             center={pos ?? target ?? { lat: activeRide.pickup_lat, lng: activeRide.pickup_lng }}
             driver={pos ?? undefined}
             markers={
-              [
-                pickupPt,
-                ...(activeRide.stops?.map((s) => ({ lat: s.lat, lng: s.lng })) ?? []),
-                dropoffPt,
-              ].filter(Boolean) as google.maps.LatLngLiteral[]
+              (heading === 'pickup'
+                ? // مرحلة الوصول: نُبرز نقطة الراكب فقط (لا نُشتّت بوجهة الرحلة بعد).
+                  [pickupPt]
+                : // مرحلة الرحلة: نقاط التوقّف ثم الوجهة.
+                  [
+                    ...(activeRide.stops?.map((s) => ({ lat: s.lat, lng: s.lng })) ?? []),
+                    dropoffPt,
+                  ]
+              ).filter(Boolean) as google.maps.LatLngLiteral[]
             }
             route={routePts}
             zoom={pos ? 16 : 15}
             className="absolute inset-0"
           />
 
-          {/* لافتة الملاحة داخل التطبيق: المناورة التالية + المسافة إليها */}
-          <div className="absolute inset-x-3 top-3 rounded-2xl bg-white/95 shadow-float backdrop-blur">
-            {nextStep && (
-              <div className="flex items-center gap-3 border-b border-hairline p-3">
-                <span className="grid h-12 w-12 shrink-0 place-items-center rounded-2xl bg-green text-white">
-                  <ManeuverArrow type={nextStep.step.type} modifier={nextStep.step.modifier} />
+          {/* لافتة ملاحة احترافية: شريط المرحلة + المناورة الكبيرة + العنوان/الوقت */}
+          <div className="absolute inset-x-3 top-3 overflow-hidden rounded-2xl shadow-float">
+            {/* شريط المرحلة — لون مميّز لكل مرحلة حتى لا يلتبس على السائق */}
+            <div
+              className={`flex items-center justify-between px-4 py-1.5 text-white ${
+                heading === 'pickup' ? 'bg-green' : 'bg-royal'
+              }`}
+            >
+              <span className="text-xs font-extrabold">
+                {heading === 'pickup' ? '① التوجّه إلى الراكب' : '② توصيل الراكب إلى الوجهة'}
+              </span>
+              <button
+                onClick={() => setMuted((m) => !m)}
+                aria-label={muted ? 'تشغيل الصوت' : 'كتم الصوت'}
+                className="press-scale grid h-7 w-7 shrink-0 place-items-center rounded-full bg-white/20"
+              >
+                {muted ? (
+                  <VolumeX className="h-4 w-4" strokeWidth={2.2} />
+                ) : (
+                  <Volume2 className="h-4 w-4" strokeWidth={2.2} />
+                )}
+              </button>
+            </div>
+
+            {/* المناورة الكبيرة — سهم ضخم + مسافة بارزة + تعليمة واضحة (تباين عالٍ) */}
+            {nextStep ? (
+              <div
+                className={`flex items-center gap-3 px-4 py-3 text-white ${
+                  heading === 'pickup' ? 'bg-green' : 'bg-royal'
+                }`}
+              >
+                <span className="grid h-14 w-14 shrink-0 place-items-center rounded-2xl bg-white/15">
+                  <ManeuverArrow
+                    type={nextStep.step.type}
+                    modifier={nextStep.step.modifier}
+                    className="h-9 w-9"
+                  />
                 </span>
                 <div className="min-w-0 flex-1">
-                  <p className="text-lg font-extrabold leading-tight text-green">
+                  <p className="text-3xl font-black leading-none">
                     {nextStep.d < 950
                       ? `${Math.round(nextStep.d / 10) * 10} م`
                       : `${(nextStep.d / 1000).toFixed(1)} كم`}
                   </p>
-                  <p className="truncate text-[13px] font-bold text-royal">
+                  <p className="mt-1 truncate text-sm font-bold text-white/90">
                     {nextStep.step.instruction}
                   </p>
                 </div>
-                <button
-                  onClick={() => setMuted((m) => !m)}
-                  aria-label={muted ? 'تشغيل الصوت' : 'كتم الصوت'}
-                  className="press-scale grid h-9 w-9 shrink-0 place-items-center rounded-full bg-ivory text-royal"
-                >
-                  {muted ? (
-                    <VolumeX className="h-5 w-5" strokeWidth={2} />
-                  ) : (
-                    <Volume2 className="h-5 w-5" strokeWidth={2} />
-                  )}
-                </button>
+              </div>
+            ) : (
+              <div
+                className={`px-4 py-3 text-white ${heading === 'pickup' ? 'bg-green' : 'bg-royal'}`}
+              >
+                <p className="text-sm font-bold text-white/90">
+                  {pos ? 'جارٍ حساب المسار…' : 'جارٍ تحديد موقعك…'}
+                </p>
               </div>
             )}
-            <div className="flex items-center gap-3 p-3">
+
+            {/* العنوان الهدف + زمن/مسافة الوصول (خلفية بيضاء) */}
+            <div className="flex items-center gap-3 bg-white/95 px-4 py-2.5 backdrop-blur">
               <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-royal-soft text-royal">
                 <MapPin className="h-5 w-5" strokeWidth={2} />
               </span>
