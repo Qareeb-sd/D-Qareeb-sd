@@ -1264,6 +1264,19 @@ export async function getDriver(userId: string): Promise<Driver | null> {
   return data ?? null
 }
 
+/** يضبط تفضيلات السائق: استقبال طلبات الطرود / السفر بين المدن. */
+export async function setDriverServicePrefs(
+  packages: boolean,
+  intercity: boolean,
+): Promise<{ error?: string }> {
+  if (!isSupabaseConfigured) return {}
+  const { error } = await supabase.rpc('set_driver_service_prefs', {
+    p_packages: packages,
+    p_intercity: intercity,
+  })
+  return error ? { error: error.message } : {}
+}
+
 // ============================================================
 //  طلبات الانضمام كسائق (KYC + وثائق + اعتماد)
 // ============================================================

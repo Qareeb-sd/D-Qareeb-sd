@@ -53,6 +53,8 @@ export interface Driver {
   commission_free_until?: string | null // إعفاء عمولة مؤقّت حتى هذا التاريخ
   suspended?: boolean // موقوف عن العمل (لا يتّصل ولا يقبل)
   frozen_until?: string | null // مجمّد مؤقّتاً حتى هذا التاريخ
+  accepts_packages?: boolean // يستقبل طلبات توصيل الطرود
+  accepts_intercity?: boolean // يستقبل رحلات السفر بين المدن
   admin_note?: string | null // ملاحظة إدارية (سبب الإيقاف/التجميد)
   photo_url?: string | null
   vehicle_photo_url?: string | null

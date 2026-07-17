@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from 'react'
+import { useState, useEffect, type ReactNode } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { User, Star, LifeBuoy, Crown, BadgePercent, MessageSquare, ChevronLeft } from 'lucide-react'
 import { useQuery } from '@tanstack/react-query'
@@ -6,8 +6,9 @@ import DriverNav from '@/components/DriverNav'
 import NotificationToggle from '@/components/NotificationToggle'
 import VipSubscribe from '@/components/VipSubscribe'
 import { useAuth } from '@/store/AuthContext'
-import { getDriver, updateEmergencyContacts } from '@/lib/api'
+import { getDriver, updateEmergencyContacts, setDriverServicePrefs } from '@/lib/api'
 import { getService } from '@/data/services'
+import { Package, Building2 } from 'lucide-react'
 
 export default function DriverProfile() {
   const navigate = useNavigate()
@@ -22,6 +23,29 @@ export default function DriverProfile() {
   const [c2, setC2] = useState(profile?.sos_contact2 ?? '')
   const [busy, setBusy] = useState(false)
   const [msg, setMsg] = useState('')
+
+  // تفضيلات الخدمات (طرود/سفر) — تُهيّأ من بيانات السائق وتُحفظ فور التبديل.
+  const [prefPkg, setPrefPkg] = useState(true)
+  const [prefInter, setPrefInter] = useState(false)
+  useEffect(() => {
+    if (driver) {
+      setPrefPkg(driver.accepts_packages ?? true)
+      setPrefInter(driver.accepts_intercity ?? false)
+    }
+  }, [driver])
+  const savePrefs = async (pkg: boolean, inter: boolean) => {
+    setPrefPkg(pkg)
+    setPrefInter(inter)
+    const { error } = await setDriverServicePrefs(pkg, inter)
+    if (error) {
+      // تراجع بصري عند الفشل
+      setPrefPkg(driver?.accepts_packages ?? true)
+      setPrefInter(driver?.accepts_intercity ?? false)
+      alert(error)
+    } else {
+      void refetchDriver()
+    }
+  }
 
   const saveContacts = async () => {
     setBusy(true)
@@ -82,6 +106,31 @@ export default function DriverProfile() {
         {driver && <CommissionStatus driver={driver} />}
         {driver && (
           <VipSubscribe driver={driver} userId={userId} onChanged={() => void refetchDriver()} />
+        )}
+
+        {/* تفضيلات الخدمات: استقبال الطرود / السفر بين المدن */}
+        {driver && (
+          <div className="card mt-4 p-4">
+            <p className="mb-1 font-bold">أنواع الطلبات التي أستقبلها</p>
+            <p className="mb-3 text-xs text-ink-muted">
+              تصلك طلبات الطرود والسفر بين المدن فقط إن فعّلتها — وإلا تذهب لسائق آخر.
+            </p>
+            <PrefToggle
+              Icon={Package}
+              label="توصيل الطرود"
+              hint="طلبات إرسال طرود لعنوان آخر"
+              on={prefPkg}
+              onChange={(v) => void savePrefs(v, prefInter)}
+            />
+            <div className="my-2 h-px bg-hairline" />
+            <PrefToggle
+              Icon={Building2}
+              label="السفر بين المدن"
+              hint="رحلات طويلة لمدينة أخرى"
+              on={prefInter}
+              onChange={(v) => void savePrefs(prefPkg, v)}
+            />
+          </div>
         )}
 
         {/* جهات الطوارئ (مثل العميل) */}
@@ -202,6 +251,52 @@ function CommissionStatus({ driver }: { driver: import('@/lib/types').Driver }) 
     )
   }
   return null
+}
+
+/** مفتاح تبديل لتفضيل خدمة (طرود/سفر). */
+function PrefToggle({
+  Icon,
+  label,
+  hint,
+  on,
+  onChange,
+}: {
+  Icon: typeof Package
+  label: string
+  hint: string
+  on: boolean
+  onChange: (v: boolean) => void
+}) {
+  return (
+    <div className="flex items-center gap-3">
+      <span
+        className={`grid h-10 w-10 shrink-0 place-items-center rounded-full ${
+          on ? 'bg-green-soft text-green' : 'bg-ivory text-ink-muted'
+        }`}
+      >
+        <Icon className="h-5 w-5" strokeWidth={2} />
+      </span>
+      <div className="min-w-0 flex-1">
+        <p className="font-bold text-royal">{label}</p>
+        <p className="text-xs text-ink-muted">{hint}</p>
+      </div>
+      <button
+        role="switch"
+        aria-checked={on}
+        aria-label={label}
+        onClick={() => onChange(!on)}
+        className={`relative h-7 w-12 shrink-0 rounded-full transition-colors ${
+          on ? 'bg-green' : 'bg-ink-muted/30'
+        }`}
+      >
+        <span
+          className={`absolute top-0.5 h-6 w-6 rounded-full bg-white shadow transition-all ${
+            on ? 'right-0.5' : 'right-[22px]'
+          }`}
+        />
+      </button>
+    </div>
+  )
 }
 
 function Row({ label, value }: { label: string; value: ReactNode }) {
