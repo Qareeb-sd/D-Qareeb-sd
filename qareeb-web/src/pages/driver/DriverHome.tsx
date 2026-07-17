@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
-import { Bell, BellOff, LifeBuoy, Eye, Star, ChevronLeft, Route, Coins, Power, User, Flame } from 'lucide-react'
+import { Bell, BellOff, LifeBuoy, Eye, Star, ChevronLeft, Route, Coins, Power, User, Flame, Navigation } from 'lucide-react'
 import { haversineKm } from '@/lib/pricing'
 import Logo from '@/components/Logo'
 import DriverNav from '@/components/DriverNav'
@@ -44,6 +44,7 @@ export default function DriverHome() {
   const [busyId, setBusyId] = useState<string | null>(null)
   const [notifOn, setNotifOn] = useState(notificationsGranted())
   const [acceptMsg, setAcceptMsg] = useState('')
+  const [myPos, setMyPos] = useState<google.maps.LatLngLiteral | null>(null)
 
   // ملخّص اليوم (رحلات + صافي أرباح) — من محفظة السائق ومعاملاتها.
   const { data: wallet } = useQuery({
@@ -136,6 +137,7 @@ export default function DriverHome() {
     let alive = true
     let last = 0
     const report = (lat: number, lng: number) => {
+      if (alive) setMyPos({ lat, lng }) // نحتفظ بالموقع لحساب بُعد الراكب
       const now = Date.now()
       if (now - last < 10000) return // خنق: مرّة كل ١٠ ثوانٍ على الأكثر
       last = now
@@ -357,6 +359,11 @@ export default function DriverHome() {
                       { lat: r.dropoff_lat, lng: r.dropoff_lng },
                     ) * 1.3
                   : null
+              // بُعد الراكب عن السائق (خطّ مستقيم × معامل الطريق) + زمن تقريبي.
+              const toPickupKm = myPos
+                ? haversineKm(myPos, { lat: r.pickup_lat, lng: r.pickup_lng }) * 1.3
+                : null
+              const toPickupMin = toPickupKm != null ? Math.max(1, Math.round((toPickupKm / 25) * 60)) : null
               return (
                 <div key={r.id} className="rounded-2xl bg-white p-4 shadow-card">
                   <div className="flex items-center gap-3">
@@ -389,6 +396,14 @@ export default function DriverHome() {
                       </span>
                     )}
                   </div>
+
+                  {/* بُعد الراكب عن السائق — يقرّر السائق بسرعة */}
+                  {toPickupKm != null && (
+                    <div className="mt-2 flex items-center gap-2 rounded-xl bg-green-mint px-3 py-2 text-[13px] font-bold text-green">
+                      <Navigation className="h-4 w-4" strokeWidth={2.2} />
+                      الراكب يبعد ~{toPickupKm.toFixed(1)} كم عنك ({toPickupMin} دقيقة)
+                    </div>
+                  )}
 
                   <button
                     onClick={() => accept(r)}
