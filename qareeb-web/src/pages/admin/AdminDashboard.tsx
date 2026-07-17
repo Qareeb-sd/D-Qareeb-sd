@@ -66,6 +66,8 @@ import {
   getDriverDocUrl,
   listAllDrivers,
   listAllRides,
+  listAdminOnlineDrivers,
+  type AdminOnlineDriver,
   adminListRides,
   listActiveRides,
   deleteDriver,
@@ -266,6 +268,7 @@ export default function AdminDashboard() {
   const [detailRides, setDetailRides] = useState<AdminRideRow[] | null>(null)
   const [analyticsRaw, setAnalyticsRaw] = useState<AdminAnalytics | null>(null)
   const [activeRides, setActiveRides] = useState<Ride[]>([])
+  const [onlineDrivers, setOnlineDrivers] = useState<AdminOnlineDriver[]>([])
   const [sos, setSos] = useState<SosAlert[]>([])
 
   // صلاحياتي (مالك أم موظف؟) + قائمة الموظفين (للمالك)
@@ -905,9 +908,15 @@ export default function AdminDashboard() {
     return () => clearTimeout(t)
   }, [toast])
 
-  // خريطة النشاط المباشر — الرحلات النشطة (تحديث دوري خفيف).
+  // خريطة النشاط المباشر — الرحلات النشطة + كل السائقين المتصلين (تحديث دوري خفيف).
   useEffect(() => {
-    const load = () => void listActiveRides().then(setActiveRides)
+    const load = () => {
+      if (typeof document !== 'undefined' && document.hidden) return
+      void listActiveRides().then(setActiveRides)
+      void listAdminOnlineDrivers()
+        .then(setOnlineDrivers)
+        .catch(() => {})
+    }
     load()
     const iv = setInterval(load, 15000)
     return () => clearInterval(iv)
@@ -1458,31 +1467,57 @@ export default function AdminDashboard() {
             <p className="mb-2 font-bold text-danger">🚨 تنبيهات طوارئ ({sos.length})</p>
             <div className="divide-y divide-hairline">
               {sos.map((a) => (
-                <div key={a.id} className="flex items-center gap-3 py-2.5">
-                  <div className="flex-1 text-sm">
-                    <p className="font-bold">{a.role === 'driver' ? 'سائق' : 'راكب'}</p>
-                    <p className="text-xs text-ink-muted">
+                <div key={a.id} className="flex flex-wrap items-start gap-3 py-3">
+                  <div className="min-w-0 flex-1 text-sm">
+                    <p className="font-bold text-royal">
+                      {a.users?.full_name ?? (a.role === 'driver' ? 'سائق' : 'راكب')}
+                      <span className="mr-2 rounded-md bg-danger/10 px-1.5 py-0.5 text-[10px] font-bold text-danger">
+                        {a.role === 'driver' ? 'سائق' : 'راكب'}
+                      </span>
+                    </p>
+                    {a.users?.phone && (
+                      <p className="text-xs text-ink-soft" dir="ltr">
+                        {a.users.phone}
+                      </p>
+                    )}
+                    {a.rides && (
+                      <p className="mt-0.5 text-xs text-ink-muted">
+                        رحلة: {a.rides.pickup_address ?? '—'} ← {a.rides.dropoff_address ?? '—'}
+                        {a.rides.status ? ` · ${a.rides.status}` : ''}
+                      </p>
+                    )}
+                    {a.note && <p className="mt-0.5 text-xs font-medium text-danger">📝 {a.note}</p>}
+                    <p className="mt-0.5 text-[11px] text-ink-muted">
                       {new Date(a.created_at).toLocaleString('ar-SD')}
-                      {a.lat != null && a.lng != null ? ' · موقع مرفق' : ''}
                     </p>
                   </div>
-                  {a.lat != null && a.lng != null && (
-                    <a
-                      href={`https://maps.google.com/?q=${a.lat},${a.lng}`}
-                      target="_blank"
-                      rel="noopener"
-                      className="text-sm text-info underline"
+                  <div className="flex shrink-0 flex-col items-stretch gap-1.5">
+                    {a.users?.phone && (
+                      <a
+                        href={`tel:${a.users.phone}`}
+                        className="rounded-lg bg-danger px-3 py-1.5 text-center text-sm font-bold text-white"
+                      >
+                        📞 اتصال
+                      </a>
+                    )}
+                    {a.lat != null && a.lng != null && (
+                      <a
+                        href={`https://maps.google.com/?q=${a.lat},${a.lng}`}
+                        target="_blank"
+                        rel="noopener"
+                        className="rounded-lg border border-hairline px-3 py-1.5 text-center text-sm text-info"
+                      >
+                        📍 الموقع
+                      </a>
+                    )}
+                    <button
+                      onClick={() => clearSos(a.id)}
+                      disabled={busyId === a.id}
+                      className="btn-primary px-3 py-1.5 text-sm"
                     >
-                      الموقع
-                    </a>
-                  )}
-                  <button
-                    onClick={() => clearSos(a.id)}
-                    disabled={busyId === a.id}
-                    className="btn-primary px-3 py-1.5 text-sm"
-                  >
-                    معالجة
-                  </button>
+                      معالجة
+                    </button>
+                  </div>
                 </div>
               ))}
             </div>
@@ -1558,13 +1593,15 @@ export default function AdminDashboard() {
                     : undefined
                 }
                 markers={activeRides.map((r) => ({ lat: r.pickup_lat, lng: r.pickup_lng }))}
-                driverMarkers={activeRides
-                  .filter((r) => r.driver_lat != null && r.driver_lng != null)
-                  .map((r) => ({ lat: r.driver_lat as number, lng: r.driver_lng as number }))}
+                driverMarkers={onlineDrivers.map((d) => ({
+                  lat: d.lat,
+                  lng: d.lng,
+                  icon: getService(d.vehicle_type ?? '')?.image,
+                }))}
                 className="h-72 w-full rounded-2xl"
               />
               <p className="mt-2 text-xs text-ink-muted">
-                📍 نقطة انطلاق الرحلة · 🚗 موقع السائق المباشر — يتحدّث تلقائياً.
+                📍 نقطة انطلاق الرحلة · 🚗 {onlineDrivers.length} سائق متصل الآن — يتحدّث تلقائياً.
               </p>
             </div>
 
@@ -1597,14 +1634,17 @@ export default function AdminDashboard() {
                 <span className="h-2.5 w-2.5 animate-pulse rounded-full bg-green" />
                 {activeRides.length} رحلة نشطة الآن
               </span>
+              <span className="flex items-center gap-2 rounded-full bg-royal-soft px-3 py-1.5 text-sm font-bold text-royal">
+                🚗 {onlineDrivers.length} سائق متصل
+              </span>
               <span className="flex items-center gap-1.5 text-xs text-ink-muted">
                 <span className="inline-block h-3 w-3 rounded-full bg-danger" /> نقطة انطلاق الرحلة
               </span>
-              <span className="flex items-center gap-1.5 text-xs text-ink-muted">
-                <span className="inline-block h-3 w-3 rounded-full bg-green" /> موقع السائق المباشر
-              </span>
               <button
-                onClick={() => void listActiveRides().then(setActiveRides)}
+                onClick={() => {
+                  void listActiveRides().then(setActiveRides)
+                  void listAdminOnlineDrivers().then(setOnlineDrivers).catch(() => {})
+                }}
                 className="mr-auto rounded-full border border-hairline bg-white px-3 py-1.5 text-sm font-bold text-green hover:bg-green-soft"
               >
                 تحديث
@@ -1620,15 +1660,17 @@ export default function AdminDashboard() {
                   : undefined
               }
               markers={activeRides.map((r) => ({ lat: r.pickup_lat, lng: r.pickup_lng }))}
-              driverMarkers={activeRides
-                .filter((r) => r.driver_lat != null && r.driver_lng != null)
-                .map((r) => ({ lat: r.driver_lat as number, lng: r.driver_lng as number }))}
+              driverMarkers={onlineDrivers.map((d) => ({
+                lat: d.lat,
+                lng: d.lng,
+                icon: getService(d.vehicle_type ?? '')?.image,
+              }))}
               className="h-[calc(100vh-190px)] min-h-[420px] w-full rounded-2xl border border-hairline"
             />
 
-            {activeRides.length === 0 && (
+            {activeRides.length === 0 && onlineDrivers.length === 0 && (
               <p className="text-center text-sm text-ink-muted">
-                لا توجد رحلات نشطة حالياً — ستظهر تلقائياً على الخريطة عند بدء أيّ رحلة.
+                لا توجد رحلات نشطة ولا سائقون متصلون حالياً — ستظهر تلقائياً على الخريطة.
               </p>
             )}
           </div>
@@ -2117,10 +2159,30 @@ export default function AdminDashboard() {
                       )}
                     </div>
                     <p className="text-sm">{c.complaint}</p>
-                    <p className="mt-1 text-xs text-ink-muted">
-                      من: {c.rater_name ?? '—'} · بحق: {c.ratee_name ?? '—'} ·{' '}
-                      {new Date(c.created_at).toLocaleDateString('ar')}
-                    </p>
+                    {(c.pickup_address || c.dropoff_address) && (
+                      <p className="mt-1 text-xs text-ink-muted">
+                        الرحلة: {c.pickup_address ?? '—'} ← {c.dropoff_address ?? '—'}
+                      </p>
+                    )}
+                    <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-ink-muted">
+                      <span className="flex items-center gap-1">
+                        من: <span className="font-bold text-ink">{c.rater_name ?? '—'}</span>
+                        {c.rater_phone && (
+                          <a href={`tel:${c.rater_phone}`} className="text-royal underline" dir="ltr">
+                            {c.rater_phone}
+                          </a>
+                        )}
+                      </span>
+                      <span className="flex items-center gap-1">
+                        بحق: <span className="font-bold text-ink">{c.ratee_name ?? '—'}</span>
+                        {c.ratee_phone && (
+                          <a href={`tel:${c.ratee_phone}`} className="text-royal underline" dir="ltr">
+                            {c.ratee_phone}
+                          </a>
+                        )}
+                      </span>
+                      <span>{new Date(c.created_at).toLocaleDateString('ar')}</span>
+                    </div>
                   </div>
                 ))}
               </div>

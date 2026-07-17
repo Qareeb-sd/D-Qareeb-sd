@@ -9,6 +9,7 @@ import type {
   DriverApplication,
   DriverAppStatus,
   ServicePricing,
+  Complaint,
   SosAlert,
   SosRole,
   StaffRow,
@@ -371,6 +372,21 @@ export async function adminListRides(limit = 100): Promise<AdminRideRow[]> {
   return data ?? []
 }
 
+export interface AdminOnlineDriver {
+  user_id: string
+  name: string | null
+  vehicle_type: string | null
+  lat: number
+  lng: number
+}
+
+/** كل السائقين المتصلين ومواقعهم — للخريطة الحيّة في لوحة الأدمن. */
+export async function listAdminOnlineDrivers(): Promise<AdminOnlineDriver[]> {
+  if (!isSupabaseConfigured) return []
+  const { data } = await supabase.rpc('admin_online_drivers')
+  return (data as AdminOnlineDriver[]) ?? []
+}
+
 /** قائمة العملاء المسجّلين وتقييماتهم (للأدمن/الموظف). */
 export async function listAdminCustomers() {
   if (!isSupabaseConfigured) return []
@@ -378,11 +394,11 @@ export async function listAdminCustomers() {
   return data ?? []
 }
 
-/** قائمة الشكاوى (للأدمن/الموظف). */
-export async function listComplaints() {
+/** قائمة الشكاوى (للأدمن/الموظف) — مع هواتف الطرفين وتفاصيل الرحلة. */
+export async function listComplaints(): Promise<Complaint[]> {
   if (!isSupabaseConfigured) return []
   const { data } = await supabase.rpc('admin_list_complaints')
-  return data ?? []
+  return (data as Complaint[]) ?? []
 }
 
 /** تعليم شكوى كمحلولة. */
@@ -585,12 +601,15 @@ const demoSosAlerts: SosAlert[] = [
 
 export async function listSosAlerts(): Promise<SosAlert[]> {
   if (!isSupabaseConfigured) return demoSosAlerts
+  // نُرفق اسم/هاتف مُطلق الطوارئ وتفاصيل رحلته حتى يتحرّك الأدمن فوراً بلا بحث.
   const { data } = await supabase
     .from('sos_alerts')
-    .select('*')
+    .select(
+      '*, users(full_name, phone), rides(pickup_address, dropoff_address, service_id, status)',
+    )
     .eq('status', 'open')
     .order('created_at', { ascending: false })
-  return data ?? []
+  return (data as SosAlert[]) ?? []
 }
 
 export async function resolveSos(id: string): Promise<{ error?: string }> {
