@@ -60,7 +60,39 @@
 
 ---
 
-## 5. 🔐 تذكيرات أمان دائمة (لا تُخالَف أبداً)
+## 5. 📲 تفعيل تحقّق الهاتف عبر واتساب (OTP) — قبل التدشين
+
+**الوضع الحالي:** دوالّ التحقّق `send-otp` / `verify-otp` جاهزة في Supabase Edge Functions،
+وتعمل الآن في **وضع تجريبي** (لا تُرسل رسالة فعلية). قبل التدشين فعّل واتساب الحقيقي:
+
+**الخطوات (من Meta / WhatsApp Cloud API):**
+1. أنشئ **Meta Business Account** + تطبيقاً في [developers.facebook.com](https://developers.facebook.com)،
+   وأضِف منتج **WhatsApp**.
+2. احصل على:
+   - **Phone Number ID** (رقم واتساب الرسمي للأعمال).
+   - **Permanent Access Token** (رمز دائم لا ينتهي — عبر System User، لا الرمز المؤقّت).
+3. أنشئ **قالب رسالة (Message Template)** من نوع **Authentication/OTP** واعتمده لدى Meta
+   (الاعتماد يستغرق دقائق–ساعات). احفظ **اسم القالب**.
+4. ضع الأسرار في **Supabase → Project Settings → Edge Functions → Secrets** (وليس في الكود/المستودع):
+   ```
+   WHATSAPP_TOKEN=<Permanent Access Token>
+   WHATSAPP_PHONE_ID=<Phone Number ID>
+   WHATSAPP_TEMPLATE=<اسم قالب الـOTP>        # الافتراضي otp
+   WHATSAPP_LANG=ar                            # لغة القالب (اختياري، الافتراضي ar)
+   OTP_PEPPER=<سلسلة سرّية عشوائية طويلة>       # يُشدّد تجزئة الرمز في القاعدة (مستحسن)
+   ```
+   (أسماء المتغيّرات مطابقة لما تقرأه الدالة في `supabase/functions/send-otp/index.ts`.)
+5. أعِد نشر الدوال إن لزم، ثم جرّب تسجيل دخول برقم حقيقي — يجب أن تصل رسالة الرمز عبر واتساب.
+
+> ملاحظة: `SUPABASE_URL` و`SUPABASE_SERVICE_ROLE_KEY` متوفّران تلقائياً لبيئة الدوال —
+> لا تضِفهما يدوياً ولا تضعهما في العميل إطلاقاً.
+
+> ملاحظة أمان: أسرار واتساب/Meta تبقى في **Supabase Secrets فقط** — لا تُرفع للمستودع ولا تُوضع
+> في العميل. (انظر قسم الأمان أدناه.)
+
+---
+
+## 6. 🔐 تذكيرات أمان دائمة (لا تُخالَف أبداً)
 
 - **مفتاح `service_role`** لا يوضع في العميل أو المستودع إطلاقاً — أسرار Supabase فقط.
 - أسرار WhatsApp/Meta و `FCM_SERVICE_ACCOUNT` تبقى في **Supabase Secrets** فقط.
