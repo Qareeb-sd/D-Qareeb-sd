@@ -4123,3 +4123,48 @@ begin
   exception when others then null; end;
 end $$;
 grant execute on function public.admin_warn_customer(uuid, text) to authenticated;
+
+-- ============================================================================
+-- [أدمن] بثّ إشعارات/رسائل عامة للعملاء/السائقين (إعلانات)
+-- يُخزَّن الإعلان (يظهر كلافتة داخل التطبيق) ويُرسَل إشعاراً جماعياً.
+-- كتلة معزولة آمنة للتشغيل وحدها.
+-- ============================================================================
+create table if not exists public.announcements (
+  id         uuid primary key default gen_random_uuid(),
+  title      text not null,
+  body       text not null,
+  audience   text not null default 'customers',   -- customers / drivers / all
+  created_by uuid references public.users(id) on delete set null,
+  created_at timestamptz not null default now()
+);
+create index if not exists announcements_created_idx on public.announcements(created_at desc);
+alter table public.announcements enable row level security;
+drop policy if exists "read announcements" on public.announcements;
+-- أي مستخدم مسجّل يقرأ الإعلانات (يُصفّيها التطبيق حسب جمهوره)؛ الإنشاء عبر RPC فقط.
+create policy "read announcements" on public.announcements
+  for select using (auth.uid() is not null);
+
+create or replace function public.admin_broadcast(p_title text, p_body text, p_audience text)
+returns void language plpgsql security definer set search_path = public as $$
+begin
+  if not (public.is_admin() or public.has_perm('requests') or public.has_perm('drivers')) then
+    raise exception 'غير مصرّح';
+  end if;
+  if coalesce(trim(p_title), '') = '' or coalesce(trim(p_body), '') = '' then
+    raise exception 'العنوان والرسالة مطلوبان';
+  end if;
+  if p_audience not in ('customers', 'drivers', 'all') then
+    raise exception 'جمهور غير صالح';
+  end if;
+  insert into public.announcements (title, body, audience, created_by)
+    values (p_title, p_body, p_audience, auth.uid());
+  perform public.log_action('بثّ إشعار (' || p_audience || ')', left(p_title, 60));
+  begin
+    perform net.http_post(
+      url := 'https://yjdidwnnlyeisaahfmlr.supabase.co/functions/v1/notify-user-fcm',
+      headers := '{"Content-Type": "application/json"}'::jsonb,
+      body := jsonb_build_object('audience', p_audience, 'title', p_title, 'body', p_body)
+    );
+  exception when others then null; end;
+end $$;
+grant execute on function public.admin_broadcast(text, text, text) to authenticated;

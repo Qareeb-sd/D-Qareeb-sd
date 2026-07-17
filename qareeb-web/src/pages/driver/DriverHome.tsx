@@ -19,6 +19,7 @@ import {
   getActiveDriverRide,
   getDriverRideStats,
   getMyDriverWarnings,
+  getMyAnnouncements,
   type DriverWarning,
 } from '@/lib/api'
 import { subscribeToRides } from '@/lib/realtime'
@@ -33,7 +34,7 @@ import { registerPush } from '@/lib/pushNative'
 import { ensureGeoPermission, watchPos, getCurrentPos } from '@/lib/geo'
 import { getService } from '@/data/services'
 import { money } from '@/lib/format'
-import type { Driver, Ride } from '@/lib/types'
+import type { Driver, Ride, Announcement } from '@/lib/types'
 
 /** واجهة السائق: التوفّر (متصل/غير متصل) + الطلبات الواردة وقبولها. */
 export default function DriverHome() {
@@ -53,6 +54,7 @@ export default function DriverHome() {
   const [myPos, setMyPos] = useState<google.maps.LatLngLiteral | null>(null)
   // تحذير إداري (يُخفى بعد الاطّلاع، ويظهر أحدثه غير المطّلع عليه).
   const [warning, setWarning] = useState<DriverWarning | null>(null)
+  const [announcement, setAnnouncement] = useState<Announcement | null>(null)
 
   // ملخّص اليوم (رحلات + صافي أرباح) — من محفظة السائق ومعاملاتها.
   const { data: wallet } = useQuery({
@@ -113,6 +115,32 @@ export default function DriverHome() {
       /* لا يهمّ */
     }
     setWarning(null)
+  }
+
+  // إعلانات الإدارة للسائقين.
+  useEffect(() => {
+    void getMyAnnouncements('driver').then((list) => {
+      let seen: string[] = []
+      try {
+        seen = JSON.parse(localStorage.getItem('qareeb_seen_ann_d') ?? '[]')
+      } catch {
+        seen = []
+      }
+      const fresh = list.find((a) => !seen.includes(a.id))
+      if (fresh) setAnnouncement(fresh)
+    })
+  }, [])
+
+  const dismissAnnouncement = () => {
+    if (!announcement) return
+    try {
+      const seen: string[] = JSON.parse(localStorage.getItem('qareeb_seen_ann_d') ?? '[]')
+      seen.push(announcement.id)
+      localStorage.setItem('qareeb_seen_ann_d', JSON.stringify(seen.slice(-50)))
+    } catch {
+      /* لا يهمّ */
+    }
+    setAnnouncement(null)
   }
 
   // رحلة جارية؟ أعِد السائق إليها فوراً — يمنع فقدان الرحلة عند الضغط على «رجوع»
@@ -330,6 +358,27 @@ export default function DriverHome() {
       </header>
 
       <main className="flex-1 px-4 pt-4 pb-24">
+        {/* إعلان من قريب */}
+        {announcement && (
+          <div className="mb-4 rounded-2xl border border-royal/15 bg-royal-soft p-3.5">
+            <div className="flex items-start gap-3">
+              <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-royal/10 text-lg">
+                📢
+              </span>
+              <div className="flex-1">
+                <p className="font-bold text-royal">{announcement.title}</p>
+                <p className="mt-0.5 text-sm text-ink">{announcement.body}</p>
+              </div>
+            </div>
+            <button
+              onClick={dismissAnnouncement}
+              className="mt-2 w-full rounded-xl bg-royal py-2 text-sm font-bold text-white"
+            >
+              حسناً
+            </button>
+          </div>
+        )}
+
         {/* تحذير من إدارة قريب */}
         {warning && (
           <div className="mb-4 rounded-2xl border border-sand/50 bg-sand-soft/60 p-3.5">

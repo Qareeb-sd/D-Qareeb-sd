@@ -95,6 +95,7 @@ Deno.serve(async (req) => {
     data?: Record<string, string>
     topup_id?: string
     withdrawal_id?: string
+    audience?: 'customers' | 'drivers' | 'all'
   }
   try {
     payload = await req.json()
@@ -140,13 +141,30 @@ Deno.serve(async (req) => {
     data.type = 'withdrawal_approved'
   }
 
-  if (!userId || !title || !body) return json({ error: 'missing user/title/body' }, 400)
+  if (!title || !body) return json({ error: 'missing title/body' }, 400)
 
-  const { data: tokens } = await supabase
-    .from('device_tokens')
-    .select('token')
-    .eq('user_id', userId)
-  const list = (tokens ?? []).map((t) => t.token)
+  // بثّ جماعي حسب الجمهور (عملاء/سائقون/الكل) — يجمع رموز كل المستخدمين المطابقين.
+  let list: string[] = []
+  if (payload.audience) {
+    const roles =
+      payload.audience === 'customers'
+        ? ['customer']
+        : payload.audience === 'drivers'
+          ? ['driver']
+          : ['customer', 'driver']
+    const { data: us } = await supabase.from('users').select('id').in('role', roles)
+    const ids = (us ?? []).map((u) => u.id)
+    if (ids.length === 0) return json({ ok: true, sent: 0 })
+    const { data: tokens } = await supabase.from('device_tokens').select('token').in('user_id', ids)
+    list = (tokens ?? []).map((t) => t.token)
+  } else {
+    if (!userId) return json({ error: 'missing user/audience' }, 400)
+    const { data: tokens } = await supabase
+      .from('device_tokens')
+      .select('token')
+      .eq('user_id', userId)
+    list = (tokens ?? []).map((t) => t.token)
+  }
   if (list.length === 0) return json({ ok: true, sent: 0 })
 
   const token = await accessToken(sa)
