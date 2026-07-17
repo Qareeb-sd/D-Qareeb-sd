@@ -82,6 +82,11 @@ export interface Ride {
   rider_name?: string | null // راكب فعليّ مختلف عن صاحب الحساب (رحلة لشخص آخر)
   rider_phone?: string | null
   stops?: { lat: number; lng: number; address?: string | null }[] | null // نقاط توقّف متوسّطة
+  is_package?: boolean | null // رحلة توصيل طرد (لا راكب)
+  package_note?: string | null // وصف الطرد
+  recipient_name?: string | null // اسم المستلِم عند التسليم
+  recipient_phone?: string | null // هاتف المستلِم
+  intercity?: boolean | null // رحلة بين المدن
   created_at: string
   // تظهر فقط في قائمة الطلبات المتاحة للسائق (من list_available_rides).
   customer_name?: string | null

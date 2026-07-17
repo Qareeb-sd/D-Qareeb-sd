@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Search, Clock, ChevronLeft } from 'lucide-react'
+import { Search, Clock, ChevronLeft, Package, Building2 } from 'lucide-react'
 import BottomNav from '@/components/BottomNav'
 import MapView from '@/components/MapView'
 import VehicleImage from '@/components/VehicleImage'
@@ -279,6 +279,40 @@ export default function Home() {
             <span className="flex-1 text-[15px] font-semibold text-royal">وين ماشي؟</span>
             <ChevronLeft className="h-5 w-5 text-ink-muted" />
           </button>
+
+          {/* خدمات إضافية: توصيل طرد + رحلة بين المدن */}
+          <div className="mt-3 grid grid-cols-2 gap-3">
+            <button
+              onClick={() => {
+                setServiceId('rickshaw')
+                navigate('/select-location', { state: { mode: 'package' } })
+              }}
+              className="press-scale flex items-center gap-2 rounded-2xl border border-sand/35 bg-ivory/70 px-3 py-3 text-right"
+            >
+              <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-sand-soft text-sand-ink">
+                <Package className="h-5 w-5" strokeWidth={2} />
+              </span>
+              <span className="min-w-0">
+                <span className="block text-[13px] font-bold text-royal">توصيل طرد</span>
+                <span className="block truncate text-[10px] text-ink-muted">أرسل غرضاً لأي مكان</span>
+              </span>
+            </button>
+            <button
+              onClick={() => {
+                setServiceId('standard')
+                navigate('/select-location', { state: { mode: 'intercity' } })
+              }}
+              className="press-scale flex items-center gap-2 rounded-2xl border border-sand/35 bg-ivory/70 px-3 py-3 text-right"
+            >
+              <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-royal-soft text-royal">
+                <Building2 className="h-5 w-5" strokeWidth={2} />
+              </span>
+              <span className="min-w-0">
+                <span className="block text-[13px] font-bold text-royal">بين المدن</span>
+                <span className="block truncate text-[10px] text-ink-muted">سفر لمدينة أخرى</span>
+              </span>
+            </button>
+          </div>
 
           {/* اختر الخدمة */}
           <div className="mb-3 mt-6 flex items-center justify-between">

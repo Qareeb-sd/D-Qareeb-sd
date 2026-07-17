@@ -459,11 +459,29 @@ export default function DriverTrip() {
 
   const stepIndex =
     activeRide.status === 'arrived' ? 1 : activeRide.status === 'in_progress' ? 2 : 0
-  const headingLabel = heading === 'pickup' ? 'التوجّه إلى الراكب' : 'التوجّه إلى الوجهة'
+  // توصيل طرد: الجهة المتواصَل معها تختلف بحسب المرحلة (المُرسِل عند الاستلام،
+  // المستلِم عند التسليم)، والتسميات تتبدّل لتوضّح للسائق طبيعة المهمّة.
+  const isPkg = Boolean(activeRide.is_package)
+  const headingLabel = isPkg
+    ? heading === 'pickup'
+      ? 'الذهاب لاستلام الطرد'
+      : 'توصيل الطرد للمستلِم'
+    : heading === 'pickup'
+      ? 'التوجّه إلى الراكب'
+      : 'التوجّه إلى الوجهة'
   const headingAddress = heading === 'pickup' ? activeRide.pickup_address : activeRide.dropoff_address
 
-  const riderName = activeRide.rider_name || customer?.full_name || 'الراكب'
-  const riderPhone = activeRide.rider_phone || customer?.phone
+  const contactRole = isPkg ? (heading === 'pickup' ? 'المُرسِل' : 'المستلِم') : 'الراكب'
+  const riderName = isPkg
+    ? heading === 'pickup'
+      ? customer?.full_name || 'المُرسِل'
+      : activeRide.recipient_name || 'المستلِم'
+    : activeRide.rider_name || customer?.full_name || 'الراكب'
+  const riderPhone = isPkg
+    ? heading === 'pickup'
+      ? customer?.phone
+      : activeRide.recipient_phone
+    : activeRide.rider_phone || customer?.phone
 
   return (
     <Screen bare>
@@ -503,7 +521,13 @@ export default function DriverTrip() {
             }`}
           >
             <span className="text-xs font-extrabold">
-              {heading === 'pickup' ? '① التوجّه إلى الراكب' : '② توصيل الراكب إلى الوجهة'}
+              {isPkg
+                ? heading === 'pickup'
+                  ? '① الذهاب لاستلام الطرد'
+                  : '② تسليم الطرد للمستلِم'
+                : heading === 'pickup'
+                  ? '① التوجّه إلى الراكب'
+                  : '② توصيل الراكب إلى الوجهة'}
             </span>
             <button
               onClick={() => setMuted((m) => !m)}
@@ -648,11 +672,19 @@ export default function DriverTrip() {
               </div>
 
               <div className="flex items-center justify-between">
-                <p className="font-bold text-royal">{service?.name ?? activeRide.service_id}</p>
+                <p className="flex items-center gap-1.5 font-bold text-royal">
+                  {isPkg && <span>📦</span>}
+                  {isPkg ? 'توصيل طرد' : (service?.name ?? activeRide.service_id)}
+                </p>
                 <span className="chip-driver">
                   {statusLabels[activeRide.status] ?? activeRide.status}
                 </span>
               </div>
+              {isPkg && activeRide.package_note && (
+                <p className="mt-1 rounded-xl bg-sand-soft/60 px-3 py-1.5 text-[13px] font-medium text-sand-ink">
+                  الطرد: {activeRide.package_note}
+                </p>
+              )}
               <p className="mt-1 text-sm text-ink-soft">
                 {activeRide.pickup_address}
                 {activeRide.stops?.length
@@ -673,7 +705,11 @@ export default function DriverTrip() {
                 </span>
                 <div className="min-w-0 flex-1">
                   <p className="truncate font-bold text-royal">{riderName}</p>
-                  {activeRide.rider_name ? (
+                  {isPkg ? (
+                    <span className="mt-0.5 inline-block rounded-md bg-sand-soft px-1.5 py-0.5 text-[10px] font-bold text-sand-ink">
+                      {contactRole}
+                    </span>
+                  ) : activeRide.rider_name ? (
                     <span className="mt-0.5 inline-block rounded-md bg-sand-soft px-1.5 py-0.5 text-[10px] font-bold text-sand-ink">
                       رحلة لشخص آخر
                     </span>

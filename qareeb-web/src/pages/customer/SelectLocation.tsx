@@ -96,7 +96,17 @@ export default function SelectLocation() {
   const service = getService(sid)
 
   // إعادة الطلب: وجهة مُمرَّرة من «رحلاتي» لتعبئة الوجهة تلقائياً.
-  const rebook = (useLocation().state as { rebook?: { dropoffPos: google.maps.LatLngLiteral | null; dropoffAddr: string } } | null)?.rebook
+  const navState = useLocation().state as {
+    rebook?: { dropoffPos: google.maps.LatLngLiteral | null; dropoffAddr: string }
+    mode?: 'package' | 'intercity'
+  } | null
+  const rebook = navState?.rebook
+  // وضع الخدمة: توصيل طرد أو رحلة بين المدن (يُغيّر التسميات والحقول).
+  const mode = navState?.mode
+  const isPackage = mode === 'package'
+  const isIntercity = mode === 'intercity'
+  const pickupLabel = isPackage ? 'موقع استلام الطرد' : 'نقطة الانطلاق'
+  const dropoffLabel = isPackage ? 'موقع تسليم الطرد' : isIntercity ? 'المدينة / الوجهة' : 'الوجهة'
 
   const [pickupMode, setPickupMode] = useState<PickupMode>('current')
   const [active, setActive] = useState<Field>('dropoff')
@@ -131,6 +141,10 @@ export default function SelectLocation() {
   const [forOther, setForOther] = useState(false)
   const [riderName, setRiderName] = useState('')
   const [riderPhone, setRiderPhone] = useState('')
+  // توصيل طرد: وصف الطرد + بيانات المستلِم.
+  const [packageNote, setPackageNote] = useState('')
+  const [recipientName, setRecipientName] = useState('')
+  const [recipientPhone, setRecipientPhone] = useState('')
   // نقاط توقّف متوسّطة (اختياري) — بين الانطلاق والوجهة.
   const [stops, setStops] = useState<{ pos: google.maps.LatLngLiteral; address: string }[]>([])
   const [stopSearch, setStopSearch] = useState<number | null>(null) // فهرس النقطة قيد البحث
@@ -435,6 +449,10 @@ export default function SelectLocation() {
   }
 
   const confirm = async () => {
+    // توصيل طرد: اسم وهاتف المستلِم إلزاميان قبل الطلب.
+    if (isPackage && (!recipientName.trim() || !recipientPhone.trim())) {
+      return alert('أدخل اسم ورقم المستلِم لتوصيل الطرد.')
+    }
     setBusy(true)
     // منع طلب أكثر من رحلة في وقت واحد — إن وُجدت رحلة نشطة، عُد لمتابعتها.
     if (profile?.id) {
@@ -480,6 +498,17 @@ export default function SelectLocation() {
       ...(stops.length
         ? { stops: stops.map((s) => ({ lat: s.pos.lat, lng: s.pos.lng, address: s.address })) }
         : {}),
+      // توصيل طرد: وصف الطرد وبيانات المستلِم (يراها السائق ويتصل به).
+      ...(isPackage
+        ? {
+            is_package: true,
+            package_note: packageNote.trim() || null,
+            recipient_name: recipientName.trim() || null,
+            recipient_phone: recipientPhone.trim() || null,
+          }
+        : {}),
+      // رحلة بين المدن.
+      ...(isIntercity ? { intercity: true } : {}),
     })
     if (error || !id) {
       setBusy(false)
@@ -672,6 +701,18 @@ export default function SelectLocation() {
         >
           <div className="mx-auto mb-3 h-1 w-10 rounded-full bg-sand/60" />
 
+          {/* لافتة الوضع: توصيل طرد / رحلة بين المدن */}
+          {(isPackage || isIntercity) && (
+            <div
+              className={`mb-3 flex items-center gap-2 rounded-2xl px-3 py-2 text-[13px] font-bold ${
+                isPackage ? 'bg-sand-soft text-sand-ink' : 'bg-royal-soft text-royal'
+              }`}
+            >
+              <span className="text-base">{isPackage ? '📦' : '🏙️'}</span>
+              {isPackage ? 'توصيل طرد' : 'رحلة بين المدن'}
+            </div>
+          )}
+
           {/* بطاقة المسار: انطلاق ← وجهة مع الخط المنقّط */}
           <div className="relative rounded-2xl border border-hairline/70 bg-ivory/50 p-4">
             <div className="absolute bottom-[46px] right-[27px] top-[24px] w-px border-r-2 border-dotted border-sand/70" />
@@ -683,7 +724,7 @@ export default function SelectLocation() {
                 onClick={() => setSearching('pickup')}
                 className="min-w-0 flex-1 text-right"
               >
-                <p className="text-[10px] font-medium text-ink-muted">نقطة الانطلاق</p>
+                <p className="text-[10px] font-medium text-ink-muted">{pickupLabel}</p>
                 <p className="truncate text-[14px] font-semibold text-royal">
                   {gpsBusy && pickupMode === 'current' ? 'جارٍ تحديد موقعك…' : pickupAddr || 'موقعك الحالي'}
                 </p>
@@ -746,7 +787,7 @@ export default function SelectLocation() {
               <MapPinIcon className="h-[22px] w-[22px] shrink-0 text-sand-ink" strokeWidth={2} />
               <div className="min-w-0 flex-1">
                 <p className="text-[10px] font-medium text-ink-muted">
-                  الوجهة {destOptional && <span className="text-ink-muted/70">(اختياري)</span>}
+                  {dropoffLabel} {destOptional && <span className="text-ink-muted/70">(اختياري)</span>}
                 </p>
                 <p
                   className={`truncate text-[15px] font-semibold ${
@@ -925,8 +966,39 @@ export default function SelectLocation() {
             </div>
           )}
 
-          {/* الرحلة لشخص آخر — اسم ورقم الراكب الفعلي (اختياري) */}
-          {quote && destChosen && (
+          {/* توصيل طرد — وصف الطرد وبيانات المستلِم (إلزامية) */}
+          {isPackage && quote && destChosen && (
+            <div className="mt-3 space-y-2 rounded-2xl border border-sand/50 bg-sand-soft/40 p-3">
+              <p className="text-[13px] font-bold text-sand-ink">بيانات الطرد والمستلِم</p>
+              <input
+                className="w-full rounded-2xl border border-hairline bg-white px-4 py-2.5 text-[13px] text-ink outline-none focus:border-royal"
+                placeholder="وصف الطرد (مثال: مستندات، طعام…)"
+                maxLength={120}
+                value={packageNote}
+                onChange={(e) => setPackageNote(e.target.value)}
+              />
+              <input
+                className="w-full rounded-2xl border border-hairline bg-white px-4 py-2.5 text-[13px] text-ink outline-none focus:border-royal"
+                placeholder="اسم المستلِم *"
+                value={recipientName}
+                onChange={(e) => setRecipientName(e.target.value)}
+              />
+              <input
+                className="w-full rounded-2xl border border-hairline bg-white px-4 py-2.5 text-left text-[13px] text-ink outline-none focus:border-royal"
+                dir="ltr"
+                inputMode="tel"
+                placeholder="رقم هاتف المستلِم *"
+                value={recipientPhone}
+                onChange={(e) => setRecipientPhone(e.target.value)}
+              />
+              <p className="text-[11px] text-ink-muted">
+                يتواصل السائق مع المستلِم عند الوصول لنقطة التسليم.
+              </p>
+            </div>
+          )}
+
+          {/* الرحلة لشخص آخر — اسم ورقم الراكب الفعلي (اختياري) — يُخفى في وضع الطرد */}
+          {!isPackage && quote && destChosen && (
             <div className="mt-3 rounded-2xl border border-hairline p-3">
               <label className="flex items-center gap-2 text-[13px] font-bold text-royal">
                 <input

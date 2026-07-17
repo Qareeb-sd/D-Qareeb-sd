@@ -4572,3 +4572,38 @@ returns int language sql security definer set search_path = public stable as $$
     else 0 end;
 $$;
 grant execute on function public.admin_unread_tickets_count() to authenticated;
+
+-- ============================================================
+--  توصيل الطرود (#1) + الرحلات بين المدن (#2): أعمدة على rides + تحديث RPC.
+--  شغّل هذا القسم كاملاً مرّة واحدة.
+-- ============================================================
+alter table public.rides add column if not exists is_package      boolean not null default false;
+alter table public.rides add column if not exists package_note    text;
+alter table public.rides add column if not exists recipient_name  text;
+alter table public.rides add column if not exists recipient_phone text;
+alter table public.rides add column if not exists intercity       boolean not null default false;
+
+-- إعادة تعريف قائمة الطلبات المتاحة لتشمل حقول الطرد/بين المدن (تغيّر نوع الإرجاع → drop أولاً).
+drop function if exists public.list_available_rides();
+create or replace function public.list_available_rides()
+returns table (
+  id uuid, customer_id uuid, driver_id uuid, service_id text, status ride_status,
+  pickup_lat double precision, pickup_lng double precision, pickup_address text,
+  dropoff_lat double precision, dropoff_lng double precision, dropoff_address text,
+  fare numeric, payment_method payment_method, created_at timestamptz,
+  customer_name text, customer_rating numeric,
+  is_package boolean, package_note text, recipient_name text, recipient_phone text, intercity boolean
+) language sql stable security definer set search_path = public as $$
+  select r.id, r.customer_id, r.driver_id, r.service_id, r.status,
+         r.pickup_lat, r.pickup_lng, r.pickup_address,
+         r.dropoff_lat, r.dropoff_lng, r.dropoff_address,
+         r.fare, r.payment_method, r.created_at,
+         cu.full_name, cu.rating,
+         r.is_package, r.package_note, r.recipient_name, r.recipient_phone, r.intercity
+  from public.rides r
+  join public.users cu on cu.id = r.customer_id
+  where r.status = 'searching' and r.driver_id is null
+    and exists (select 1 from public.drivers d where d.user_id = auth.uid())
+  order by r.created_at asc;
+$$;
+grant execute on function public.list_available_rides() to authenticated;
