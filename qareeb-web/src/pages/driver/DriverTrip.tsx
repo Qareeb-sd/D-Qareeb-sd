@@ -421,11 +421,15 @@ export default function DriverTrip() {
   const riderPhone = activeRide.rider_phone || customer?.phone
 
   return (
-    <Screen title="الرحلة الجارية" bare>
+    <Screen bare>
       <SosButton rideId={activeRide.id} role="driver" />
-      {/* الخريطة تملأ معظم الشاشة (منطقة مرنة) والتفاصيل في لوحة سفلية قابلة للطيّ */}
-      <div className="relative flex h-full flex-col bg-ivory font-plex">
-        <div className="relative min-h-[40vh] flex-1">
+      {/* حاوية بارتفاع الشاشة الكامل (fixed) — تضمن ملء الخريطة للمساحة دون فراغ */}
+      <div
+        className="fixed inset-0 z-0 flex flex-col bg-ivory font-plex"
+        style={{ paddingTop: 'env(safe-area-inset-top)' }}
+      >
+        {/* الخريطة تملأ كل المساحة فوق اللوحة السفلية (منطقة مرنة) */}
+        <div className="relative min-h-0 flex-1">
         <MapView
           center={pos ?? target ?? { lat: activeRide.pickup_lat, lng: activeRide.pickup_lng }}
           driver={pos ?? undefined}
