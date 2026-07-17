@@ -251,11 +251,25 @@ export default function GoogleJsMap({
       )
     })
 
-    // خطّ المسار: هالة بيضاء ثم خطّ زمردي فوقها.
+    // خطّ المسار: هالة بيضاء عريضة ثم خطّ ملاحة أخضر زاهٍ فوقها — واضح كخطّ توجيه.
     if (route && route.length > 1) {
       overlays.current.lines.push(
-        new maps.Polyline({ path: route, map, strokeColor: '#ffffff', strokeWeight: 8, strokeOpacity: 0.9 }),
-        new maps.Polyline({ path: route, map, strokeColor: '#0E3B2E', strokeWeight: 4.5, strokeOpacity: 0.95 }),
+        new maps.Polyline({
+          path: route,
+          map,
+          strokeColor: '#ffffff',
+          strokeWeight: 11,
+          strokeOpacity: 0.95,
+          zIndex: 2,
+        }),
+        new maps.Polyline({
+          path: route,
+          map,
+          strokeColor: '#12A150',
+          strokeWeight: 6.5,
+          strokeOpacity: 1,
+          zIndex: 3,
+        }),
       )
     }
 

@@ -299,6 +299,11 @@ export default function DriverTrip() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [rOrigin?.lat, rOrigin?.lng, rDest?.lat, rDest?.lng])
 
+  // خطّ المسار المعروض: مسار الطرق من OSRM إن توفّر، وإلا خطّ مباشر يضمن رؤية
+  // الاتجاه دائماً حتى لو تعذّر الوصول لخادم التوجيه (مهمّ لموثوقية السودان).
+  const displayRoute: google.maps.LatLngLiteral[] =
+    routePts.length >= 2 ? routePts : rOrigin && rDest ? [rOrigin, rDest] : []
+
   // المناورة التالية للملاحة داخل التطبيق: أقرب خطوة أمام السائق.
   const nextStep = (() => {
     if (!pos || navSteps.length === 0) return null
@@ -444,7 +449,7 @@ export default function DriverTrip() {
                 ]
             ).filter(Boolean) as google.maps.LatLngLiteral[]
           }
-          route={routePts}
+          route={displayRoute}
           zoom={pos ? 16 : 15}
           className="absolute inset-0"
         />
