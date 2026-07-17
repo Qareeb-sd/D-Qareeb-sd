@@ -236,6 +236,15 @@ export interface SosAlert {
   note: string | null
   status: SosStatus
   created_at: string
+  /** بيانات مُطلق الطوارئ (مضمّنة في قائمة الأدمن للتواصل الفوري). */
+  users?: { full_name: string | null; phone: string | null } | null
+  /** تفاصيل رحلته إن كانت مرتبطة. */
+  rides?: {
+    pickup_address: string | null
+    dropoff_address: string | null
+    service_id: string | null
+    status: string | null
+  } | null
 }
 
 // ---------- ترحيل (المشاركة اليومية) ----------
@@ -456,7 +465,11 @@ export interface Complaint {
   complaint_status: 'open' | 'resolved'
   rater_role: 'customer' | 'driver'
   rater_name: string | null // مقدّم الشكوى
+  rater_phone: string | null // هاتف مقدّم الشكوى (للتواصل)
   ratee_name: string | null // المُشتكى عليه
+  ratee_phone: string | null // هاتف المُشتكى عليه
+  pickup_address: string | null // عنوانا رحلة الشكوى
+  dropoff_address: string | null
   created_at: string
 }
 

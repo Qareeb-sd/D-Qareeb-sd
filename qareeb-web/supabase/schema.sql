@@ -3842,3 +3842,45 @@ begin
   );
 end $$;
 grant execute on function public.driver_ride_stats() to authenticated;
+
+-- ============================================================================
+-- [مراجعة أدمن] تفاصيل أوفى للشكاوى: هواتف الطرفين + عنوانا الرحلة
+-- كي يتمكّن الأدمن من التواصل والتحقيق مباشرة من بطاقة الشكوى. تغيّرت أعمدة
+-- الإرجاع فيلزم drop أولاً. آمن للتشغيل وحده.
+-- ============================================================================
+drop function if exists public.admin_list_complaints();
+create or replace function public.admin_list_complaints()
+returns table (
+  id uuid, ride_id uuid, stars int, complaint text, complaint_status text,
+  rater_role text, rater_name text, rater_phone text,
+  ratee_name text, ratee_phone text,
+  pickup_address text, dropoff_address text, created_at timestamptz
+) language sql security definer set search_path = public as $$
+  select rv.id, rv.ride_id, rv.stars, rv.complaint, rv.complaint_status,
+         rv.rater_role, ur.full_name, ur.phone, ue.full_name, ue.phone,
+         r.pickup_address, r.dropoff_address, rv.created_at
+    from public.reviews rv
+    join public.users ur on ur.id = rv.rater_id
+    join public.users ue on ue.id = rv.ratee_id
+    left join public.rides r on r.id = rv.ride_id
+   where rv.complaint is not null and public.is_staff_or_admin()
+   order by (rv.complaint_status = 'open') desc, rv.created_at desc
+$$;
+grant execute on function public.admin_list_complaints() to authenticated;
+
+-- ============================================================================
+-- [مراجعة أدمن] كل السائقين المتصلين ومواقعهم للخريطة الحيّة في اللوحة
+-- (لا المرتبطين برحلة فقط). للأدمن/الموظف فقط، وآخر موقع خلال 5 دقائق.
+-- ============================================================================
+create or replace function public.admin_online_drivers()
+returns table (user_id uuid, name text, vehicle_type text, lat double precision, lng double precision)
+language sql security definer set search_path = public stable as $$
+  select d.user_id, u.full_name, d.vehicle_type, d.last_lat, d.last_lng
+  from public.drivers d
+  join public.users u on u.id = d.user_id
+  where public.is_staff_or_admin()
+    and d.is_online
+    and d.last_lat is not null and d.last_lng is not null
+    and d.last_loc_at > now() - interval '5 minutes'
+$$;
+grant execute on function public.admin_online_drivers() to authenticated;
