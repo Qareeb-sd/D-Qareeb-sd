@@ -116,15 +116,17 @@ export default function DriverWallet() {
           <p className="mt-1 text-[11px] text-ink-muted">
             ما سدّده العملاء عبر محفظة قريب — لك سحبه بنكياً أو تحويله إلى رصيدك.
           </p>
-          {pending ? (
+          {pending && (
             <div className="mt-3 flex items-center gap-2 rounded-2xl border border-sand/50 bg-sand-soft/50 p-3">
               <Clock className="h-4 w-4 shrink-0 text-sand-ink" strokeWidth={2} />
               <p className="text-xs text-sand-ink">
                 طلب سحب بنكي قيد المراجعة: {money(pending.amount)}
               </p>
             </div>
-          ) : (
-            <div className="mt-3 flex flex-wrap gap-2">
+          )}
+          <div className="mt-3 flex flex-wrap gap-2">
+            {/* التحويل البنكي يُمنع أثناء وجود طلب معلّق (طلب واحد في المرّة). */}
+            {!pending && (
               <button
                 onClick={() => toggle('bank')}
                 disabled={withdrawable <= 0}
@@ -133,16 +135,17 @@ export default function DriverWallet() {
                 <Landmark className="h-4 w-4" strokeWidth={2} />
                 {panel === 'bank' ? 'إغلاق' : 'تحويل بنكي'}
               </button>
-              <button
-                onClick={() => toggle('convert')}
-                disabled={withdrawable <= 0}
-                className="flex items-center gap-2 rounded-2xl bg-royal/15 px-4 py-2.5 text-sm font-bold text-royal disabled:opacity-50"
-              >
-                <ArrowDownToLine className="h-4 w-4" strokeWidth={2} />
-                {panel === 'convert' ? 'إغلاق' : 'تحويل إلى الرصيد'}
-              </button>
-            </div>
-          )}
+            )}
+            {/* التحويل إلى الرصيد فوري ومتاح دائماً — لا يمنعه طلب سحب معلّق. */}
+            <button
+              onClick={() => toggle('convert')}
+              disabled={withdrawable <= 0}
+              className="flex items-center gap-2 rounded-2xl bg-royal/15 px-4 py-2.5 text-sm font-bold text-royal disabled:opacity-50"
+            >
+              <ArrowDownToLine className="h-4 w-4" strokeWidth={2} />
+              {panel === 'convert' ? 'إغلاق' : 'تحويل إلى الرصيد'}
+            </button>
+          </div>
         </div>
 
         {panel === 'bank' && !pending && (
@@ -154,7 +157,7 @@ export default function DriverWallet() {
             }}
           />
         )}
-        {panel === 'convert' && !pending && (
+        {panel === 'convert' && (
           <ConvertForm
             max={withdrawable}
             onDone={() => {

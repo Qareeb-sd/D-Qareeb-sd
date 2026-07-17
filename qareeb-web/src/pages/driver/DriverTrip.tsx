@@ -425,9 +425,14 @@ export default function DriverTrip() {
 
   const advance = async (status: 'arrived' | 'in_progress') => {
     setBusy(true)
+    setSettleErr('')
     const { error } = await setRideStatus(activeRide.id, status)
     setBusy(false)
-    if (error) return alert(error)
+    if (error) {
+      // خطأ داخلي بدل تنبيه معطِّل أثناء القيادة.
+      setSettleErr(error)
+      return
+    }
     setActiveRide({ ...activeRide, status })
   }
 
@@ -449,9 +454,14 @@ export default function DriverTrip() {
 
   const release = async (reason: CancelReason) => {
     setBusy(true)
+    setSettleErr('')
     const { error } = await cancelRide(activeRide.id, reason.label, reason.code)
     setBusy(false)
-    if (error) return alert(error)
+    if (error) {
+      setShowRelease(false)
+      setSettleErr(error)
+      return
+    }
     setShowRelease(false)
     setActiveRide(null)
     navigate('/driver', { replace: true })

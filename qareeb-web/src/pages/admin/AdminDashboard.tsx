@@ -585,6 +585,17 @@ export default function AdminDashboard() {
     if (tab === 'support' && tickets === null) void adminListSupportTickets().then(setTickets)
   }, [tab, drivers, customers, complaints, announcements, rewards, rewardRedemptions, tickets])
 
+  // تحديث حيّ لمحادثة الدعم المفتوحة + قائمة التذاكر (تظهر ردود العميل الجديدة).
+  useEffect(() => {
+    if (tab !== 'support') return
+    const iv = setInterval(() => {
+      if (typeof document !== 'undefined' && document.hidden) return
+      void adminListSupportTickets().then(setTickets)
+      if (activeTicket) void listSupportMessages(activeTicket.id).then(setTicketMsgs)
+    }, 8000)
+    return () => clearInterval(iv)
+  }, [tab, activeTicket])
+
   // صلاحياتي + قائمة الموظفين (للمالك).
   useEffect(() => {
     void getMyAdminAccess().then(setAccess)
@@ -1459,15 +1470,18 @@ export default function AdminDashboard() {
   }
 
   const review = async (id: string, approve: boolean) => {
+    const t = topups.find((x) => x.id === id)
+    const who = t?.wallets?.users?.full_name ? ` (${t.wallets.users.full_name})` : ''
     if (approve) {
-      const t = topups.find((x) => x.id === id)
-      const who = t?.wallets?.users?.full_name ? ` (${t.wallets.users.full_name})` : ''
       if (
         !window.confirm(
           `اعتماد تعبئة بقيمة ${t ? money(t.amount) : ''}${who}؟ سيُضاف الرصيد فوراً ولا يمكن التراجع.`,
         )
       )
         return
+    } else {
+      // رفض التعبئة: تأكيد قبل الحذف (منعاً لخطأ نقرة قرب زرّ الاعتماد).
+      if (!window.confirm(`رفض طلب تعبئة بقيمة ${t ? money(t.amount) : ''}${who}؟`)) return
     }
     setBusyId(id)
     const { error } = approve ? await approveTopup(id) : await rejectTopup(id)
