@@ -133,6 +133,7 @@ export default function DriverTrip() {
     rating: number | null
   } | null>(null)
   const [busy, setBusy] = useState(false)
+  const [settleErr, setSettleErr] = useState('')
   const [recovering, setRecovering] = useState(!activeRide)
   // موقع السائق الحيّ + خطّ الملاحة إلى الهدف الحالي.
   const [pos, setPos] = useState<google.maps.LatLngLiteral | null>(null)
@@ -413,9 +414,14 @@ export default function DriverTrip() {
 
   const complete = async () => {
     setBusy(true)
+    setSettleErr('')
     const { error } = await settleRide(activeRide.id)
     setBusy(false)
-    if (error) return alert(error)
+    if (error) {
+      // لا نترك الكابتن عالقاً أمام تنبيه — نعرض الخطأ داخلياً مع إبقاء زر إعادة المحاولة.
+      setSettleErr(error)
+      return
+    }
     const rideId = activeRide.id
     setActiveRide(null)
     // تقييم العميل قبل العودة للمحفظة.
@@ -762,6 +768,15 @@ export default function DriverTrip() {
             className="mt-2 space-y-2 border-t border-hairline p-4"
             style={{ paddingBottom: 'calc(1rem + env(safe-area-inset-bottom))' }}
           >
+            {settleErr && (
+              <div className="rounded-2xl border border-danger/40 bg-danger/5 p-3 text-center">
+                <p className="text-sm font-bold text-danger">تعذّرت تسوية الرحلة</p>
+                <p className="mt-0.5 text-xs text-ink-soft">{settleErr}</p>
+                <p className="mt-1 text-[11px] text-ink-muted">
+                  أعِد المحاولة، وإن تكرّر الخطأ تواصل مع الدعم — لن تُحتسب الرحلة مكتملة حتى تُسوّى.
+                </p>
+              </div>
+            )}
             {activeRide.status === 'accepted' && (
               <button className="btn-driver w-full" onClick={() => advance('arrived')} disabled={busy}>
                 {busy ? '…' : 'وصلت لموقع الراكب'}

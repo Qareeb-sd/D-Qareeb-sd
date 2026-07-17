@@ -1650,16 +1650,27 @@ export async function rejectVipRequest(
 // ---------- مدفوعات العملاء: سحب بنكي أو تحويل إلى الرصيد ----------
 export interface DriverRideStats {
   today: number
+  today_count: number
+  today_net: number
   month: number
   total: number
   count: number
 }
 
-/** إحصاء قيم مشاوير السائق (اليوم/الشهر/الكلي + العدد). */
+const EMPTY_DRIVER_STATS: DriverRideStats = {
+  today: 0,
+  today_count: 0,
+  today_net: 0,
+  month: 0,
+  total: 0,
+  count: 0,
+}
+
+/** إحصاء قيم مشاوير السائق (اليوم/الشهر/الكلي + عدد اليوم + صافي اليوم — يشمل الكاش). */
 export async function getDriverRideStats(): Promise<DriverRideStats> {
-  if (!isSupabaseConfigured) return { today: 0, month: 0, total: 0, count: 0 }
+  if (!isSupabaseConfigured) return EMPTY_DRIVER_STATS
   const { data } = await supabase.rpc('driver_ride_stats')
-  return (data as DriverRideStats) ?? { today: 0, month: 0, total: 0, count: 0 }
+  return { ...EMPTY_DRIVER_STATS, ...((data as Partial<DriverRideStats>) ?? {}) }
 }
 
 /** طلب سحب بنكي من مدفوعات العملاء — يُخصم فوراً كحجز ويعتمده الأدمن. */

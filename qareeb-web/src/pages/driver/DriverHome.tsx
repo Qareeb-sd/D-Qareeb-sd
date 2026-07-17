@@ -14,10 +14,10 @@ import {
   listAvailableRides,
   acceptRide,
   getWallet,
-  listDriverTransactions,
   updateMyLocation,
   getSettings,
   getActiveDriverRide,
+  getDriverRideStats,
 } from '@/lib/api'
 import { subscribeToRides } from '@/lib/realtime'
 import {
@@ -58,17 +58,15 @@ export default function DriverHome() {
   const { data: settings } = useQuery({ queryKey: ['settings'], queryFn: getSettings })
   const minBalance = settings?.min_driver_balance ?? 0
   const lowBalance = wallet != null && minBalance > 0 && (wallet.balance ?? 0) < minBalance
-  const { data: txs = [] } = useQuery({
-    queryKey: ['driver-transactions', wallet?.id],
-    queryFn: () => listDriverTransactions(wallet!.id),
-    enabled: Boolean(wallet?.id),
+  // ملخّص اليوم من جدول الرحلات (يشمل الكاش، لا من دفتر المعاملات الذي يُغفل أرباح
+  // الكاش لأنّ settle_ride لا يسجّل «ride_earning» للرحلات النقدية).
+  const { data: rideStats } = useQuery({
+    queryKey: ['driver-ride-stats', userId],
+    queryFn: getDriverRideStats,
+    refetchInterval: 30000,
   })
-  const todayKey = new Date().toDateString()
-  const todayTx = txs.filter((t) => new Date(t.created_at).toDateString() === todayKey)
-  const tripsToday = todayTx.filter((t) => t.type === 'ride_earning').length
-  const earnToday = todayTx
-    .filter((t) => t.type === 'ride_earning' || t.type === 'commission')
-    .reduce((s, t) => s + t.amount, 0)
+  const tripsToday = rideStats?.today_count ?? 0
+  const earnToday = rideStats?.today_net ?? 0
 
   useEffect(() => {
     void getDriver(userId).then((d) => {
