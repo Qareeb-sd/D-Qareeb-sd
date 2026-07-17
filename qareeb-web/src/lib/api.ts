@@ -10,6 +10,7 @@ import type {
   DriverAppStatus,
   ServicePricing,
   Complaint,
+  Announcement,
   SosAlert,
   SosRole,
   StaffRow,
@@ -943,6 +944,46 @@ export async function getMyCustomerWarnings(customerId: string): Promise<DriverW
     .order('created_at', { ascending: false })
     .limit(5)
   return (data as DriverWarning[]) ?? []
+}
+
+// ---------- إعلانات / بثّ إشعارات عامة ----------
+/** بثّ إشعار/رسالة عامة لجمهور (عملاء/سائقون/الكل). */
+export async function adminBroadcast(
+  title: string,
+  body: string,
+  audience: 'customers' | 'drivers' | 'all',
+): Promise<{ error?: string }> {
+  if (!isSupabaseConfigured) return {}
+  const { error } = await supabase.rpc('admin_broadcast', {
+    p_title: title,
+    p_body: body,
+    p_audience: audience,
+  })
+  return error ? { error: error.message } : {}
+}
+
+/** آخر الإعلانات المُرسَلة (للأدمن). */
+export async function listAnnouncements(limit = 20): Promise<Announcement[]> {
+  if (!isSupabaseConfigured) return []
+  const { data } = await supabase
+    .from('announcements')
+    .select('*')
+    .order('created_at', { ascending: false })
+    .limit(limit)
+  return (data as Announcement[]) ?? []
+}
+
+/** إعلانات تخصّ المستخدم حسب دوره (للافتة داخل التطبيق). */
+export async function getMyAnnouncements(role: 'customer' | 'driver'): Promise<Announcement[]> {
+  if (!isSupabaseConfigured) return []
+  const aud = role === 'customer' ? ['customers', 'all'] : ['drivers', 'all']
+  const { data } = await supabase
+    .from('announcements')
+    .select('*')
+    .in('audience', aud)
+    .order('created_at', { ascending: false })
+    .limit(5)
+  return (data as Announcement[]) ?? []
 }
 
 // ------------------------- الموظفون (صلاحيات اللوحة) -------------------------

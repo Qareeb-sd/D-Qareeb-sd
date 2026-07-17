@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import {
+  Megaphone,
+  Send,
   LayoutDashboard,
   MapPinned,
   Inbox,
@@ -76,6 +78,8 @@ import {
   adminWarnDriver,
   adminBanCustomer,
   adminWarnCustomer,
+  adminBroadcast,
+  listAnnouncements,
   getFinancialSummary,
   getAdminAnalytics,
   type AdminAnalytics,
@@ -142,6 +146,7 @@ import type {
   CompanyFinance,
   Loan,
   AdminCustomer,
+  Announcement,
   Complaint,
   ServiceState,
   PromoCode,
@@ -153,6 +158,7 @@ type Tab =
   | 'requests'
   | 'drivers'
   | 'customers'
+  | 'announcements'
   | 'rides'
   | 'complaints'
   | 'finance'
@@ -173,6 +179,7 @@ const tabs: { id: Tab; label: string; perm: StaffPerm | null; ownerOnly?: boolea
   { id: 'requests', label: 'الطلبات', perm: 'requests', Icon: Inbox },
   { id: 'drivers', label: 'السائقون', perm: 'drivers', Icon: Car },
   { id: 'customers', label: 'العملاء', perm: 'drivers', Icon: Users },
+  { id: 'announcements', label: 'الإشعارات', perm: 'requests', Icon: Megaphone },
   { id: 'rides', label: 'الرحلات', perm: 'rides', Icon: Route },
   { id: 'complaints', label: 'الشكاوى', perm: 'requests', Icon: Flag },
   { id: 'finance', label: 'المالية', perm: null, ownerOnly: true, Icon: Wallet },
@@ -268,6 +275,13 @@ export default function AdminDashboard() {
   const [driverApps, setDriverApps] = useState<DriverApplication[]>([])
   const [drivers, setDrivers] = useState<AdminDriverRow[] | null>(null)
   const [customers, setCustomers] = useState<AdminCustomer[] | null>(null)
+  // بثّ الإشعارات
+  const [announcements, setAnnouncements] = useState<Announcement[] | null>(null)
+  const [annTitle, setAnnTitle] = useState('')
+  const [annBody, setAnnBody] = useState('')
+  const [annAudience, setAnnAudience] = useState<'customers' | 'drivers' | 'all'>('customers')
+  const [annBusy, setAnnBusy] = useState(false)
+  const [annMsg, setAnnMsg] = useState('')
   const [complaints, setComplaints] = useState<Complaint[] | null>(null)
   const [rides, setRides] = useState<Ride[] | null>(null)
   const [detailRides, setDetailRides] = useState<AdminRideRow[] | null>(null)
@@ -477,11 +491,13 @@ export default function AdminDashboard() {
     if (tab === 'drivers' && drivers === null) void listAllDrivers().then(setDrivers)
     if (tab === 'customers' && customers === null)
       void listAdminCustomers().then((c) => setCustomers(c as AdminCustomer[]))
+    if (tab === 'announcements' && announcements === null)
+      void listAnnouncements().then(setAnnouncements)
     if (tab === 'complaints' && complaints === null)
       void listComplaints().then((c) => setComplaints(c as Complaint[]))
     if (tab === 'promo') void listPromos().then(setPromos)
     if (tab === 'pricing') void listServicePeriods().then(setPeriods)
-  }, [tab, drivers, customers, complaints])
+  }, [tab, drivers, customers, complaints, announcements])
 
   // صلاحياتي + قائمة الموظفين (للمالك).
   useEffect(() => {
@@ -991,6 +1007,26 @@ export default function AdminDashboard() {
     setBusyId(null)
     if (error) return alert(error)
     reloadDrivers()
+  }
+
+  // ===== بثّ الإشعارات =====
+  const sendBroadcast = async () => {
+    if (!annTitle.trim() || !annBody.trim()) {
+      setAnnMsg('اكتب العنوان والرسالة أولاً')
+      return
+    }
+    const audLabel =
+      annAudience === 'customers' ? 'العملاء' : annAudience === 'drivers' ? 'السائقين' : 'الجميع'
+    if (!window.confirm(`إرسال هذا الإشعار إلى ${audLabel}؟`)) return
+    setAnnBusy(true)
+    setAnnMsg('')
+    const { error } = await adminBroadcast(annTitle.trim(), annBody.trim(), annAudience)
+    setAnnBusy(false)
+    if (error) return setAnnMsg(`خطأ: ${error}`)
+    setAnnTitle('')
+    setAnnBody('')
+    setAnnMsg('تم إرسال الإشعار ✓')
+    void listAnnouncements().then(setAnnouncements)
   }
 
   // ===== إدارة عميل: تحذير / حظر =====
@@ -2281,6 +2317,109 @@ export default function AdminDashboard() {
                 ))}
               </div>
             )}
+          </div>
+        )}
+
+        {tab === 'announcements' && (
+          <div className="space-y-4">
+            {/* إنشاء إشعار جديد */}
+            <div className="card p-4">
+              <p className="mb-3 flex items-center gap-2 font-bold">
+                <Megaphone className="h-5 w-5 text-royal" strokeWidth={2} />
+                إرسال إشعار جديد
+              </p>
+              <div className="space-y-2.5">
+                <div>
+                  <label className="mb-1 block text-xs text-ink-soft">الجمهور</label>
+                  <div className="flex gap-2">
+                    {(
+                      [
+                        { v: 'customers', l: 'العملاء' },
+                        { v: 'drivers', l: 'السائقون' },
+                        { v: 'all', l: 'الجميع' },
+                      ] as const
+                    ).map((o) => (
+                      <button
+                        key={o.v}
+                        onClick={() => setAnnAudience(o.v)}
+                        className={`flex-1 rounded-xl px-3 py-2 text-sm font-bold ${
+                          annAudience === o.v
+                            ? 'bg-royal text-white'
+                            : 'border border-hairline text-ink-soft hover:bg-green-soft'
+                        }`}
+                      >
+                        {o.l}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <input
+                  className="field"
+                  placeholder="العنوان (مثال: عرض خاص اليوم 🎉)"
+                  maxLength={80}
+                  value={annTitle}
+                  onChange={(e) => setAnnTitle(e.target.value)}
+                />
+                <textarea
+                  className="field min-h-[90px] resize-none"
+                  placeholder="نصّ الرسالة…"
+                  maxLength={500}
+                  value={annBody}
+                  onChange={(e) => setAnnBody(e.target.value)}
+                />
+                {annMsg && (
+                  <p
+                    className={`text-sm font-medium ${
+                      annMsg.startsWith('خطأ') ? 'text-danger' : 'text-green'
+                    }`}
+                  >
+                    {annMsg}
+                  </p>
+                )}
+                <button
+                  onClick={sendBroadcast}
+                  disabled={annBusy}
+                  className="btn-primary flex w-full items-center justify-center gap-2"
+                >
+                  <Send className="h-4 w-4" strokeWidth={2} />
+                  {annBusy ? 'جارٍ الإرسال…' : 'إرسال الإشعار'}
+                </button>
+                <p className="text-center text-[11px] text-ink-muted">
+                  يظهر الإشعار كلافتة داخل التطبيق، ويصل أيضاً كإشعار للأجهزة المتصلة.
+                </p>
+              </div>
+            </div>
+
+            {/* آخر الإشعارات المُرسَلة */}
+            <div className="card p-4">
+              <p className="mb-3 font-bold">آخر الإشعارات</p>
+              {announcements === null ? (
+                <div className="h-16 animate-pulse rounded-xl bg-ivory" />
+              ) : announcements.length === 0 ? (
+                <p className="py-4 text-center text-sm text-ink-muted">لم تُرسل إشعارات بعد</p>
+              ) : (
+                <div className="divide-y divide-hairline">
+                  {announcements.map((a) => (
+                    <div key={a.id} className="py-2.5">
+                      <div className="flex items-center justify-between gap-2">
+                        <p className="font-bold text-royal">{a.title}</p>
+                        <span className="shrink-0 rounded-md bg-royal-soft px-1.5 py-0.5 text-[10px] font-bold text-royal">
+                          {a.audience === 'customers'
+                            ? 'العملاء'
+                            : a.audience === 'drivers'
+                              ? 'السائقون'
+                              : 'الجميع'}
+                        </span>
+                      </div>
+                      <p className="text-sm text-ink-soft">{a.body}</p>
+                      <p className="mt-0.5 text-[11px] text-ink-muted">
+                        {new Date(a.created_at).toLocaleString('ar-SD')}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
         )}
 

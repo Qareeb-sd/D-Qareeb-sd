@@ -449,6 +449,14 @@ export interface BudgetRow {
 }
 
 /** عميل مسجّل كما يظهر للأدمن (مع تقييمه وعدد رحلاته). */
+export interface Announcement {
+  id: string
+  title: string
+  body: string
+  audience: 'customers' | 'drivers' | 'all'
+  created_at: string
+}
+
 export interface AdminCustomer {
   id: string
   full_name: string | null

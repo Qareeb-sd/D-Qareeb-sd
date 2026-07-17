@@ -11,8 +11,10 @@ import {
   listServicePeriods,
   nearbyOnlineDrivers,
   getMyCustomerWarnings,
+  getMyAnnouncements,
   type DriverWarning,
 } from '@/lib/api'
+import type { Announcement } from '@/lib/types'
 import { currentPeriod } from '@/lib/pricing'
 import { money } from '@/lib/format'
 import { getCurrentPos, loadLastPos } from '@/lib/geo'
@@ -43,6 +45,7 @@ export default function Home() {
   const [mapCenter, setMapCenter] = useState(loadLastPos() ?? KHARTOUM)
   const [nearby, setNearby] = useState<{ lat: number; lng: number; icon?: string }[]>([])
   const [warning, setWarning] = useState<DriverWarning | null>(null)
+  const [announcement, setAnnouncement] = useState<Announcement | null>(null)
 
   // تسجيل رمز الإشعارات عند فتح الرئيسية (محاولة موثوقة بعد جهوز التطبيق).
   useEffect(() => {
@@ -74,6 +77,32 @@ export default function Home() {
       /* لا يهمّ */
     }
     setWarning(null)
+  }
+
+  // إعلانات الإدارة — أحدث إعلان لم يُطّلع عليه.
+  useEffect(() => {
+    void getMyAnnouncements('customer').then((list) => {
+      let seen: string[] = []
+      try {
+        seen = JSON.parse(localStorage.getItem('qareeb_seen_ann') ?? '[]')
+      } catch {
+        seen = []
+      }
+      const fresh = list.find((a) => !seen.includes(a.id))
+      if (fresh) setAnnouncement(fresh)
+    })
+  }, [])
+
+  const dismissAnnouncement = () => {
+    if (!announcement) return
+    try {
+      const seen: string[] = JSON.parse(localStorage.getItem('qareeb_seen_ann') ?? '[]')
+      seen.push(announcement.id)
+      localStorage.setItem('qareeb_seen_ann', JSON.stringify(seen.slice(-50)))
+    } catch {
+      /* لا يهمّ */
+    }
+    setAnnouncement(null)
   }
 
   useEffect(() => {
@@ -195,6 +224,25 @@ export default function Home() {
         <div className="rounded-t-[28px] bg-white px-5 pb-4 pt-3 shadow-soft">
           {/* مقبض ذهبي */}
           <div className="mx-auto mb-4 h-1 w-10 rounded-full bg-sand/60" />
+
+          {/* إعلان من قريب */}
+          {announcement && (
+            <div className="mb-3 rounded-2xl border border-royal/15 bg-royal-soft p-3">
+              <div className="flex items-start gap-2.5">
+                <span className="text-lg">📢</span>
+                <div className="flex-1">
+                  <p className="text-sm font-bold text-royal">{announcement.title}</p>
+                  <p className="mt-0.5 text-[13px] text-ink">{announcement.body}</p>
+                </div>
+              </div>
+              <button
+                onClick={dismissAnnouncement}
+                className="mt-2 w-full rounded-xl bg-royal py-2 text-sm font-bold text-white"
+              >
+                حسناً
+              </button>
+            </div>
+          )}
 
           {/* تحذير من إدارة قريب */}
           {warning && (
