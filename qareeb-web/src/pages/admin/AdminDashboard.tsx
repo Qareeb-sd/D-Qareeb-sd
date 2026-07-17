@@ -1165,6 +1165,8 @@ export default function AdminDashboard() {
       referral_reward: settings.referral_reward,
       loyalty_per_ride: settings.loyalty_per_ride,
       loyalty_point_value: settings.loyalty_point_value,
+      auto_surge_enabled: settings.auto_surge_enabled,
+      auto_surge_max: settings.auto_surge_max,
     })
     setSavedMsg(error ? `خطأ: ${error}` : 'تم حفظ الإعدادات ✓')
   }
@@ -2871,6 +2873,30 @@ export default function AdminDashboard() {
                     label="نهاية داخل المدينة (كم)"
                     value={settings.tier2_max_km}
                     onChange={(v) => setSettings({ ...settings, tier2_max_km: v })}
+                  />
+                </div>
+
+                <div className="rounded-2xl border border-sand/40 bg-sand-soft/40 p-3">
+                  <label className="flex items-center gap-2 font-bold text-royal">
+                    <input
+                      type="checkbox"
+                      className="h-4 w-4 accent-green"
+                      checked={settings.auto_surge_enabled}
+                      onChange={(e) =>
+                        setSettings({ ...settings, auto_surge_enabled: e.target.checked })
+                      }
+                    />
+                    تسعير ذروة تلقائي
+                  </label>
+                  <p className="mb-2 mt-1 text-xs text-ink-muted">
+                    يرفع المضاعف تلقائياً حسب نسبة الطلبات الباحثة للسائقين المتصلين حتى السقف.
+                    عند تعطيله يُستخدم «مضاعف الذروة» اليدوي أعلاه.
+                  </p>
+                  <NumField
+                    label="سقف المضاعف التلقائي"
+                    step={0.1}
+                    value={settings.auto_surge_max}
+                    onChange={(v) => setSettings({ ...settings, auto_surge_max: v })}
                   />
                 </div>
                 {savedMsg && <p className="text-sm text-green">{savedMsg}</p>}

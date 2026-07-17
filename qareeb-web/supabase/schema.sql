@@ -3780,3 +3780,27 @@ returns table (
   order by 5 desc, 4 desc nulls last;
 $$;
 grant execute on function public.admin_driver_performance(int) to authenticated;
+
+-- ============================================================
+--  تسعير ذروة تلقائي: يحسب مضاعف الذروة من نسبة الطلبات الباحثة للسائقين المتصلين.
+--  عند التعطيل يعيد المضاعف اليدوي (surge_multiplier).
+-- ============================================================
+alter table public.settings add column if not exists auto_surge_enabled boolean not null default false;
+alter table public.settings add column if not exists auto_surge_max numeric(4,2) not null default 2.0;
+
+create or replace function public.current_surge()
+returns numeric language plpgsql security definer set search_path = public stable as $$
+declare v_auto boolean; v_max numeric; v_manual numeric; v_demand int; v_supply int; v_surge numeric;
+begin
+  select auto_surge_enabled, auto_surge_max, surge_multiplier
+    into v_auto, v_max, v_manual from public.settings where id = 1;
+  if not coalesce(v_auto, false) then return coalesce(v_manual, 1); end if;
+  select count(*) into v_demand from public.rides
+    where status in ('searching', 'requested') and created_at > now() - interval '15 minutes';
+  select count(*) into v_supply from public.drivers
+    where is_online and last_loc_at > now() - interval '5 minutes';
+  if v_supply = 0 then v_supply := 1; end if;
+  v_surge := round(least(coalesce(v_max, 2.0), greatest(1.0, v_demand::numeric / v_supply)), 1);
+  return v_surge;
+end $$;
+grant execute on function public.current_surge() to authenticated;

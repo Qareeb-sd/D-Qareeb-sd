@@ -52,6 +52,8 @@ const demoSettings: Settings = {
   referral_reward: 0,
   loyalty_per_ride: 0,
   loyalty_point_value: 0,
+  auto_surge_enabled: false,
+  auto_surge_max: 2.0,
   updated_at: new Date().toISOString(),
 }
 
@@ -1209,6 +1211,14 @@ export async function setDriverOnline(
 export async function updateMyLocation(lat: number, lng: number): Promise<void> {
   if (!isSupabaseConfigured) return
   await supabase.rpc('update_my_location', { p_lat: lat, p_lng: lng })
+}
+
+/** مضاعف الذروة الحالي (تلقائي حسب الطلب أو يدوي). */
+export async function getCurrentSurge(): Promise<number> {
+  if (!isSupabaseConfigured) return 1
+  const { data } = await supabase.rpc('current_surge')
+  const n = typeof data === 'number' ? data : Number(data)
+  return Number.isFinite(n) && n >= 1 ? n : 1
 }
 
 /** نقاط ولاء العميل الحالي + قيمة النقطة. */
