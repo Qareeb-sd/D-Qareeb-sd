@@ -775,6 +775,22 @@ export async function listAllDrivers(): Promise<AdminDriverRow[]> {
   return (data as AdminDriverRow[]) ?? []
 }
 
+export interface DriverPerf {
+  user_id: string
+  name: string | null
+  phone: string
+  rating: number | null
+  rides: number
+  earnings: number
+  cancels: number
+}
+/** أداء السائقين (أدمن): رحلات/تقييم/إيرادات/إلغاءات خلال مدّة. */
+export async function getDriverPerformance(days = 30): Promise<DriverPerf[]> {
+  if (!isSupabaseConfigured) return []
+  const { data } = await supabase.rpc('admin_driver_performance', { p_days: days })
+  return (data as DriverPerf[]) ?? []
+}
+
 export async function listAllRides(limit = 50): Promise<Ride[]> {
   if (!isSupabaseConfigured) return demoRides
   const { data } = await supabase

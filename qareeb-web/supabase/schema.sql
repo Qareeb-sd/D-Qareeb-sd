@@ -3752,3 +3752,31 @@ begin
   return jsonb_build_object('amount', v_amount);
 end $$;
 grant execute on function public.redeem_loyalty(int) to authenticated;
+
+-- ============================================================
+--  لوحة أداء السائقين (أدمن): تجميع رحلات/تقييم/إيرادات/إلغاءات لكل سائق.
+-- ============================================================
+create or replace function public.admin_driver_performance(p_days int default 30)
+returns table (
+  user_id uuid, name text, phone text, rating numeric,
+  rides int, earnings numeric, cancels int
+) language sql security definer set search_path = public stable as $$
+  select d.user_id,
+         u.full_name,
+         u.phone,
+         d.rating,
+         (select count(*)::int from public.rides r
+            where r.driver_id = d.user_id and r.status = 'completed'
+              and r.created_at > now() - make_interval(days => p_days)),
+         coalesce((select sum(r.fare) from public.rides r
+            where r.driver_id = d.user_id and r.status = 'completed'
+              and r.created_at > now() - make_interval(days => p_days)), 0),
+         (select count(*)::int from public.rides r
+            where r.driver_id = d.user_id and r.status = 'cancelled'
+              and r.created_at > now() - make_interval(days => p_days))
+  from public.drivers d
+  join public.users u on u.id = d.user_id
+  where public.is_admin()
+  order by 5 desc, 4 desc nulls last;
+$$;
+grant execute on function public.admin_driver_performance(int) to authenticated;
