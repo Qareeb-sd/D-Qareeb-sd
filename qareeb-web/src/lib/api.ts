@@ -315,6 +315,7 @@ export async function submitReview(
   stars: number,
   complaint?: string | null,
   mismatch?: { driver?: boolean; vehicle?: boolean },
+  extra?: { tags?: string[]; comment?: string | null },
 ): Promise<{ error?: string }> {
   if (!isSupabaseConfigured) return {}
   const { error } = await supabase.rpc('submit_review', {
@@ -323,6 +324,8 @@ export async function submitReview(
     p_complaint: complaint?.trim() || null,
     p_driver_mismatch: mismatch?.driver ?? false,
     p_vehicle_mismatch: mismatch?.vehicle ?? false,
+    p_tags: extra?.tags?.length ? extra.tags : null,
+    p_comment: extra?.comment?.trim() || null,
   })
   return error ? { error: error.message } : {}
 }
