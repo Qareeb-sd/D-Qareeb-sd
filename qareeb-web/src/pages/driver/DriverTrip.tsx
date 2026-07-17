@@ -45,7 +45,7 @@ import { getService } from '@/data/services'
 import { money } from '@/lib/format'
 import { haversineKm } from '@/lib/pricing'
 import { fetchRouteNav, type NavStep } from '@/lib/maps'
-import { watchPos, getCurrentPos } from '@/lib/geo'
+import { watchPos, getCurrentPos, ensureGeoPermission } from '@/lib/geo'
 
 const paymentLabels: Record<string, string> = {
   cash: 'كاش',
@@ -139,6 +139,8 @@ export default function DriverTrip() {
   const [recovering, setRecovering] = useState(!activeRide)
   // موقع السائق الحيّ + خطّ الملاحة إلى الهدف الحالي.
   const [pos, setPos] = useState<google.maps.LatLngLiteral | null>(null)
+  // تعذّر تحديد الموقع لفترة (إذن مرفوض/بلا إشارة) → نعرض زرّ إعادة المحاولة.
+  const [gpsStuck, setGpsStuck] = useState(false)
   const [routePts, setRoutePts] = useState<google.maps.LatLngLiteral[]>([])
   const [eta, setEta] = useState<{ km: number; min: number } | null>(null)
   const [navSteps, setNavSteps] = useState<NavStep[]>([])
@@ -247,6 +249,24 @@ export default function DriverTrip() {
       stop()
     }
   }, [activeRide?.id])
+
+  // يظهر زرّ «أعد المحاولة» إن بقي الموقع غير محدَّد ~10 ثوانٍ.
+  useEffect(() => {
+    if (pos) {
+      setGpsStuck(false)
+      return
+    }
+    const t = setTimeout(() => setGpsStuck(true), 10000)
+    return () => clearTimeout(t)
+  }, [pos])
+
+  const retryGps = async () => {
+    setGpsStuck(false)
+    await ensureGeoPermission()
+    const here = await getCurrentPos()
+    if (here) setPos(here)
+    else setGpsStuck(true)
+  }
 
   // Realtime: إن ألغى الراكب الرحلة، أبلغ السائق وأعده لقائمة الطلبات.
   useEffect(() => {
@@ -592,11 +612,21 @@ export default function DriverTrip() {
                 {heading === 'dropoff' && !dropoffPt
                   ? 'مشوار مفتوح — بلا وجهة محدّدة. تابع حسب طلب الراكب.'
                   : !pos
-                    ? 'جارٍ تحديد موقعك…'
+                    ? gpsStuck
+                      ? 'تعذّر تحديد موقعك — فعّل خدمة الموقع.'
+                      : 'جارٍ تحديد موقعك…'
                     : displayRoute.length > 1
                       ? `اتبع المسار ${heading === 'pickup' ? 'إلى الراكب' : 'إلى الوجهة'}`
                       : 'جارٍ حساب المسار…'}
               </p>
+              {!pos && gpsStuck && (
+                <button
+                  onClick={() => void retryGps()}
+                  className="ms-auto shrink-0 rounded-lg bg-white/20 px-3 py-1 text-xs font-bold text-white"
+                >
+                  أعد المحاولة
+                </button>
+              )}
             </div>
           )}
 

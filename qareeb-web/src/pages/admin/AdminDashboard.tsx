@@ -357,6 +357,7 @@ export default function AdminDashboard() {
   const [complaints, setComplaints] = useState<Complaint[] | null>(null)
   const [rides, setRides] = useState<Ride[] | null>(null)
   const [detailRides, setDetailRides] = useState<AdminRideRow[] | null>(null)
+  const [ridesShown, setRidesShown] = useState(80) // ترقيم تدريجي لتفادي عرض آلاف الصفوف دفعة
   const [analyticsRaw, setAnalyticsRaw] = useState<AdminAnalytics | null>(null)
   const [deepAnalytics, setDeepAnalytics] = useState<AdminDeepAnalytics | null>(null)
   const [activeRides, setActiveRides] = useState<Ride[]>([])
@@ -3188,7 +3189,7 @@ export default function AdminDashboard() {
               </p>
             ) : (
               <div className="space-y-3">
-                {filteredDetailRides.map((r) => {
+                {filteredDetailRides.slice(0, ridesShown).map((r) => {
                   const flagged = r.driver_mismatch || r.vehicle_mismatch
                   return (
                     <div
@@ -3302,6 +3303,14 @@ export default function AdminDashboard() {
                     </div>
                   )
                 })}
+                {filteredDetailRides.length > ridesShown && (
+                  <button
+                    onClick={() => setRidesShown((n) => n + 80)}
+                    className="w-full rounded-2xl border border-hairline py-2.5 text-sm font-bold text-royal"
+                  >
+                    عرض المزيد ({filteredDetailRides.length - ridesShown} متبقّية)
+                  </button>
+                )}
               </div>
             )}
           </div>
