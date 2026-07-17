@@ -1531,6 +1531,8 @@ export default function AdminDashboard() {
       auto_surge_enabled: settings.auto_surge_enabled,
       auto_surge_max: settings.auto_surge_max,
       intercity_multiplier: settings.intercity_multiplier,
+      package_multiplier: settings.package_multiplier,
+      package_fee: settings.package_fee,
     })
     setSavedMsg(error ? `خطأ: ${error}` : 'تم حفظ الإعدادات ✓')
   }
@@ -3961,15 +3963,38 @@ export default function AdminDashboard() {
                     onChange={(v) => setSettings({ ...settings, auto_surge_max: v })}
                   />
                 </div>
-                <div>
+                {/* تسعير الخدمات الإضافية: بين المدن + توصيل الطرود */}
+                <div className="rounded-2xl border border-sand/40 bg-sand-soft/30 p-3">
+                  <p className="mb-2 flex items-center gap-2 font-bold text-royal">
+                    🏙️📦 تسعير الخدمات الإضافية
+                  </p>
                   <NumField
                     label="مضاعف الرحلات بين المدن"
                     step={0.1}
                     value={settings.intercity_multiplier}
                     onChange={(v) => setSettings({ ...settings, intercity_multiplier: v })}
                   />
+                  <p className="mb-3 mt-1 text-xs text-ink-muted">
+                    يُطبَّق على أجرة الرحلة العادية (مثال: ١٫٥ = +٥٠٪). اجعله ١ لتعطيله.
+                  </p>
+                  <NumField
+                    label="مضاعف توصيل الطرود"
+                    step={0.1}
+                    value={settings.package_multiplier}
+                    onChange={(v) => setSettings({ ...settings, package_multiplier: v })}
+                  />
+                  <p className="mb-3 mt-1 text-xs text-ink-muted">
+                    يُطبَّق على أجرة المسافة للطرد (١ = بلا زيادة نسبية).
+                  </p>
+                  <NumField
+                    label="رسم ثابت للطرد (ج.س)"
+                    step={100}
+                    value={settings.package_fee}
+                    onChange={(v) => setSettings({ ...settings, package_fee: v })}
+                  />
                   <p className="mt-1 text-xs text-ink-muted">
-                    يُطبَّق على أجرة الرحلات بين المدن (مثال: ١٫٥ يعني +٥٠٪). اجعله ١ لتعطيله.
+                    مبلغ يُضاف فوق أجرة المسافة لكل طرد. سعر الطرد = (أجرة المسافة × المضاعف) + الرسم
+                    الثابت.
                   </p>
                 </div>
                 {savedMsg && <p className="text-sm text-green">{savedMsg}</p>}

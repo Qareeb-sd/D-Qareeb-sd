@@ -63,6 +63,8 @@ const demoSettings: Settings = {
   auto_surge_enabled: false,
   auto_surge_max: 2.0,
   intercity_multiplier: 1.5,
+  package_multiplier: 1.0,
+  package_fee: 0,
   updated_at: new Date().toISOString(),
 }
 

@@ -4610,3 +4610,7 @@ grant execute on function public.list_available_rides() to authenticated;
 
 -- مضاعف سعر الرحلات بين المدن (#2) — يُطبَّق على الأجرة عند intercity=true.
 alter table public.settings add column if not exists intercity_multiplier numeric(4,2) not null default 1.5;
+
+-- تسعير توصيل الطرود من الأدمن (#1): مضاعف + رسم ثابت يُطبَّقان على أجرة المسافة.
+alter table public.settings add column if not exists package_multiplier numeric(4,2) not null default 1.0;
+alter table public.settings add column if not exists package_fee numeric(12,2) not null default 0;

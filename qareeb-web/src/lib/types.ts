@@ -144,6 +144,8 @@ export interface Settings {
   auto_surge_enabled: boolean // تسعير ذروة تلقائي حسب الطلب
   auto_surge_max: number // سقف مضاعف الذروة التلقائي
   intercity_multiplier: number // مضاعف سعر الرحلات بين المدن
+  package_multiplier: number // مضاعف سعر توصيل الطرود
+  package_fee: number // رسم ثابت يُضاف لتوصيل الطرود (ج.س)
   updated_at: string
 }
 
