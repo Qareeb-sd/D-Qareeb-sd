@@ -5998,3 +5998,28 @@ begin
     where sub_status = 'active' and held > 0;
 end $$;
 grant execute on function public.commute_held_summary() to authenticated;
+
+-- ============================================================
+--  بثّ الإشعارات الجماعي على دفعات (قابلية التوسّع) — 2026_07_broadcast_fanout
+-- ============================================================
+create index if not exists users_role_idx on public.users(role);
+
+create or replace function public.audience_device_tokens(
+  p_audience text, p_after text default null, p_limit int default 500
+)
+returns table (token text)
+language sql stable security definer set search_path = public as $$
+  select dt.token
+  from public.device_tokens dt
+  join public.users u on u.id = dt.user_id
+  where (
+      p_audience = 'all'
+      or (p_audience = 'customers' and u.role = 'customer')
+      or (p_audience = 'drivers'   and u.role = 'driver')
+    )
+    and (p_after is null or dt.token > p_after)
+  order by dt.token
+  limit least(greatest(coalesce(p_limit, 500), 1), 1000);
+$$;
+revoke all on function public.audience_device_tokens(text, text, int) from public;
+revoke all on function public.audience_device_tokens(text, text, int) from authenticated;

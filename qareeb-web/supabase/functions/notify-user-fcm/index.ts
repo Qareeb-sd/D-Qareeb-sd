@@ -143,61 +143,83 @@ Deno.serve(async (req) => {
 
   if (!title || !body) return json({ error: 'missing title/body' }, 400)
 
-  // بثّ جماعي حسب الجمهور (عملاء/سائقون/الكل) — يجمع رموز كل المستخدمين المطابقين.
-  let list: string[] = []
-  if (payload.audience) {
-    const roles =
-      payload.audience === 'customers'
-        ? ['customer']
-        : payload.audience === 'drivers'
-          ? ['driver']
-          : ['customer', 'driver']
-    const { data: us } = await supabase.from('users').select('id').in('role', roles)
-    const ids = (us ?? []).map((u) => u.id)
-    if (ids.length === 0) return json({ ok: true, sent: 0 })
-    const { data: tokens } = await supabase.from('device_tokens').select('token').in('user_id', ids)
-    list = (tokens ?? []).map((t) => t.token)
-  } else {
-    if (!userId) return json({ error: 'missing user/audience' }, 400)
-    const { data: tokens } = await supabase
-      .from('device_tokens')
-      .select('token')
-      .eq('user_id', userId)
-    list = (tokens ?? []).map((t) => t.token)
-  }
-  if (list.length === 0) return json({ ok: true, sent: 0 })
-
-  const token = await accessToken(sa)
+  const fcmToken = await accessToken(sa)
   const url = `https://fcm.googleapis.com/v1/projects/${sa.project_id}/messages:send`
 
-  let sent = 0
-  const stale: string[] = []
-  await Promise.all(
-    list.map(async (t) => {
-      const res = await fetch(url, {
-        method: 'POST',
-        headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
-        body: JSON.stringify({
-          message: {
-            token: t,
-            notification: { title, body },
-            data,
-            android: {
-              priority: 'HIGH',
-              notification: {
-                sound: 'default',
-                channel_id: 'qareeb_rides',
-                default_vibrate_timings: true,
-              },
-            },
-          },
+  // إرسال دفعة رموز بتزامن محدود، مع تنظيف الرموز الميّتة — ثابت الذاكرة.
+  const CONCURRENCY = 50
+  async function sendBatch(tokens: string[]): Promise<{ sent: number; cleaned: number }> {
+    let sent = 0
+    let cleaned = 0
+    for (let i = 0; i < tokens.length; i += CONCURRENCY) {
+      const chunk = tokens.slice(i, i + CONCURRENCY)
+      const stale: string[] = []
+      await Promise.all(
+        chunk.map(async (t) => {
+          try {
+            const res = await fetch(url, {
+              method: 'POST',
+              headers: { authorization: `Bearer ${fcmToken}`, 'content-type': 'application/json' },
+              body: JSON.stringify({
+                message: {
+                  token: t,
+                  notification: { title, body },
+                  data,
+                  android: {
+                    priority: 'HIGH',
+                    notification: {
+                      sound: 'default',
+                      channel_id: 'qareeb_rides',
+                      default_vibrate_timings: true,
+                    },
+                  },
+                },
+              }),
+            })
+            if (res.ok) sent++
+            else if (res.status === 404 || res.status === 400) stale.push(t)
+          } catch {
+            /* خطأ شبكة عابر — نتجاهله ولا نعدّه ميّتاً */
+          }
         }),
-      })
-      if (res.ok) sent++
-      else if (res.status === 404 || res.status === 400) stale.push(t)
-    }),
-  )
-  if (stale.length) await supabase.from('device_tokens').delete().in('token', stale)
+      )
+      if (stale.length) {
+        await supabase.from('device_tokens').delete().in('token', stale)
+        cleaned += stale.length
+      }
+    }
+    return { sent, cleaned }
+  }
 
-  return json({ ok: true, sent, cleaned: stale.length })
+  // ===== بثّ جماعي حسب الجمهور: تصفّح على دفعات (keyset) بدل تحميل الكل دفعةً =====
+  if (payload.audience) {
+    const PAGE = 500
+    let after: string | null = null
+    let sent = 0
+    let cleaned = 0
+    for (;;) {
+      const { data: rows, error } = await supabase.rpc('audience_device_tokens', {
+        p_audience: payload.audience,
+        p_after: after,
+        p_limit: PAGE,
+      })
+      if (error) return json({ error: error.message }, 500)
+      const pageTokens = ((rows ?? []) as { token: string }[]).map((r) => r.token)
+      if (pageTokens.length === 0) break
+      after = pageTokens[pageTokens.length - 1]
+      const r = await sendBatch(pageTokens)
+      sent += r.sent
+      cleaned += r.cleaned
+      if (pageTokens.length < PAGE) break
+    }
+    return json({ ok: true, sent, cleaned })
+  }
+
+  // ===== مستخدم واحد =====
+  if (!userId) return json({ error: 'missing user/audience' }, 400)
+  const { data: tokens } = await supabase.from('device_tokens').select('token').eq('user_id', userId)
+  const list = (tokens ?? []).map((t) => t.token)
+  if (list.length === 0) return json({ ok: true, sent: 0 })
+  const r = await sendBatch(list)
+  return json({ ok: true, sent: r.sent, cleaned: r.cleaned })
 })
