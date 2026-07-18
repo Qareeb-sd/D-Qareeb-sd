@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
 import { Star, RotateCcw, Share2, MessageCircle } from 'lucide-react'
@@ -16,6 +17,23 @@ export default function Rides() {
   const navigate = useNavigate()
   const { setServiceId } = useRide()
   const userId = profile?.id ?? 'demo-user'
+  const [sharingId, setSharingId] = useState<string | null>(null)
+
+  // مشاركة الإيصال (صورة) — عبر ورقة المشاركة الأصلية؛ يُظهر خطأً فقط عند الفشل الحقيقي.
+  const share = async (
+    r: Ride,
+    serviceName: string,
+    fn: (r: Ride, s: string) => Promise<{ ok: boolean; reason?: string }>,
+  ) => {
+    if (sharingId) return
+    setSharingId(r.id)
+    try {
+      const res = await fn(r, serviceName)
+      if (!res.ok) alert(res.reason ?? 'تعذّرت مشاركة الإيصال، حاول مجدداً')
+    } finally {
+      setSharingId(null)
+    }
+  }
   const {
     data: rides,
     isError,
@@ -108,16 +126,18 @@ export default function Rides() {
                     {isCompleted && (
                       <>
                         <button
-                          onClick={() => void shareRideReceipt(r, service?.name ?? r.service_id)}
-                          className="flex items-center justify-center gap-1.5 rounded-xl border border-hairline px-4 py-2.5 text-sm font-bold text-royal"
+                          onClick={() => void share(r, service?.name ?? r.service_id, shareRideReceipt)}
+                          disabled={sharingId === r.id}
+                          className="flex items-center justify-center gap-1.5 rounded-xl border border-hairline px-4 py-2.5 text-sm font-bold text-royal disabled:opacity-60"
                         >
                           <Share2 className="h-4 w-4" strokeWidth={2} />
-                          الإيصال
+                          {sharingId === r.id ? '…' : 'الإيصال'}
                         </button>
                         <button
-                          onClick={() => void shareReceiptWhatsApp(r, service?.name ?? r.service_id)}
+                          onClick={() => void share(r, service?.name ?? r.service_id, shareReceiptWhatsApp)}
+                          disabled={sharingId === r.id}
                           aria-label="مشاركة عبر واتساب"
-                          className="flex items-center justify-center gap-1.5 rounded-xl border border-green/40 bg-green-mint px-4 py-2.5 text-sm font-bold text-green"
+                          className="flex items-center justify-center gap-1.5 rounded-xl border border-green/40 bg-green-mint px-4 py-2.5 text-sm font-bold text-green disabled:opacity-60"
                         >
                           <MessageCircle className="h-4 w-4" strokeWidth={2.2} />
                           واتساب
