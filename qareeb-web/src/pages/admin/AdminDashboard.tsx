@@ -58,6 +58,7 @@ import {
   notifyTopupApproved,
   notifyWithdrawalApproved,
   updateSettings,
+  settleDueCommuteMonths,
   getProofUrl,
   listServicePricing,
   updateServicePricing,
@@ -1572,6 +1573,10 @@ export default function AdminDashboard() {
       loyalty_point_value: settings.loyalty_point_value,
       auto_surge_enabled: settings.auto_surge_enabled,
       auto_surge_max: settings.auto_surge_max,
+      commute_enabled: settings.commute_enabled,
+      commute_commission_rate: settings.commute_commission_rate,
+      commute_discount: settings.commute_discount,
+      commute_weeks_per_month: settings.commute_weeks_per_month,
     })
     setSavedMsg(error ? `خطأ: ${error}` : 'تم حفظ الإعدادات ✓')
   }
@@ -4251,11 +4256,70 @@ export default function AdminDashboard() {
                   </div>
                 </div>
 
+                {/* تسعير الترحيل */}
+                <div className="rounded-2xl border border-sand/40 bg-sand-soft/40 p-3">
+                  <label className="flex items-center justify-between">
+                    <span className="font-bold text-royal">تسعير الترحيل</span>
+                    <input
+                      type="checkbox"
+                      checked={settings.commute_enabled ?? true}
+                      onChange={(e) => setSettings({ ...settings, commute_enabled: e.target.checked })}
+                      className="h-5 w-5 accent-green"
+                    />
+                  </label>
+                  <p className="mb-2 text-xs text-ink-muted">
+                    سعر كل راكب = منزله → الوجهة (ذهاباً وإياباً) بأسعار فترة المركبة، ناقص
+                    خصم الترحيل. اليومي يُحصَّل بتأكيد السائق؛ الشهري يُدفع مقدّماً في المحفظة
+                    ويُصرف للسائق نهاية الشهر.
+                  </p>
+                  <div className="grid grid-cols-3 gap-2">
+                    <NumField
+                      label="عمولة الترحيل %"
+                      step={1}
+                      value={Math.round((settings.commute_commission_rate ?? settings.commission_rate) * 100)}
+                      onChange={(v) => setSettings({ ...settings, commute_commission_rate: Math.max(0, v) / 100 })}
+                    />
+                    <NumField
+                      label="خصم الترحيل %"
+                      step={1}
+                      value={Math.round((settings.commute_discount ?? 0) * 100)}
+                      onChange={(v) => setSettings({ ...settings, commute_discount: Math.max(0, Math.min(95, v)) / 100 })}
+                    />
+                    <NumField
+                      label="أسابيع الشهر"
+                      step={1}
+                      value={settings.commute_weeks_per_month ?? 4}
+                      onChange={(v) => setSettings({ ...settings, commute_weeks_per_month: Math.max(1, v) })}
+                    />
+                  </div>
+                </div>
+
               {savedMsg && <p className="text-sm text-green">{savedMsg}</p>}
               <button className="btn-primary w-full" type="submit">
                 حفظ إعدادات الكابتن
               </button>
             </form>
+
+            {/* صرف اشتراكات الترحيل الشهرية المستحقّة */}
+            <div className="card p-4">
+              <p className="font-bold text-royal">صرف اشتراكات الترحيل الشهرية</p>
+              <p className="mb-3 text-xs text-ink-muted">
+                يُحوّل المبلغ المحجوز لمحفظة السائق (ناقص العمولة) لكل اشتراك أتمّ شهراً، وإن
+                لم يوجد سائق يُعاد للراكب. شغّله نهاية كل شهر.
+              </p>
+              <button
+                onClick={async () => {
+                  if (!window.confirm('صرف كل اشتراكات الترحيل الشهرية المستحقّة الآن؟')) return
+                  const { result, error } = await settleDueCommuteMonths()
+                  if (error) return alert(error)
+                  const r = result ?? { paid_drivers: 0, refunded: 0 }
+                  alert(`تم الصرف: ${r.paid_drivers} للسائقين · ${r.refunded} مُعاد للعملاء.`)
+                }}
+                className="btn-outline w-full"
+              >
+                صرف المستحقّ الآن
+              </button>
+            </div>
 
             {/* حوافز ومكافآت السائق */}
             <IncentivesManager />

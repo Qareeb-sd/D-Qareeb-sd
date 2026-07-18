@@ -5,8 +5,12 @@ import Screen from '@/components/Screen'
 import LocationPicker from '@/components/LocationPicker'
 import { getService } from '@/data/services'
 import { getCommuteOrderByCode, joinCommuteOrder, commuteMemberCount } from '@/lib/commute'
+import { getServicePricing, listServicePeriods, getSettings } from '@/lib/api'
+import { memberDailyFare, periodFromTime, monthlyTotal } from '@/lib/commutePricing'
+import { money } from '@/lib/format'
+import { type PeriodRate } from '@/lib/pricing'
 import { KHARTOUM } from '@/theme'
-import type { CommuteOrder } from '@/lib/types'
+import type { CommuteOrder, Settings } from '@/lib/types'
 
 /** صفحة الانضمام عبر رابط الدعوة: يضيف المدعوّ اسمه ومنزله وينضم للطلب. */
 export default function CommuteJoin() {
@@ -19,6 +23,9 @@ export default function CommuteJoin() {
   const [home, setHome] = useState<google.maps.LatLngLiteral>(KHARTOUM)
   const [homeAddress, setHomeAddress] = useState('')
   const [busy, setBusy] = useState(false)
+  const [periodRate, setPeriodRate] = useState<PeriodRate | null>(null)
+  const [settings, setSettings] = useState<Settings | null>(null)
+  const [payMethod, setPayMethod] = useState<'cash' | 'wallet'>('cash')
   const located = useRef(false)
 
   useEffect(() => {
@@ -27,6 +34,23 @@ export default function CommuteJoin() {
       if (o) setCount(await commuteMemberCount(o.id))
     })
   }, [code])
+
+  // تسعير فترة مركبة الطلب حسب وقت ذهابه.
+  useEffect(() => {
+    if (!order) return
+    void Promise.all([getServicePricing(order.service_id), listServicePeriods(), getSettings()]).then(
+      ([, periods, s]) => {
+        setSettings(s)
+        const per = periodFromTime(order.scheduled_time || '07:00')
+        const row = periods.find((r) => r.service_id === order.service_id && r.period === per)
+        setPeriodRate(
+          row
+            ? { base_fare: row.base_fare, per_km: row.per_km, per_min: row.per_min, min_fare: row.min_fare }
+            : null,
+        )
+      },
+    )
+  }, [order])
 
   useEffect(() => {
     if (located.current || !navigator.geolocation) return
@@ -59,6 +83,14 @@ export default function CommuteJoin() {
   const service = getService(order.service_id)
   const seats = service?.seats ?? 4
   const full = count >= seats
+  const plan = order.plan ?? 'daily'
+
+  // أجرة الراكب: منزله → وجهة الطلب (×2 إن ذهاب وإياب)، بعد خصم الترحيل.
+  const dest = { lat: order.dest_lat, lng: order.dest_lng }
+  const discount = settings?.commute_discount ?? 0
+  const weeks = settings?.commute_weeks_per_month ?? 4
+  const daily = periodRate ? memberDailyFare(home, dest, periodRate, order.round_trip, discount) : 0
+  const monthly = monthlyTotal(daily, order.days.length, weeks)
 
   const join = async () => {
     if (!name.trim() || full) return
@@ -70,10 +102,16 @@ export default function CommuteJoin() {
       setBusy(false)
       return alert('اكتمل عدد الركّاب لهذه المركبة')
     }
-    const { error } = await joinCommuteOrder(order.id, {
-      name: name.trim(),
-      home: { ...home, address: homeAddress || 'منزلي' },
-    })
+    const { error } = await joinCommuteOrder(
+      order.id,
+      {
+        name: name.trim(),
+        home: { ...home, address: homeAddress || 'منزلي' },
+        fare: daily,
+        pay_method: plan === 'monthly' ? 'wallet' : payMethod,
+      },
+      plan,
+    )
     setBusy(false)
     if (error) return alert(error)
     navigate(`/commute/${order.id}`)
@@ -126,8 +164,52 @@ export default function CommuteJoin() {
             placeholder="اسم الحي/المكان (اختياري)"
           />
 
+          {/* السعر + طريقة الدفع */}
+          {periodRate && (
+            <div className="mt-3 space-y-2 rounded-2xl bg-gold-soft p-3 text-sm text-ink">
+              {plan === 'daily' ? (
+                <>
+                  <p>
+                    أجرتك اليومية <span className="font-bold text-sand-ink">{money(daily)}</span>
+                    {order.round_trip ? ' (ذهاباً وإياباً)' : ''}
+                  </p>
+                  <div className="grid grid-cols-2 gap-2">
+                    {(
+                      [
+                        ['cash', 'كاش للسائق'],
+                        ['wallet', 'من محفظتي'],
+                      ] as const
+                    ).map(([id, label]) => (
+                      <button
+                        key={id}
+                        onClick={() => setPayMethod(id)}
+                        className={`rounded-xl border px-3 py-2 text-sm font-bold transition ${
+                          payMethod === id ? 'border-royal bg-royal text-white' : 'border-hairline bg-white text-ink-soft'
+                        }`}
+                      >
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+                </>
+              ) : (
+                <>
+                  <p>
+                    اشتراك الشهر <span className="font-bold text-sand-ink">{money(monthly)}</span>
+                  </p>
+                  <p className="text-[11px] text-ink-muted">
+                    = {money(daily)} × {order.days.length} يوم/أسبوع × {weeks} أسابيع — يُخصم مقدّماً من محفظتك عند الانضمام.
+                  </p>
+                </>
+              )}
+              {discount > 0 && (
+                <p className="text-[11px] text-green">شامل خصم الترحيل {Math.round(discount * 100)}%</p>
+              )}
+            </div>
+          )}
+
           <button className="btn-primary mt-4 w-full" onClick={join} disabled={busy}>
-            {busy ? '…' : 'انضمام للترحيل'}
+            {busy ? '…' : plan === 'monthly' ? `اشترك ادفع ${money(monthly)}` : 'انضمام للترحيل'}
           </button>
         </>
       )}

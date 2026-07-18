@@ -1,8 +1,9 @@
 import { useEffect, useState, useCallback } from 'react'
 import { useParams } from 'react-router-dom'
-import { Building2, Clock, Calendar, Users, House, type LucideIcon } from 'lucide-react'
+import { Building2, Clock, Calendar, Users, House, Wallet, type LucideIcon } from 'lucide-react'
 import Screen from '@/components/Screen'
 import { getService } from '@/data/services'
+import { money } from '@/lib/format'
 import {
   getCommuteOrder,
   listCommuteMembers,
@@ -107,6 +108,10 @@ export default function CommuteOrder() {
         />
         <Row icon={Calendar} text={order.days.join(' · ')} />
         <Row icon={Users} text={`الركّاب ${members.length} / ${service?.seats ?? 4}`} />
+        <Row
+          icon={Wallet}
+          text={order.plan === 'monthly' ? 'اشتراك شهري (دفع مقدّم)' : 'دفع يومي (كاش/محفظة)'}
+        />
       </div>
 
       {/* دعوة الزملاء بالرمز */}
@@ -154,6 +159,20 @@ export default function CommuteOrder() {
                 </p>
                 <p className="text-xs text-ink-muted">{m.home_address ?? 'منزل'}</p>
               </div>
+              {m.fare != null && m.fare > 0 && (
+                <div className="shrink-0 text-left">
+                  <p className="text-sm font-bold text-royal">{money(m.fare)}</p>
+                  <p className="text-[10px] text-ink-muted">
+                    {order.plan === 'monthly'
+                      ? m.sub_status === 'ended'
+                        ? 'انتهى'
+                        : 'يومياً'
+                      : m.pay_method === 'wallet'
+                        ? 'محفظة'
+                        : 'كاش'}
+                  </p>
+                </div>
+              )}
             </div>
           ))}
         </div>
