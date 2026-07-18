@@ -64,7 +64,10 @@ export default function FindDriver() {
     const unsub = rideId
       ? subscribeToRide(rideId, (ride) => {
           if (ride.status === 'cancelled') {
-            if (!done.current) setPhase('cancelled')
+            if (!done.current) {
+              done.current = true // أوقف الاستطلاع بعد الإلغاء (لا مزيد من نداءات getRide)
+              setPhase('cancelled')
+            }
           } else if (ride.status !== 'searching' && ride.status !== 'requested') {
             onAccepted()
           }
@@ -75,10 +78,14 @@ export default function FindDriver() {
     const poll =
       isSupabaseConfigured && rideId
         ? setInterval(async () => {
+            if (done.current) return // توقّف بعد القبول/الإلغاء بدل الاستمرار في الاستطلاع
             const ride = await getRide(rideId)
             if (!ride) return
             if (ride.status === 'cancelled') {
-              if (!done.current) setPhase('cancelled')
+              if (!done.current) {
+                done.current = true
+                setPhase('cancelled')
+              }
               return
             }
             if (ride.status !== 'searching' && ride.status !== 'requested') onAccepted()

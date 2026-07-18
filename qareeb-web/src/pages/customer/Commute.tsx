@@ -93,31 +93,44 @@ export default function Commute() {
   const create = async () => {
     if (selected.length === 0) return
     setBusy(true)
-    const order = await createCommuteOrder(
-      {
-        service_id: serviceId,
-        dest: { ...dest, address: destAddress || 'مكان العمل' },
-        scheduled_time: time,
-        return_time: roundTrip ? returnTime : null,
-        days: selected,
-        round_trip: roundTrip,
-        organizer: {
-          name: profile?.full_name?.trim() || 'المنظّم',
-          home: { ...points[0].pos, address: points[0].addr || 'منزل المنظّم' },
+    try {
+      const order = await createCommuteOrder(
+        {
+          service_id: serviceId,
+          dest: { ...dest, address: destAddress || 'مكان العمل' },
+          scheduled_time: time,
+          return_time: roundTrip ? returnTime : null,
+          days: selected,
+          round_trip: roundTrip,
+          organizer: {
+            name: profile?.full_name?.trim() || 'المنظّم',
+            home: { ...points[0].pos, address: points[0].addr || 'منزل المنظّم' },
+          },
         },
-      },
-      profile?.id ?? null,
-    )
-    // بقية نقاط الانطلاق تُسجَّل كأعضاء في نفس الطلب.
-    for (let i = 1; i < points.length; i++) {
-      const p = points[i]
-      await joinCommuteOrder(order.id, {
-        name: p.name.trim() || `راكب ${i + 1}`,
-        home: { ...p.pos, address: p.addr || `نقطة انطلاق ${i + 1}` },
-      })
+        profile?.id ?? null,
+      )
+      // بقية نقاط الانطلاق تُسجَّل كأعضاء في نفس الطلب (نتابع رغم فشل أحدهم).
+      let joinFails = 0
+      for (let i = 1; i < points.length; i++) {
+        const p = points[i]
+        try {
+          await joinCommuteOrder(order.id, {
+            name: p.name.trim() || `راكب ${i + 1}`,
+            home: { ...p.pos, address: p.addr || `نقطة انطلاق ${i + 1}` },
+          })
+        } catch {
+          joinFails++
+        }
+      }
+      setBusy(false)
+      if (joinFails > 0) {
+        alert(`تم إنشاء الترحيل، لكن تعذّر إضافة ${joinFails} راكب — يمكنهم الانضمام لاحقاً برمز الدعوة.`)
+      }
+      navigate(`/commute/${order.id}`)
+    } catch (e) {
+      setBusy(false)
+      alert(e instanceof Error ? e.message : 'تعذّر إنشاء الترحيل، تحقّق من اتصالك وحاول مجدداً.')
     }
-    setBusy(false)
-    navigate(`/commute/${order.id}`)
   }
 
   return (

@@ -3,7 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import BottomNav from '@/components/BottomNav'
 import Logo from '@/components/Logo'
 import ReceiptUpload from '@/components/ReceiptUpload'
-import { money } from '@/lib/format'
+import { money, toAsciiDigits } from '@/lib/format'
 import { useAuth } from '@/store/AuthContext'
 import {
   getSettings,
@@ -71,8 +71,8 @@ export default function Wallet() {
 
   const topupMut = useMutation({
     mutationFn: async () => {
-      // مبلغ صحيح موجب (يمنع NaN من نصّ غير رقمي، والصفر/السالب).
-      const amt = Number(amount)
+      // مبلغ صحيح موجب (يقبل الأرقام العربية، ويمنع NaN والصفر/السالب).
+      const amt = Number(toAsciiDigits(amount))
       if (!Number.isFinite(amt) || amt < 500) {
         throw new Error('أدخل مبلغاً صحيحاً (٥٠٠ ج.س على الأقل)')
       }

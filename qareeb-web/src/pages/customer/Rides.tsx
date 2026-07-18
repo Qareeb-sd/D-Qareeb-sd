@@ -115,7 +115,7 @@ export default function Rides() {
                           الإيصال
                         </button>
                         <button
-                          onClick={() => shareReceiptWhatsApp(r, service?.name ?? r.service_id)}
+                          onClick={() => void shareReceiptWhatsApp(r, service?.name ?? r.service_id)}
                           aria-label="مشاركة عبر واتساب"
                           className="flex items-center justify-center gap-1.5 rounded-xl border border-green/40 bg-green-mint px-4 py-2.5 text-sm font-bold text-green"
                         >

@@ -115,8 +115,9 @@ export async function shareRideReceipt(ride: Ride, serviceName: string): Promise
   setTimeout(() => URL.revokeObjectURL(url), 4000)
 }
 
-/** يصيغ ملخّص إيصال نصّياً ويفتح واتساب لمشاركته. */
-export function shareReceiptWhatsApp(ride: Ride, serviceName: string): void {
+/** يصيغ ملخّص إيصال نصّياً ويشاركه — مشاركة النظام الأصلية (تشمل واتساب وغيره)
+ *  مع رجوع إلى رابط واتساب إن لم تتوفّر. */
+export async function shareReceiptWhatsApp(ride: Ride, serviceName: string): Promise<void> {
   const lines = [
     '🚗 *إيصال رحلة قريب*',
     '',
@@ -132,8 +133,18 @@ export function shareReceiptWhatsApp(ride: Ride, serviceName: string): void {
     `رقم الرحلة: ${ride.id.slice(0, 8)}`,
     'شكراً لاستخدامك قريب 🙏',
   ]
-  const text = encodeURIComponent(lines.join('\n'))
-  window.open(`https://wa.me/?text=${text}`, '_blank', 'noopener')
+  const body = lines.join('\n')
+  // مشاركة أصلية (تفتح ورقة المشاركة ليختار المستخدم واتساب أو أي تطبيق) — أنسب على الجوّال.
+  const nav = navigator as Navigator & { share?: (d: { text?: string; title?: string }) => Promise<void> }
+  if (nav.share) {
+    try {
+      await nav.share({ title: 'إيصال رحلة قريب', text: body })
+      return
+    } catch {
+      /* أُلغيت المشاركة أو تعذّرت — نُكمل لرابط واتساب */
+    }
+  }
+  window.open(`https://wa.me/?text=${encodeURIComponent(body)}`, '_blank', 'noopener')
 }
 
 function fmtDate(iso: string): string {

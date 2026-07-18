@@ -67,7 +67,9 @@ export default function Trip() {
   const [cancelErr, setCancelErr] = useState('')
   const [cancelFee, setCancelFee] = useState(0)
   const [cancelInfo, setCancelInfo] = useState<string | null>(null)
+  const [cancelledByOther, setCancelledByOther] = useState(false)
   const notified = useRef(false)
+  const selfCancel = useRef(false) // يميّز إلغاء العميل نفسه عن إلغاء السائق/الإدارة
 
   // استرجاع الرحلة الجارية بعد تحديث الصفحة (تُفقد الحالة من الذاكرة).
   useEffect(() => {
@@ -118,8 +120,12 @@ export default function Trip() {
       if (ride.status === 'completed') navigate('/rate', { replace: true })
       else if (ride.status === 'searching') navigate('/find-driver', { replace: true }) // تخلّى السائق → إعادة البحث
       else if (ride.status === 'cancelled') {
-        reset()
-        navigate('/home', { replace: true })
+        if (selfCancel.current) {
+          reset()
+          navigate('/home', { replace: true })
+        } else {
+          setCancelledByOther(true) // ألغى السائق/الإدارة — نُعلم العميل بدل الرمي الصامت
+        }
       }
     })
     return unsub
@@ -138,8 +144,12 @@ export default function Trip() {
         setDriverPos({ lat: ride.driver_lat, lng: ride.driver_lng })
       if (ride.status === 'completed') navigate('/rate', { replace: true })
       else if (ride.status === 'cancelled') {
-        reset()
-        navigate('/home', { replace: true })
+        if (selfCancel.current) {
+          reset()
+          navigate('/home', { replace: true })
+        } else {
+          setCancelledByOther(true)
+        }
       }
     }, 3000)
     return () => clearInterval(iv)
@@ -187,6 +197,7 @@ export default function Trip() {
         setCancelErr(error)
         return
       }
+      selfCancel.current = true // إلغاء بمبادرة العميل — لا يُعرض إشعار «ألغى السائق»
       // إن طُبِّقت رسوم، أعلِم العميل قبل العودة للرئيسية.
       if (result && (result.charged > 0 || result.debt > 0)) {
         const parts: string[] = []
@@ -214,6 +225,19 @@ export default function Trip() {
   return (
     <Screen title="رحلتك الآن" bare>
       <SosButton rideId={rideId} role="customer" />
+      {cancelledByOther && (
+        <div className="fixed inset-0 z-40 grid place-items-center bg-black/40 p-6">
+          <div className="w-full max-w-sm space-y-3 rounded-3xl bg-white p-6 text-center shadow-float">
+            <p className="text-lg font-bold text-royal">أُلغيت الرحلة</p>
+            <p className="text-sm text-ink-soft">
+              ألغى السائق هذه الرحلة. نعتذر عن الإزعاج — يمكنك طلب رحلة جديدة الآن.
+            </p>
+            <button className="btn-primary w-full" onClick={finishCancel}>
+              حسناً
+            </button>
+          </div>
+        </div>
+      )}
       <div className="flex h-full flex-col bg-ivory font-plex">
         {/* الخريطة الحيّة تملأ المساحة العليا (بحدّ أدنى حتى لا ينهار ارتفاعها) */}
         <div className="relative min-h-[48vh] flex-1">

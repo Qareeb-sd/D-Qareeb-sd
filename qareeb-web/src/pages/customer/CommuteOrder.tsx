@@ -11,11 +11,13 @@ import {
   inviteShareText,
 } from '@/lib/commute'
 import { subscribeToCommuteMembers } from '@/lib/realtime'
+import { useAuth } from '@/store/AuthContext'
 import type { CommuteOrder as Order, CommuteMember } from '@/lib/types'
 
 /** ملخّص طلب الترحيل: الوجهة/الوقت/الأيام + رابط الدعوة + الأعضاء + الإرسال للسائق. */
 export default function CommuteOrder() {
   const { id = '' } = useParams()
+  const { profile } = useAuth()
   const [order, setOrder] = useState<Order | null>(null)
   const [members, setMembers] = useState<CommuteMember[]>([])
   const [copied, setCopied] = useState(false)
@@ -69,11 +71,19 @@ export default function CommuteOrder() {
     setTimeout(() => setCopied(false), 1800)
   }
 
+  // المنظّم فقط من يرسل الطلب المجمّع للسائق (بقية الركّاب يشاهدون الحالة فقط).
+  const isOrganizer = order.organizer_id != null && order.organizer_id === profile?.id
+
   const dispatch = async () => {
     setBusy(true)
-    await dispatchCommuteOrder(order.id)
-    await load()
-    setBusy(false)
+    try {
+      await dispatchCommuteOrder(order.id)
+      await load()
+    } catch (e) {
+      alert(e instanceof Error ? e.message : 'تعذّر إرسال الطلب للسائق، تحقّق من اتصالك وحاول مجدداً.')
+    } finally {
+      setBusy(false)
+    }
   }
 
   return (
@@ -149,14 +159,18 @@ export default function CommuteOrder() {
         </div>
       </div>
 
-      {/* الإرسال للسائق */}
-      {order.status !== 'dispatched' ? (
+      {/* الإرسال للسائق — المنظّم فقط، والبقية يرون حالة الطلب */}
+      {order.status === 'dispatched' ? (
+        <p className="mt-4 rounded-2xl bg-royal-soft p-4 text-center text-sm text-royal">
+          تم إرسال الطلب المجمّع للسائق — سيتواصل معكم قبل الموعد.
+        </p>
+      ) : isOrganizer ? (
         <button className="btn-primary mt-4 w-full" onClick={dispatch} disabled={busy}>
           {busy ? '…' : `أرسل الطلب المجمّع للسائق (${members.length} ركّاب)`}
         </button>
       ) : (
-        <p className="mt-4 rounded-2xl bg-royal-soft p-4 text-center text-sm text-royal">
-          تم إرسال الطلب المجمّع للسائق — سيتواصل معكم قبل الموعد.
+        <p className="mt-4 rounded-2xl bg-gold-soft p-4 text-center text-sm text-gold-deep">
+          بانتظار أن يرسل المنظّم الطلب المجمّع للسائق.
         </p>
       )}
     </Screen>

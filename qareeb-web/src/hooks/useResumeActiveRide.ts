@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '@/store/AuthContext'
 import { useRide } from '@/store/RideContext'
-import { getActiveCustomerRide } from '@/lib/api'
+import { getActiveCustomerRide, getPendingRateRide } from '@/lib/api'
 
 /**
  * إن كان للعميل رحلة جارية، يستعيد حالتها ويعيده لشاشتها فوراً — يمنع فقدان
@@ -24,7 +24,7 @@ export function useResumeActiveRide(): boolean {
       return
     }
     let alive = true
-    void getActiveCustomerRide(profile.id).then((ride) => {
+    void getActiveCustomerRide(profile.id).then(async (ride) => {
       if (!alive) return
       if (ride) {
         restore(ride)
@@ -32,6 +32,14 @@ export function useResumeActiveRide(): boolean {
           ride.status === 'searching' || ride.status === 'requested' ? '/find-driver' : '/trip',
           { replace: true },
         )
+        return
+      }
+      // لا رحلة جارية — لكن قد تكون رحلة اكتملت والتطبيق مغلق ولم تُقيَّم بعد.
+      const toRate = await getPendingRateRide(profile.id)
+      if (!alive) return
+      if (toRate) {
+        restore(toRate)
+        navigate('/rate', { replace: true })
       } else {
         setChecking(false)
       }
