@@ -6,6 +6,14 @@
 alter table public.drivers add column if not exists accepts_packages  boolean not null default true;
 alter table public.drivers add column if not exists accepts_intercity boolean not null default false;
 
+-- أعمدة الطرد/السفر على الرحلات (احتياطاً إن شُغِّل هذا الملف قبل ملف الميزات) —
+-- بذلك يبقى هذا الملف مستقلّاً ويُعرّف list_available_rides بالفلترة الصحيحة أخيراً.
+alter table public.rides add column if not exists is_package     boolean not null default false;
+alter table public.rides add column if not exists package_note   text;
+alter table public.rides add column if not exists recipient_name text;
+alter table public.rides add column if not exists recipient_phone text;
+alter table public.rides add column if not exists intercity      boolean not null default false;
+
 -- السائق يضبط تفضيلاته.
 create or replace function public.set_driver_service_prefs(p_packages boolean, p_intercity boolean)
 returns void language plpgsql security definer set search_path = public as $$

@@ -27,7 +27,7 @@ import {
   uploadTopupProof,
 } from '@/lib/api'
 import ReceiptUpload from '@/components/ReceiptUpload'
-import { money } from '@/lib/format'
+import { money, toAsciiDigits } from '@/lib/format'
 import type { Settings } from '@/lib/types'
 
 /** محفظة السائق: الرصيد (فلوت) + قيمة المشاوير + مدفوعات العملاء (سحب/تحويل للرصيد). */
@@ -324,7 +324,7 @@ function BankWithdrawForm({ max, onDone }: { max: number; onDone: () => void }) 
           inputMode="numeric"
           placeholder="0"
           value={amount}
-          onChange={(e) => setAmount(e.target.value.replace(/[^\d]/g, ''))}
+          onChange={(e) => setAmount(toAsciiDigits(e.target.value).replace(/[^\d]/g, ''))}
         />
       </div>
       <input
@@ -391,7 +391,7 @@ function ConvertForm({ max, onDone }: { max: number; onDone: () => void }) {
           inputMode="numeric"
           placeholder="0"
           value={amount}
-          onChange={(e) => setAmount(e.target.value.replace(/[^\d]/g, ''))}
+          onChange={(e) => setAmount(toAsciiDigits(e.target.value).replace(/[^\d]/g, ''))}
         />
       </div>
       {err && <p className="text-sm text-danger">{err}</p>}
@@ -477,7 +477,7 @@ function TopupForm({
               inputMode="numeric"
               placeholder="مثال: 20000"
               value={amount}
-              onChange={(e) => setAmount(e.target.value.replace(/[^\d]/g, ''))}
+              onChange={(e) => setAmount(toAsciiDigits(e.target.value).replace(/[^\d]/g, ''))}
               required
             />
           </div>

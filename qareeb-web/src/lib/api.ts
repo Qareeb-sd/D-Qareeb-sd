@@ -62,9 +62,6 @@ const demoSettings: Settings = {
   loyalty_point_value: 0,
   auto_surge_enabled: false,
   auto_surge_max: 2.0,
-  intercity_multiplier: 1.5,
-  package_multiplier: 1.0,
-  package_fee: 0,
   updated_at: new Date().toISOString(),
 }
 
@@ -454,6 +451,26 @@ export async function getActiveCustomerRide(customerId: string): Promise<Ride | 
     .eq('customer_id', customerId)
     .in('status', ['requested', 'searching', 'accepted', 'arrived', 'in_progress'])
     .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle()
+  return data ?? null
+}
+
+/**
+ * أحدث رحلة مكتملة لم يُقيّمها العميل بعد (خلال آخر ساعتين) — لعرض شاشة التقييم
+ * إن اكتملت الرحلة والتطبيق في الخلفية ثم فُتح لاحقاً.
+ */
+export async function getPendingRateRide(customerId: string): Promise<Ride | null> {
+  if (!isSupabaseConfigured) return null
+  const twoHoursAgo = new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString()
+  const { data } = await supabase
+    .from('rides')
+    .select('*')
+    .eq('customer_id', customerId)
+    .eq('status', 'completed')
+    .is('rating', null)
+    .gte('created_at', twoHoursAgo)
+    .order('completed_at', { ascending: false, nullsFirst: false })
     .limit(1)
     .maybeSingle()
   return data ?? null
@@ -1856,10 +1873,15 @@ export async function settleRide(rideId: string): Promise<{ error?: string }> {
 }
 
 /** الدفع المسبق بالمحفظة: يخصم الأجرة فوراً عند تأكيد رحلة «محفظة قريب». */
-export async function prepayRide(rideId: string): Promise<{ error?: string }> {
+export async function prepayRide(
+  rideId: string,
+): Promise<{ error?: string; code?: 'insufficient' }> {
   if (!isSupabaseConfigured) return {}
   const { error } = await supabase.rpc('prepay_ride', { p_ride: rideId })
-  return error ? { error: error.message } : {}
+  if (!error) return {}
+  // رمز مصنّف بدل مطابقة نصّ عربي حرفي (يصمد لو تغيّرت صياغة الرسالة).
+  const insufficient = /غير كاف|insufficient|رصيد غير/i.test(error.message ?? '')
+  return { error: error.message, code: insufficient ? 'insufficient' : undefined }
 }
 
 // ---------- البرومو كود + إعفاء العمولة + VIP ----------

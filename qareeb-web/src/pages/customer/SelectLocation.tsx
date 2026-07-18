@@ -60,7 +60,7 @@ import {
   loadPlaces,
   savePlace,
 } from '@/lib/savedPlaces'
-import { km, mins, money } from '@/lib/format'
+import { km, mins, money, toAsciiDigits } from '@/lib/format'
 import { KHARTOUM } from '@/theme'
 import type { Settings, ServicePricing, PaymentMethod } from '@/lib/types'
 
@@ -454,8 +454,15 @@ export default function SelectLocation() {
 
   const confirm = async () => {
     // توصيل طرد: اسم وهاتف المستلِم إلزاميان قبل الطلب.
-    if (isPackage && (!recipientName.trim() || !recipientPhone.trim())) {
-      return alert('أدخل اسم ورقم المستلِم لتوصيل الطرد.')
+    if (isPackage) {
+      if (!recipientName.trim() || !recipientPhone.trim()) {
+        return alert('أدخل اسم ورقم المستلِم لتوصيل الطرد.')
+      }
+      // رقم هاتف صالح (٩ أرقام على الأقل) حتى يتمكّن السائق من الاتصال بالمستلِم.
+      const digits = toAsciiDigits(recipientPhone).replace(/\D/g, '')
+      if (digits.length < 9) {
+        return alert('أدخل رقم هاتف صحيح للمستلِم (مثال: 09xxxxxxxx).')
+      }
     }
     setBusy(true)
     // منع طلب أكثر من رحلة في وقت واحد — إن وُجدت رحلة نشطة، عُد لمتابعتها.
@@ -519,14 +526,31 @@ export default function SelectLocation() {
       return alert(error ?? 'تعذّر إنشاء الرحلة، حاول مجدداً.')
     }
     // الدفع بالمحفظة: خصم فوري قبل البحث؛ إن فشل (رصيد غير كافٍ) نُلغي الطلب.
+    // مهمّ: يجب أن ينجح الإلغاء وإلا تبقى رحلة غير مدفوعة نشطة يستأنفها التطبيق
+    // ويمكن قبولها وإكمالها بلا خصم — لذا نُعيد المحاولة، وإن تعذّر نمنع المتابعة.
     if (payment === 'wallet') {
       const pay = await prepayRide(id)
       if (pay.error) {
-        await cancelRide(id)
+        let cancelled = false
+        for (let i = 0; i < 3 && !cancelled; i++) {
+          const { error: cErr } = await cancelRide(id)
+          if (!cErr) cancelled = true
+          else if (i < 2) await new Promise((r) => setTimeout(r, 1500))
+        }
         setBusy(false)
-        return alert(pay.error === 'رصيد المحفظة غير كافٍ'
-          ? 'رصيد محفظتك غير كافٍ — اشحن المحفظة أو اختر طريقة دفع أخرى.'
-          : pay.error)
+        if (!cancelled) {
+          // لم نتمكّن من إلغاء الرحلة غير المدفوعة — نُبقيها في السياق ليعيدنا
+          // فحص الرحلة النشطة إليها لمعالجتها، ونُبلّغ العميل بوضوح.
+          setRideId(id)
+          return alert(
+            'تعذّر إكمال الدفع وتعذّر إلغاء الطلب بسبب ضعف الاتصال. تحقّق من شبكتك — سنعيدك للطلب لإلغائه.',
+          )
+        }
+        return alert(
+          pay.code === 'insufficient'
+            ? 'رصيد محفظتك غير كافٍ — اشحن المحفظة أو اختر طريقة دفع أخرى.'
+            : pay.error,
+        )
       }
     }
     // إشعار السائقين المتصلين بالطلب الجديد (أفضل جهد — لا يعطّل التدفّق).
@@ -993,7 +1017,7 @@ export default function SelectLocation() {
                 inputMode="tel"
                 placeholder="رقم هاتف المستلِم *"
                 value={recipientPhone}
-                onChange={(e) => setRecipientPhone(e.target.value)}
+                onChange={(e) => setRecipientPhone(toAsciiDigits(e.target.value).replace(/[^\d+]/g, ''))}
               />
               <p className="text-[11px] text-ink-muted">
                 يتواصل السائق مع المستلِم عند الوصول لنقطة التسليم.

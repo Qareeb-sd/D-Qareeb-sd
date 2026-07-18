@@ -243,14 +243,23 @@ function peakHourBars(hours: { hour: number; value: number }[]): { label: string
   return buckets.map((b) => ({ label: b.label, value: val(b.from) + val(b.from + 1) + val(b.from + 2) }))
 }
 
-/** يعرض إيراد ٣٠ يوماً كأعمدة أسبوعية (٥ أعمدة) لتجنّب ازدحام المحور. */
+/** يجمّع إيراد ٣٠ يوماً في أعمدة أسبوعية (٧ أيام لكلٍّ) لتجنّب ازدحام المحور.
+ *  التسمية نطاق تاريخ (من–إلى) حتى لا يُوهم أنّ العمود أسبوع تقويمي ثابت. */
 function revenueBars(days: { d: string; value: number }[]): { label: string; value: number }[] {
+  const fmt = (iso: string) =>
+    new Date(`${iso}T00:00:00`).toLocaleDateString('ar-SD', { day: 'numeric', month: 'numeric' })
   const out: { label: string; value: number }[] = []
-  for (let i = 0; i < days.length; i += 6) {
-    const chunk = days.slice(i, i + 6)
+  for (let i = 0; i < days.length; i += 7) {
+    const chunk = days.slice(i, i + 7)
+    if (chunk.length === 0) continue
     const sum = chunk.reduce((s, x) => s + x.value, 0)
     const first = chunk[0]?.d ?? ''
-    const label = first ? new Date(`${first}T00:00:00`).toLocaleDateString('ar-SD', { day: 'numeric', month: 'numeric' }) : ''
+    const last = chunk[chunk.length - 1]?.d ?? ''
+    const label = first
+      ? last && last !== first
+        ? `${fmt(first)}–${fmt(last)}`
+        : fmt(first)
+      : ''
     out.push({ label, value: sum })
   }
   return out

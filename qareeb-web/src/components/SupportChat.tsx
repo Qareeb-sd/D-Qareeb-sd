@@ -160,7 +160,11 @@ function Thread({ ticket, onBack }: { ticket: SupportTicket; onBack: () => void 
   const [busy, setBusy] = useState(false)
   const endRef = useRef<HTMLDivElement>(null)
 
-  const { data: messages, refetch } = useQuery({
+  const {
+    data: messages,
+    isError,
+    refetch,
+  } = useQuery({
     queryKey: ['support-messages', ticket.id],
     queryFn: () => listSupportMessages(ticket.id),
     refetchInterval: 8000,
@@ -199,8 +203,19 @@ function Thread({ ticket, onBack }: { ticket: SupportTicket; onBack: () => void 
       </div>
 
       <div className="min-h-[240px] flex-1 space-y-2 overflow-y-auto rounded-2xl bg-ivory p-3">
-        {messages === undefined ? (
+        {isError ? (
+          <div className="py-8 text-center">
+            <p className="text-sm text-ink-soft">تعذّر تحميل الرسائل.</p>
+            <button onClick={() => void refetch()} className="mt-2 text-sm font-bold text-royal">
+              إعادة المحاولة
+            </button>
+          </div>
+        ) : messages === undefined ? (
           <div className="h-16 animate-pulse rounded-xl bg-white" />
+        ) : messages.length === 0 ? (
+          <p className="py-8 text-center text-sm text-ink-muted">
+            لا رسائل بعد — اكتب رسالتك وسيردّ عليك الدعم.
+          </p>
         ) : (
           messages.map((m) => (
             <div
