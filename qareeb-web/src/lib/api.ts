@@ -774,7 +774,7 @@ export async function getAdminStats(): Promise<AdminStats> {
 
 // ---------- الأدمن: قوائم مستقلة ----------
 export interface AdminDriverRow extends Driver {
-  users?: { full_name: string | null; phone: string } | null
+  users?: { full_name: string | null; phone: string; member_no?: number | null } | null
 }
 
 const demoAdminDrivers: AdminDriverRow[] = [
@@ -804,7 +804,7 @@ export async function listAllDrivers(): Promise<AdminDriverRow[]> {
   if (!isSupabaseConfigured) return demoAdminDrivers
   const { data } = await supabase
     .from('drivers')
-    .select('*, users(full_name, phone)')
+    .select('*, users(full_name, phone, member_no)')
     .order('is_online', { ascending: false })
   return (data as AdminDriverRow[]) ?? []
 }

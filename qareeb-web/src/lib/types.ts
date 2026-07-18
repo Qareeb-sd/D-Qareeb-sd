@@ -554,6 +554,7 @@ export interface AdminCustomer {
   rides_count: number
   banned?: boolean
   ban_note?: string | null
+  member_no?: number | null
   created_at: string
 }
 

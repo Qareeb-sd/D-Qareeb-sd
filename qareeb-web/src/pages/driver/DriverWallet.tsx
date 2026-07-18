@@ -167,11 +167,11 @@ export default function DriverWallet() {
           />
         )}
 
-        {/* قيمة المشاوير */}
+        {/* قيمة المشاوير — «…» أثناء التحميل بدل وميض 0 (قد يُقرأ كأنه لا أرباح) */}
         <div className="mt-5 grid grid-cols-3 gap-3">
-          <StatCard value={money(stats?.today ?? 0)} label="قيمة مشاوير اليوم" />
-          <StatCard value={money(stats?.month ?? 0)} label="قيمة الشهر" />
-          <StatCard value={money(stats?.total ?? 0)} label="القيمة الكليّة" />
+          <StatCard value={stats ? money(stats.today) : '…'} label="قيمة مشاوير اليوم" />
+          <StatCard value={stats ? money(stats.month) : '…'} label="قيمة الشهر" />
+          <StatCard value={stats ? money(stats.total) : '…'} label="القيمة الكليّة" />
         </div>
         <p className="mt-2 text-center text-[11px] text-ink-muted">
           إجمالي رحلاتك المكتملة: {stats?.count ?? 0}

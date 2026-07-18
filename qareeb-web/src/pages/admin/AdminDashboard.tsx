@@ -41,7 +41,7 @@ import { StatCard, ChartCard, StatusBadge, BarChart, DonutChart } from '@/compon
 import IncentivesManager from '@/components/admin/IncentivesManager'
 import DriverPerformance from '@/components/admin/DriverPerformance'
 import { services } from '@/data/services'
-import { money, num } from '@/lib/format'
+import { money, num, memberCode } from '@/lib/format'
 import { useAuth } from '@/store/AuthContext'
 import {
   getAdminStats,
@@ -448,7 +448,6 @@ export default function AdminDashboard() {
         listServicePricing(),
         listDriverApplications('pending'),
         listAllRides(500),
-        adminListRides(1500), // نطاق أوسع لتقارير الفترات (فلترة التاريخ محليّاً)
         getAdminAnalytics(),
         getAdminDeepAnalytics(30),
       ])
@@ -460,9 +459,8 @@ export default function AdminDashboard() {
       if (r[4].status === 'fulfilled') setPricing(r[4].value)
       if (r[5].status === 'fulfilled') setDriverApps(r[5].value)
       if (r[6].status === 'fulfilled') setRides(r[6].value)
-      if (r[7].status === 'fulfilled') setDetailRides(r[7].value)
-      if (r[8].status === 'fulfilled') setAnalyticsRaw(r[8].value)
-      if (r[9].status === 'fulfilled') setDeepAnalytics(r[9].value)
+      if (r[7].status === 'fulfilled') setAnalyticsRaw(r[7].value)
+      if (r[8].status === 'fulfilled') setDeepAnalytics(r[8].value)
       // بعض الاستدعاءات خاصّة بالمالك (المالية/التحليلات المعمّقة/تفاصيل الرحلات)،
       // فترفضها القاعدة للموظّف محدود الصلاحية — لا نُظهر ذلك كخطأ تحميل.
       const realFailure = r.some((x) => {
@@ -528,10 +526,10 @@ export default function AdminDashboard() {
     // نوقف الاستقصاء عندما تكون اللوحة في الخلفية (تبويب مخفي) — يوفّر ضغط الشبكة
     // والخادم طوال ساعات العمل، ويستأنف فور عودة الأدمن للتبويب.
     const active = () => typeof document === 'undefined' || !document.hidden
-    // الطلبات المعلّقة: استقصاء سريع (٤ ثوانٍ) ليظهر الطلب الجديد فوراً تقريباً.
+    // الطلبات المعلّقة: استقصاء كل ١٢ ثانية (كافٍ لظهور الطلب الجديد) — أخفّ على الخادم.
     const ivFast = setInterval(() => {
       if (active()) void refreshPending()
-    }, 4000)
+    }, 12000)
     // الإحصاءات والملخّص المالي أثقل → استقصاء أبطأ (٣٠ ثانية).
     const ivSlow = setInterval(() => {
       if (!active()) return
@@ -584,7 +582,9 @@ export default function AdminDashboard() {
         void adminListRewardRedemptions().then(setRewardRedemptions)
     }
     if (tab === 'support' && tickets === null) void adminListSupportTickets().then(setTickets)
-  }, [tab, drivers, customers, complaints, announcements, rewards, rewardRedemptions, tickets])
+    // قائمة الرحلات التفصيلية (1500) ثقيلة — تُحمّل عند فتح تبويب الرحلات فقط.
+    if (tab === 'rides' && detailRides === null) void adminListRides(1500).then(setDetailRides)
+  }, [tab, drivers, customers, complaints, announcements, rewards, rewardRedemptions, tickets, detailRides])
 
   // تحديث حيّ لمحادثة الدعم المفتوحة + قائمة التذاكر (تظهر ردود العميل الجديدة).
   useEffect(() => {
@@ -750,11 +750,13 @@ export default function AdminDashboard() {
   })
   const filteredDrivers = (drivers ?? []).filter((d) => {
     const q = driverQuery.trim()
+    const code = memberCode('driver', d.users?.member_no)
     const matchesQuery =
       !q ||
       (d.users?.full_name ?? '').includes(q) ||
       (d.users?.phone ?? '').includes(q) ||
-      (d.plate_number ?? '').includes(q)
+      (d.plate_number ?? '').includes(q) ||
+      code.toLowerCase().includes(q.toLowerCase())
     const matchesFilter =
       driverFilter === 'all' ||
       (driverFilter === 'online' ? d.is_online : !d.is_online)
@@ -763,7 +765,13 @@ export default function AdminDashboard() {
   const onlineDriversCount = (drivers ?? []).filter((d) => d.is_online).length
   const filteredCustomers = (customers ?? []).filter((c) => {
     const q = customerQuery.trim()
-    return !q || (c.full_name ?? '').includes(q) || (c.phone ?? '').includes(q)
+    const code = memberCode('customer', c.member_no)
+    return (
+      !q ||
+      (c.full_name ?? '').includes(q) ||
+      (c.phone ?? '').includes(q) ||
+      code.toLowerCase().includes(q.toLowerCase())
+    )
   })
 
   const resolveOneComplaint = async (id: string) => {
@@ -875,6 +883,7 @@ export default function AdminDashboard() {
       `السائقون-${day()}`,
       [
         { key: 'name', label: 'الاسم' },
+        { key: 'code', label: 'رقم العضوية' },
         { key: 'phone', label: 'الهاتف' },
         { key: 'vehicle', label: 'المركبة' },
         { key: 'plate', label: 'اللوحة' },
@@ -883,6 +892,7 @@ export default function AdminDashboard() {
       ],
       filteredDrivers.map((d) => ({
         name: d.users?.full_name ?? '',
+        code: memberCode('driver', d.users?.member_no),
         phone: d.users?.phone ?? '',
         vehicle: getService(d.vehicle_type)?.name ?? d.vehicle_type,
         plate: d.plate_number ?? '',
@@ -895,6 +905,7 @@ export default function AdminDashboard() {
       `العملاء-${day()}`,
       [
         { key: 'name', label: 'الاسم' },
+        { key: 'code', label: 'رقم العضوية' },
         { key: 'phone', label: 'الهاتف' },
         { key: 'rating', label: 'التقييم' },
         { key: 'ratings', label: 'عدد التقييمات' },
@@ -902,6 +913,7 @@ export default function AdminDashboard() {
       ],
       filteredCustomers.map((c) => ({
         name: c.full_name ?? '',
+        code: memberCode('customer', c.member_no),
         phone: c.phone,
         rating: c.rating ?? '',
         ratings: c.ratings_count,
@@ -1191,6 +1203,7 @@ export default function AdminDashboard() {
   }
 
   const fulfillRedemption = async (id: string) => {
+    if (!window.confirm('تأكيد تسليم هذه المكافأة للعميل؟ لا يمكن التراجع.')) return
     setRewardBusy(true)
     const { error } = await adminFulfillRedemption(id)
     setRewardBusy(false)
@@ -2304,7 +2317,7 @@ export default function AdminDashboard() {
                   className="field w-full pr-9"
                   value={driverQuery}
                   onChange={(e) => setDriverQuery(e.target.value)}
-                  placeholder="بحث بالاسم أو الهاتف أو اللوحة"
+                  placeholder="بحث بالاسم أو الهاتف أو اللوحة أو رقم العضوية (D…)"
                 />
               </div>
             </div>
@@ -2367,8 +2380,13 @@ export default function AdminDashboard() {
                           </span>
                         )}
                       </p>
-                      <p className="truncate text-xs text-ink-muted" dir="ltr">
-                        {d.users?.phone ?? '—'}
+                      <p className="flex items-center gap-2 text-xs text-ink-muted">
+                        <span dir="ltr">{d.users?.phone ?? '—'}</span>
+                        {d.users?.member_no != null && (
+                          <span className="rounded bg-royal-soft px-1.5 py-0.5 font-bold text-royal" dir="ltr">
+                            {memberCode('driver', d.users.member_no)}
+                          </span>
+                        )}
                       </p>
                       {d.admin_note && (d.suspended || (d.frozen_until && new Date(d.frozen_until) > new Date())) && (
                         <p className="truncate text-[11px] text-danger">📝 {d.admin_note}</p>
@@ -2497,7 +2515,7 @@ export default function AdminDashboard() {
                   className="field w-full pr-9"
                   value={customerQuery}
                   onChange={(e) => setCustomerQuery(e.target.value)}
-                  placeholder="بحث بالاسم أو الهاتف"
+                  placeholder="بحث بالاسم أو الهاتف أو رقم العضوية (C…)"
                 />
               </div>
             </div>
@@ -2523,8 +2541,13 @@ export default function AdminDashboard() {
                           </span>
                         )}
                       </p>
-                      <p className="truncate text-xs text-ink-muted" dir="ltr">
-                        {c.phone}
+                      <p className="flex items-center gap-2 text-xs text-ink-muted">
+                        <span dir="ltr">{c.phone}</span>
+                        {c.member_no != null && (
+                          <span className="rounded bg-green-soft px-1.5 py-0.5 font-bold text-green" dir="ltr">
+                            {memberCode('customer', c.member_no)}
+                          </span>
+                        )}
                       </p>
                       {c.banned && c.ban_note && (
                         <p className="truncate text-[11px] text-danger">📝 {c.ban_note}</p>
