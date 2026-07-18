@@ -4,7 +4,7 @@ import { Building2, Clock, Calendar, Users } from 'lucide-react'
 import Screen from '@/components/Screen'
 import LocationPicker from '@/components/LocationPicker'
 import { getService } from '@/data/services'
-import { getCommuteOrderByCode, joinCommuteOrder, listCommuteMembers } from '@/lib/commute'
+import { getCommuteOrderByCode, joinCommuteOrder, commuteMemberCount } from '@/lib/commute'
 import { KHARTOUM } from '@/theme'
 import type { CommuteOrder } from '@/lib/types'
 
@@ -24,7 +24,7 @@ export default function CommuteJoin() {
   useEffect(() => {
     void getCommuteOrderByCode(code).then(async (o) => {
       setOrder(o)
-      if (o) setCount((await listCommuteMembers(o.id)).length)
+      if (o) setCount(await commuteMemberCount(o.id))
     })
   }, [code])
 
@@ -64,7 +64,7 @@ export default function CommuteJoin() {
     if (!name.trim() || full) return
     setBusy(true)
     // إعادة التحقق من السعة قبل الإضافة (قد ينضمّ آخرون في نفس اللحظة).
-    const current = (await listCommuteMembers(order.id)).length
+    const current = await commuteMemberCount(order.id)
     if (current >= seats) {
       setCount(current)
       setBusy(false)

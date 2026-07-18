@@ -48,9 +48,15 @@ export default function DriverCommute() {
 
   useEffect(() => {
     void load()
-    // Realtime: حدّث القوائم فور إرسال/قبول طلب ترحيل.
+    // Realtime لطلباتك المقبولة (تصلك كسائق مُسنَد). أما الطلبات المُرسَلة
+    // المتاحة فلا تصل عبر Realtime بعد إحكام الخصوصية (لست طرفاً فيها بعد)،
+    // لذا نستطلع كل ٢٠ ثانية لتحديث المتاح.
     const unsub = subscribeToCommuteOrders(load)
-    return unsub
+    const iv = setInterval(() => void load(), 20000)
+    return () => {
+      unsub()
+      clearInterval(iv)
+    }
   }, [load])
 
   const empty = available.length === 0 && mine.length === 0
