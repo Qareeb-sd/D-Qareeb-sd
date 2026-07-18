@@ -9,8 +9,10 @@ import {
   listDriverCommutes,
   listCommuteMembers,
   acceptCommuteOrder,
+  settleCommuteDay,
 } from '@/lib/commute'
 import { subscribeToCommuteOrders } from '@/lib/realtime'
+import { money } from '@/lib/format'
 import type { CommuteOrder, CommuteMember } from '@/lib/types'
 
 /** واجهة السائق لطلبات الترحيل: المقبولة لديك + المتاحة للقبول. */
@@ -43,6 +45,19 @@ export default function DriverCommute() {
     const { error } = await acceptCommuteOrder(orderId, driverId)
     setBusyId(null)
     if (error) return alert(error)
+    void load()
+  }
+
+  const settleDay = async (orderId: string) => {
+    setBusyId(orderId)
+    const { result, error } = await settleCommuteDay(orderId)
+    setBusyId(null)
+    if (error) return alert(error)
+    const r = result ?? { wallet_paid: 0, cash: 0, skipped: 0 }
+    alert(
+      `تم تحصيل اليوم: ${r.wallet_paid} محفظة · ${r.cash} كاش` +
+        (r.skipped ? ` · ${r.skipped} تعذّر (رصيد غير كافٍ)` : ''),
+    )
     void load()
   }
 
@@ -82,7 +97,14 @@ export default function DriverCommute() {
               <section className="space-y-3">
                 <h2 className="text-sm font-bold text-ink-soft">رحلاتك المقبولة</h2>
                 {mine.map((o) => (
-                  <CommuteCard key={o.id} order={o} members={membersByOrder[o.id] ?? []} accepted />
+                  <CommuteCard
+                    key={o.id}
+                    order={o}
+                    members={membersByOrder[o.id] ?? []}
+                    accepted
+                    busy={busyId === o.id}
+                    onSettleDay={() => settleDay(o.id)}
+                  />
                 ))}
               </section>
             )}
@@ -116,14 +138,18 @@ function CommuteCard({
   accepted,
   busy,
   onAccept,
+  onSettleDay,
 }: {
   order: CommuteOrder
   members: CommuteMember[]
   accepted?: boolean
   busy?: boolean
   onAccept?: () => void
+  onSettleDay?: () => void
 }) {
   const service = getService(o.service_id)
+  const today = new Date().toISOString().slice(0, 10)
+  const settledToday = o.last_settled === today
   return (
     <div className="card p-4">
       <div className="flex items-center justify-between">
@@ -154,6 +180,15 @@ function CommuteCard({
                 {i + 1}
               </span>
               <span className="flex-1">{m.name}</span>
+              {m.fare != null && m.fare > 0 && (
+                <span className="text-[11px] font-bold text-royal">
+                  {money(m.fare)}
+                  <span className="font-normal text-ink-muted">
+                    {' '}
+                    · {m.pay_method === 'wallet' ? 'محفظة' : 'كاش'}
+                  </span>
+                </span>
+              )}
               <span className="text-xs text-ink-muted">{m.home_address ?? 'منزل'}</span>
             </li>
           ))}
@@ -161,9 +196,19 @@ function CommuteCard({
       </div>
 
       {accepted ? (
-        <p className="mt-3 text-center text-xs text-ink-muted">
-          تواصَل مع الركّاب وابدأ رحلة الترحيل في موعدها.
-        </p>
+        o.plan === 'monthly' ? (
+          <p className="mt-3 rounded-xl bg-royal-soft p-2.5 text-center text-xs text-royal">
+            اشتراك شهري مدفوع مقدّماً — يُصرف لك نهاية الشهر. تواصَل مع الركّاب وابدأ في موعدها.
+          </p>
+        ) : (
+          <button
+            onClick={onSettleDay}
+            disabled={busy || settledToday}
+            className="btn-driver mt-3 w-full disabled:opacity-60"
+          >
+            {busy ? '…' : settledToday ? 'تم تحصيل اليوم ✓' : 'تم ترحيل اليوم (تحصيل)'}
+          </button>
+        )
       ) : (
         <button onClick={onAccept} disabled={busy} className="btn-driver mt-3 w-full">
           {busy ? '…' : 'قبول الترحيل'}

@@ -13,6 +13,9 @@ export interface Place {
   address: string
 }
 
+export type CommutePlan = 'daily' | 'monthly'
+export type CommutePayMethod = 'cash' | 'wallet'
+
 export interface NewCommuteInput {
   service_id: string
   dest: Place
@@ -20,12 +23,15 @@ export interface NewCommuteInput {
   return_time: string | null
   days: string[]
   round_trip: boolean
-  organizer: { name: string; home: Place }
+  plan: CommutePlan
+  organizer: { name: string; home: Place; fare: number; pay_method: CommutePayMethod }
 }
 
 export interface JoinInput {
   name: string
   home: Place
+  fare: number
+  pay_method: CommutePayMethod
 }
 
 // ------------------------- مخزن المعاينة (localStorage) -------------------------
@@ -62,6 +68,7 @@ export async function createCommuteOrder(
       return_time: input.return_time,
       days: input.days,
       round_trip: input.round_trip,
+      plan: input.plan,
       invite_code: invite(),
       status: 'forming',
       driver_id: null,
@@ -76,6 +83,8 @@ export async function createCommuteOrder(
       home_lng: input.organizer.home.lng,
       home_address: input.organizer.home.address,
       is_organizer: true,
+      fare: input.organizer.fare,
+      pay_method: input.plan === 'monthly' ? 'wallet' : input.organizer.pay_method,
       created_at: new Date().toISOString(),
     }
     lsSet(LS_MEMBERS, [...lsGet<CommuteMember>(LS_MEMBERS), member])
@@ -94,21 +103,29 @@ export async function createCommuteOrder(
       return_time: input.return_time,
       days: input.days,
       round_trip: input.round_trip,
+      plan: input.plan,
     })
     .select('*')
     .single()
   if (error || !order) throw new Error(error?.message ?? 'تعذّر إنشاء الطلب')
 
-  // user_id = المنظّم (لازم لسياسة إدراج/قراءة الأعضاء بعد إحكام الخصوصية).
-  await supabase.from('commute_members').insert({
-    order_id: order.id,
-    user_id: organizerId,
-    name: input.organizer.name,
-    home_lat: input.organizer.home.lat,
-    home_lng: input.organizer.home.lng,
-    home_address: input.organizer.home.address,
-    is_organizer: true,
-  })
+  // المنظّم عضو أيضاً: يومي → إدراج مباشر؛ شهري → دفع مقدّم عبر دالة آمنة.
+  const org = input.organizer
+  const home = { ...org.home }
+  if (input.plan === 'monthly') {
+    const { error: mErr } = await supabase.rpc('commute_join_monthly', {
+      p_order: order.id, p_name: org.name, p_home_lat: home.lat, p_home_lng: home.lng,
+      p_home_addr: home.address, p_fare: org.fare, p_organizer: true,
+    })
+    if (mErr) throw new Error(mErr.message)
+  } else {
+    const { error: iErr } = await supabase.from('commute_members').insert({
+      order_id: order.id, user_id: organizerId, name: org.name,
+      home_lat: home.lat, home_lng: home.lng, home_address: home.address,
+      is_organizer: true, fare: org.fare, pay_method: org.pay_method,
+    })
+    if (iErr) throw new Error(iErr.message)
+  }
   return order as CommuteOrder
 }
 
@@ -157,6 +174,7 @@ export async function commuteMemberCount(orderId: string): Promise<number> {
 export async function joinCommuteOrder(
   orderId: string,
   input: JoinInput,
+  plan: CommutePlan = 'daily',
 ): Promise<{ error?: string }> {
   if (!isSupabaseConfigured) {
     const member: CommuteMember = {
@@ -167,19 +185,31 @@ export async function joinCommuteOrder(
       home_lng: input.home.lng,
       home_address: input.home.address,
       is_organizer: false,
+      fare: input.fare,
+      pay_method: plan === 'monthly' ? 'wallet' : input.pay_method,
       created_at: new Date().toISOString(),
     }
     lsSet(LS_MEMBERS, [...lsGet<CommuteMember>(LS_MEMBERS), member])
     return {}
   }
+  // شهري → دفع مقدّم من المحفظة عبر دالة آمنة؛ يومي → إدراج (يُحصَّل يوماً بيوم).
+  if (plan === 'monthly') {
+    const { error } = await supabase.rpc('commute_join_monthly', {
+      p_order: orderId, p_name: input.name, p_home_lat: input.home.lat, p_home_lng: input.home.lng,
+      p_home_addr: input.home.address, p_fare: input.fare, p_organizer: false,
+    })
+    return error ? { error: error.message } : {}
+  }
   const { error } = await supabase.from('commute_members').insert({
     order_id: orderId,
-    user_id: await currentUid(), // يربط الصفّ بمُدرِجه (لازم لسياسة الإدراج/القراءة)
+    user_id: await currentUid(),
     name: input.name,
     home_lat: input.home.lat,
     home_lng: input.home.lng,
     home_address: input.home.address,
     is_organizer: false,
+    fare: input.fare,
+    pay_method: input.pay_method,
   })
   return error ? { error: error.message } : {}
 }
@@ -224,6 +254,16 @@ export async function listDispatchedCommutes(): Promise<CommuteOrder[]> {
   // عبر دالة آمنة — الطلبات لم تعد قابلة للقراءة المباشرة لغير المشاركين.
   const { data } = await supabase.rpc('list_dispatched_commutes')
   return (data as CommuteOrder[]) ?? []
+}
+
+/** السائق يؤكّد «تم ترحيل اليوم» فيُحصَّل يوم كل راكب (مرّة واحدة/يوم). */
+export async function settleCommuteDay(
+  orderId: string,
+): Promise<{ result?: { wallet_paid: number; cash: number; skipped: number }; error?: string }> {
+  if (!isSupabaseConfigured) return { result: { wallet_paid: 0, cash: 0, skipped: 0 } }
+  const { data, error } = await supabase.rpc('commute_settle_day', { p_order: orderId })
+  if (error) return { error: error.message }
+  return { result: data as { wallet_paid: number; cash: number; skipped: number } }
 }
 
 /** رحلات الترحيل التي قبِلها السائق (active) — لواجهته. */

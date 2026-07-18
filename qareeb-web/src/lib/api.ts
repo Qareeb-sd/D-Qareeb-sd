@@ -62,6 +62,10 @@ const demoSettings: Settings = {
   loyalty_point_value: 0,
   auto_surge_enabled: false,
   auto_surge_max: 2.0,
+  commute_enabled: true,
+  commute_commission_rate: null,
+  commute_discount: 0,
+  commute_weeks_per_month: 4,
   updated_at: new Date().toISOString(),
 }
 
@@ -1259,6 +1263,17 @@ export async function updateSettings(
     .update({ ...patch, updated_at: new Date().toISOString() })
     .eq('id', 1)
   return error ? { error: error.message } : {}
+}
+
+/** صرف اشتراكات الترحيل الشهرية المستحقّة (للسائقين) — أدمن. */
+export async function settleDueCommuteMonths(): Promise<{
+  result?: { paid_drivers: number; refunded: number }
+  error?: string
+}> {
+  if (!isSupabaseConfigured) return { result: { paid_drivers: 0, refunded: 0 } }
+  const { data, error } = await supabase.rpc('settle_due_commute_months')
+  if (error) return { error: error.message }
+  return { result: data as { paid_drivers: number; refunded: number } }
 }
 
 // ============================================================

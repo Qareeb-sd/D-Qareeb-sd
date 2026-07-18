@@ -148,6 +148,10 @@ export interface Settings {
   auto_surge_max: number // سقف مضاعف الذروة التلقائي
   // ملاحظة: الطرود والسفر بين المدن تُسعَّر الآن كخدمات مستقلّة بالمسافة/الزمن/الفترة
   // (لا مضاعفات) — أعمدة intercity_multiplier/package_multiplier/package_fee مهجورة.
+  commute_enabled?: boolean // تفعيل تسعير الترحيل
+  commute_commission_rate?: number | null // عمولة المنصّة على الترحيل (0..1)؛ null = عمولة الرحلات
+  commute_discount?: number // خصم على سعر الترحيل (0..1)
+  commute_weeks_per_month?: number // أسابيع الشهر لحساب الاشتراك الشهري
   updated_at: string
 }
 
@@ -355,6 +359,8 @@ export interface CommuteOrder {
   invite_code: string
   status: CommuteStatus
   driver_id: string | null // السائق الذي قبِل الطلب
+  plan?: 'daily' | 'monthly' // خطّة الدفع (يومي/شهري)
+  last_settled?: string | null // آخر يوم سُوّي فيه التحصيل اليومي
   created_at: string
 }
 
@@ -367,6 +373,11 @@ export interface CommuteMember {
   home_lng: number
   home_address: string | null
   is_organizer: boolean
+  fare?: number | null // أجرة اليوم (ذهاب وإياب، بعد الخصم)
+  pay_method?: 'cash' | 'wallet' | null // طريقة الدفع اليومي
+  held?: number // المحجوز للاشتراك الشهري
+  month_start?: string | null // بداية تغطية الاشتراك الشهري
+  sub_status?: 'active' | 'ended' | 'refunded' | null // حالة الاشتراك الشهري
   created_at: string
 }
 

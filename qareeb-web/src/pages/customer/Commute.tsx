@@ -9,6 +9,11 @@ import VehicleImage from '@/components/VehicleImage'
 import { services } from '@/data/services'
 import { useAuth } from '@/store/AuthContext'
 import { createCommuteOrder, joinCommuteOrder } from '@/lib/commute'
+import { getServicePricing, listServicePeriods, getSettings } from '@/lib/api'
+import { memberDailyFare, periodFromTime, monthlyTotal } from '@/lib/commutePricing'
+import { type PeriodRate } from '@/lib/pricing'
+import { money } from '@/lib/format'
+import type { Settings } from '@/lib/types'
 import { KHARTOUM } from '@/theme'
 
 const days = ['السبت', 'الأحد', 'الاثنين', 'الثلاثاء', 'الأربعاء', 'الخميس', 'الجمعة']
@@ -47,9 +52,39 @@ export default function Commute() {
   const [roundTrip, setRoundTrip] = useState(true)
   const [busy, setBusy] = useState(false)
   const [joinCode, setJoinCode] = useState('')
+  // خطّة الدفع (يومي/شهري) + طريقة دفع المنظّم لليومي.
+  const [plan, setPlan] = useState<'daily' | 'monthly'>('daily')
+  const [payMethod, setPayMethod] = useState<'cash' | 'wallet'>('cash')
+  const [periodRate, setPeriodRate] = useState<PeriodRate | null>(null)
+  const [settings, setSettings] = useState<Settings | null>(null)
 
   // سعة المركبة = عدد نقاط الانطلاق (المنازل) الممكنة للذهاب/الإياب.
   const seats = services.find((s) => s.id === serviceId)?.seats ?? 4
+
+  // تسعير فترة المركبة حسب وقت الذهاب (يُعاد حسابه عند تغيّر المركبة/الوقت).
+  useEffect(() => {
+    void Promise.all([getServicePricing(serviceId), listServicePeriods(), getSettings()]).then(
+      ([, periods, s]) => {
+        setSettings(s)
+        const per = periodFromTime(time || '07:00')
+        const row = periods.find((r) => r.service_id === serviceId && r.period === per)
+        setPeriodRate(
+          row
+            ? { base_fare: row.base_fare, per_km: row.per_km, per_min: row.per_min, min_fare: row.min_fare }
+            : null,
+        )
+      },
+    )
+  }, [serviceId, time])
+
+  const commuteEnabled = settings?.commute_enabled ?? true
+  const discount = settings?.commute_discount ?? 0
+  const weeks = settings?.commute_weeks_per_month ?? 4
+  // أجرة نقطة (منزل → الوجهة، ذهاب/إياب، بعد الخصم) — 0 إن لم يتوفّر التسعير.
+  const dailyFareAt = (pos: google.maps.LatLngLiteral) =>
+    periodRate ? memberDailyFare(pos, dest, periodRate, roundTrip, discount) : 0
+  const orgDaily = dailyFareAt(points[0]?.pos ?? KHARTOUM)
+  const orgMonthly = monthlyTotal(orgDaily, selected.length, weeks)
 
   // عند اختيار مركبة أصغر: لا تتجاوز النقاط سعتها.
   useEffect(() => {
@@ -102,24 +137,36 @@ export default function Commute() {
           return_time: roundTrip ? returnTime : null,
           days: selected,
           round_trip: roundTrip,
+          plan,
           organizer: {
             name: profile?.full_name?.trim() || 'المنظّم',
             home: { ...points[0].pos, address: points[0].addr || 'منزل المنظّم' },
+            fare: orgDaily,
+            pay_method: plan === 'monthly' ? 'wallet' : payMethod,
           },
         },
         profile?.id ?? null,
       )
-      // بقية نقاط الانطلاق تُسجَّل كأعضاء في نفس الطلب (نتابع رغم فشل أحدهم).
+      // في اليومي: بقية النقاط تُسجَّل كأعضاء (دفع كاش للسائق افتراضياً). في الشهري
+      // ينضمّ كل راكب برمز الدعوة ويدفع اشتراكه من محفظته (لا تُضاف نقاط الآخرين هنا).
       let joinFails = 0
-      for (let i = 1; i < points.length; i++) {
-        const p = points[i]
-        try {
-          await joinCommuteOrder(order.id, {
-            name: p.name.trim() || `راكب ${i + 1}`,
-            home: { ...p.pos, address: p.addr || `نقطة انطلاق ${i + 1}` },
-          })
-        } catch {
-          joinFails++
+      if (plan === 'daily') {
+        for (let i = 1; i < points.length; i++) {
+          const p = points[i]
+          try {
+            await joinCommuteOrder(
+              order.id,
+              {
+                name: p.name.trim() || `راكب ${i + 1}`,
+                home: { ...p.pos, address: p.addr || `نقطة انطلاق ${i + 1}` },
+                fare: dailyFareAt(p.pos),
+                pay_method: 'cash',
+              },
+              'daily',
+            )
+          } catch {
+            joinFails++
+          }
         }
       }
       setBusy(false)
@@ -201,6 +248,83 @@ export default function Commute() {
           </p>
         </div>
 
+        {/* خطّة الدفع + التسعير */}
+        {commuteEnabled && (
+          <div className="card space-y-3 p-4">
+            <p className="label">خطّة الدفع</p>
+            <div className="grid grid-cols-2 gap-2">
+              {(
+                [
+                  ['daily', 'يومي', 'تُدفع أجرة كل يوم — كاش للسائق أو من المحفظة'],
+                  ['monthly', 'شهري', 'تدفع اشتراك الشهر مقدّماً من محفظتك'],
+                ] as const
+              ).map(([id, label, desc]) => (
+                <button
+                  key={id}
+                  onClick={() => setPlan(id)}
+                  className={`rounded-2xl border p-3 text-right transition ${
+                    plan === id ? 'border-royal bg-royal-soft' : 'border-hairline bg-white'
+                  }`}
+                >
+                  <p className="text-sm font-bold text-royal">{label}</p>
+                  <p className="mt-0.5 text-[11px] text-ink-muted">{desc}</p>
+                </button>
+              ))}
+            </div>
+
+            {/* طريقة دفع المنظّم (اليومي فقط) */}
+            {plan === 'daily' && (
+              <div>
+                <p className="label">طريقة دفعك (المنظّم)</p>
+                <div className="grid grid-cols-2 gap-2">
+                  {(
+                    [
+                      ['cash', 'كاش للسائق'],
+                      ['wallet', 'من محفظتي'],
+                    ] as const
+                  ).map(([id, label]) => (
+                    <button
+                      key={id}
+                      onClick={() => setPayMethod(id)}
+                      className={`rounded-xl border px-3 py-2 text-sm font-bold transition ${
+                        payMethod === id ? 'border-royal bg-royal text-white' : 'border-hairline bg-white text-ink-soft'
+                      }`}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* ملخّص سعرك */}
+            {periodRate ? (
+              <div className="rounded-2xl bg-gold-soft p-3 text-sm text-ink">
+                {plan === 'daily' ? (
+                  <p>
+                    أجرتك اليومية <span className="font-bold text-sand-ink">{money(orgDaily)}</span>
+                    {roundTrip ? ' (ذهاباً وإياباً)' : ''}
+                  </p>
+                ) : (
+                  <>
+                    <p>
+                      اشتراكك الشهري <span className="font-bold text-sand-ink">{money(orgMonthly)}</span>
+                    </p>
+                    <p className="mt-0.5 text-[11px] text-ink-muted">
+                      = {money(orgDaily)} × {selected.length} يوم/أسبوع × {weeks} أسابيع — يُخصم مقدّماً من محفظتك.
+                    </p>
+                  </>
+                )}
+                {discount > 0 && (
+                  <p className="mt-0.5 text-[11px] text-green">شامل خصم الترحيل {Math.round(discount * 100)}%</p>
+                )}
+              </div>
+            ) : (
+              <p className="text-[11px] text-ink-muted">حدّد منزلك والوجهة لعرض السعر.</p>
+            )}
+          </div>
+        )}
+
         {/* نقاط الانطلاق (منازل الركاب) — حتى سعة المركبة */}
         <div className="card p-4">
           <div className="mb-1 flex items-center justify-between">
@@ -272,13 +396,18 @@ export default function Commute() {
             ))}
           </div>
 
-          {points.length < seats && (
+          {plan === 'daily' && points.length < seats && (
             <button
               onClick={addPoint}
               className="btn-outline mt-3 flex w-full items-center justify-center gap-1.5"
             >
               <Plus className="h-4 w-4" strokeWidth={2} /> إضافة نقطة انطلاق ({points.length}/{seats})
             </button>
+          )}
+          {plan === 'monthly' && (
+            <p className="mt-3 rounded-xl bg-gold-soft p-2.5 text-center text-[11px] text-ink-muted">
+              في الاشتراك الشهري ينضمّ كل راكب برمز الدعوة ويدفع اشتراكه من محفظته.
+            </p>
           )}
 
           {/* خريطة النقطة النشطة */}
