@@ -4292,8 +4292,9 @@ export default function AdminDashboard() {
                 <p className="text-lg font-bold text-royal">الترحيل — المشوار اليومي المشترك</p>
               </div>
               <p className="text-sm text-ink-soft">
-                سعر كل راكب يُحسب كالمشوار العادي: من <span className="font-bold">منزله إلى الوجهة</span>{' '}
-                (ذهاباً وإياباً) بأسعار فترة المركبة المختارة، ناقص خصم الترحيل. للترحيل خطّتان:
+                سعر كل راكب = <span className="font-bold">سعر المشوار العادي</span> (من منزله إلى
+                الوجهة بأسعار فترة المركبة)، <span className="font-bold">×2 إن كان ذهاباً وإياباً</span>،{' '}
+                <span className="font-bold">ناقص خصم الترحيل</span>. للترحيل خطّتان:
               </p>
               <div className="mt-3 grid gap-2 sm:grid-cols-2">
                 <div className="rounded-2xl border border-hairline bg-ivory/60 p-3">

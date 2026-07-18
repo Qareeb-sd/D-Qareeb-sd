@@ -1,7 +1,7 @@
 /**
- * تسعير الترحيل — يعيد استخدام منطق المشوار العادي:
- *   أجرة الراكب اليومية = (منزله → الوجهة) بأسعار فترة المركبة، ×2 ذهاباً وإياباً،
- *   ناقص خصم الترحيل الاختياري، مقرّبة لأقرب 100.
+ * تسعير الترحيل — نفس سعر المشوار العادي، ناقص خصم الترحيل:
+ *   أجرة الراكب اليومية = سعر المشوار (منزله → الوجهة) بأسعار فترة المركبة،
+ *   ×2 إن كان ذهاباً وإياباً (رحلتان)، ثم × (1 − الخصم)، مقرّبة لأقرب 100.
  *   الإجمالي الشهري = الأجرة اليومية × أيام الأسبوع × أسابيع الشهر.
  */
 import { computeFare, estimateRoute, type PeriodRate, type Period } from './pricing'
@@ -15,7 +15,7 @@ export function periodFromTime(hhmm: string): Period {
   return 'evening'
 }
 
-/** أجرة راكب واحد لليوم: منزله → الوجهة (×2 إن ذهاب وإياب)، بعد الخصم. */
+/** أجرة راكب واحد لليوم = سعر المشوار العادي (×2 إن ذهاباً وإياباً) ناقص خصم الترحيل. */
 export function memberDailyFare(
   home: google.maps.LatLngLiteral,
   dest: google.maps.LatLngLiteral,
@@ -25,7 +25,7 @@ export function memberDailyFare(
 ): number {
   const leg = estimateRoute(home, dest)
   let f = computeFare(leg.distanceKm, leg.durationMin, rate)
-  if (roundTrip) f *= 2
+  if (roundTrip) f *= 2 // ذهاب وإياب = رحلتان
   if (discount > 0) f *= 1 - Math.min(0.95, Math.max(0, discount))
   return Math.round(f / 100) * 100
 }
