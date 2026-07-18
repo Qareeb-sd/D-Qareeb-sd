@@ -1268,6 +1268,22 @@ export async function updateSettings(
 // ملاحظة: صرف اشتراكات الترحيل الشهرية يتمّ تلقائياً عبر مهمّة pg_cron مجدولة
 // (settle_due_commute_months) تُضيف المبلغ لمحفظة السائق نهاية الشهر — بلا إجراء يدوي.
 
+/** أمانات الترحيل الشهرية المحتجَزة لدى المنصّة (نيابةً عن السائقين) — أدمن. */
+export async function getCommuteHeld(): Promise<{
+  held_total: number
+  active_count: number
+  due_count: number
+}> {
+  if (!isSupabaseConfigured) return { held_total: 0, active_count: 0, due_count: 0 }
+  const { data } = await supabase.rpc('commute_held_summary')
+  const row = Array.isArray(data) ? data[0] : data
+  return {
+    held_total: Number(row?.held_total ?? 0),
+    active_count: Number(row?.active_count ?? 0),
+    due_count: Number(row?.due_count ?? 0),
+  }
+}
+
 // ============================================================
 //  السائق
 // ============================================================

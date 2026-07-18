@@ -59,6 +59,7 @@ import {
   notifyTopupApproved,
   notifyWithdrawalApproved,
   updateSettings,
+  getCommuteHeld,
   getProofUrl,
   listServicePricing,
   updateServicePricing,
@@ -420,6 +421,11 @@ export default function AdminDashboard() {
 
   // التسعير حسب الفترة الزمنية
   const [periods, setPeriods] = useState<ServicePeriod[]>([])
+  const [commuteHeld, setCommuteHeld] = useState<{
+    held_total: number
+    active_count: number
+    due_count: number
+  } | null>(null)
   const [periodMsg, setPeriodMsg] = useState('')
 
   // أكواد الخصم (برومو)
@@ -593,6 +599,7 @@ export default function AdminDashboard() {
     if (tab === 'promo') void listPromos().then(setPromos)
     if ((tab === 'pricing' || tab === 'commute') && periods.length === 0)
       void listServicePeriods().then(setPeriods)
+    if (tab === 'commute') void getCommuteHeld().then(setCommuteHeld)
     if (tab === 'rewards') {
       if (rewards === null) void adminListRewards().then(setRewards)
       if (rewardRedemptions === null)
@@ -4305,6 +4312,35 @@ export default function AdminDashboard() {
                     (يُحجز)، ويُصرف للسائق <span className="font-bold">نهاية الشهر</span> ناقص العمولة —
                     بلا تجديد تلقائي.
                   </p>
+                </div>
+              </div>
+            </div>
+
+            {/* أمانات الترحيل المحتجَزة */}
+            <div className="card p-4">
+              <p className="font-bold text-royal">أمانات الترحيل المحتجَزة</p>
+              <p className="mb-3 text-xs text-ink-muted">
+                إجمالي اشتراكات شهرية دفعها الركّاب مقدّماً وتحتفظ بها المنصّة، وتُصرف تلقائياً
+                لمحافظ السائقين نهاية كل شهر.
+              </p>
+              <div className="grid grid-cols-3 gap-2 text-center">
+                <div className="rounded-2xl bg-gold-soft p-3">
+                  <p className="text-lg font-extrabold text-sand-ink">
+                    {commuteHeld ? money(commuteHeld.held_total) : '…'}
+                  </p>
+                  <p className="text-[11px] text-ink-muted">المبلغ المحتجَز</p>
+                </div>
+                <div className="rounded-2xl bg-royal-soft p-3">
+                  <p className="text-lg font-extrabold text-royal">
+                    {commuteHeld ? num(commuteHeld.active_count) : '…'}
+                  </p>
+                  <p className="text-[11px] text-ink-muted">اشتراك نشط</p>
+                </div>
+                <div className="rounded-2xl bg-green-mint p-3">
+                  <p className="text-lg font-extrabold text-green">
+                    {commuteHeld ? num(commuteHeld.due_count) : '…'}
+                  </p>
+                  <p className="text-[11px] text-ink-muted">مستحقّ الصرف</p>
                 </div>
               </div>
             </div>
