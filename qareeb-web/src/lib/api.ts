@@ -1265,16 +1265,8 @@ export async function updateSettings(
   return error ? { error: error.message } : {}
 }
 
-/** صرف اشتراكات الترحيل الشهرية المستحقّة (للسائقين) — أدمن. */
-export async function settleDueCommuteMonths(): Promise<{
-  result?: { paid_drivers: number; refunded: number }
-  error?: string
-}> {
-  if (!isSupabaseConfigured) return { result: { paid_drivers: 0, refunded: 0 } }
-  const { data, error } = await supabase.rpc('settle_due_commute_months')
-  if (error) return { error: error.message }
-  return { result: data as { paid_drivers: number; refunded: number } }
-}
+// ملاحظة: صرف اشتراكات الترحيل الشهرية يتمّ تلقائياً عبر مهمّة pg_cron مجدولة
+// (settle_due_commute_months) تُضيف المبلغ لمحفظة السائق نهاية الشهر — بلا إجراء يدوي.
 
 // ============================================================
 //  السائق

@@ -59,7 +59,6 @@ import {
   notifyTopupApproved,
   notifyWithdrawalApproved,
   updateSettings,
-  settleDueCommuteMonths,
   getProofUrl,
   listServicePricing,
   updateServicePricing,
@@ -4358,6 +4357,10 @@ export default function AdminDashboard() {
               <button className="btn-primary w-full" type="submit">
                 حفظ إعدادات الترحيل
               </button>
+              <p className="text-[11px] text-ink-muted">
+                الاشتراك الشهري يُضاف تلقائياً لمحفظة السائق نهاية الشهر (يسحبه أو يحوّله لرصيد
+                كبقيّة أرباحه) — بلا إجراء يدوي.
+              </p>
             </form>
 
             {/* أسعار المركبات (معاينة) */}
@@ -4416,26 +4419,6 @@ export default function AdminDashboard() {
               </div>
             </div>
 
-            {/* صرف الاشتراكات الشهرية المستحقّة */}
-            <div className="card p-4">
-              <p className="font-bold text-royal">صرف الاشتراكات الشهرية المستحقّة</p>
-              <p className="mb-3 text-xs text-ink-muted">
-                يُحوّل المبلغ المحجوز لمحفظة السائق (ناقص العمولة) لكل اشتراك أتمّ شهراً، وإن لم
-                يوجد سائق يُعاد للراكب. شغّله نهاية كل شهر.
-              </p>
-              <button
-                onClick={async () => {
-                  if (!window.confirm('صرف كل اشتراكات الترحيل الشهرية المستحقّة الآن؟')) return
-                  const { result, error } = await settleDueCommuteMonths()
-                  if (error) return alert(error)
-                  const r = result ?? { paid_drivers: 0, refunded: 0 }
-                  alert(`تم الصرف: ${r.paid_drivers} للسائقين · ${r.refunded} مُعاد للعملاء.`)
-                }}
-                className="btn-outline w-full"
-              >
-                صرف المستحقّ الآن
-              </button>
-            </div>
           </div>
         )}
 
