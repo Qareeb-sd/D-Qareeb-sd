@@ -110,7 +110,7 @@ export default function CommuteOrder() {
         <Row icon={Users} text={`الركّاب ${members.length} / ${service?.seats ?? 4}`} />
         <Row
           icon={Wallet}
-          text={order.plan === 'monthly' ? 'اشتراك شهري (دفع مقدّم)' : 'دفع يومي (كاش/محفظة)'}
+          text={order.plan === 'monthly' ? 'اشتراك شهري (دفع مقدّم)' : 'دفع يومي (محفظة أو كاش/بنك للسائق)'}
         />
       </div>
 
@@ -169,7 +169,7 @@ export default function CommuteOrder() {
                         : 'يومياً'
                       : m.pay_method === 'wallet'
                         ? 'محفظة'
-                        : 'كاش'}
+                        : 'كاش/بنك'}
                   </p>
                 </div>
               )}

@@ -259,11 +259,14 @@ export async function listDispatchedCommutes(): Promise<CommuteOrder[]> {
 /** السائق يؤكّد «تم ترحيل اليوم» فيُحصَّل يوم كل راكب (مرّة واحدة/يوم). */
 export async function settleCommuteDay(
   orderId: string,
-): Promise<{ result?: { wallet_paid: number; cash: number; skipped: number }; error?: string }> {
-  if (!isSupabaseConfigured) return { result: { wallet_paid: 0, cash: 0, skipped: 0 } }
+): Promise<{
+  result?: { wallet_paid: number; cash: number; fallback_cash: number }
+  error?: string
+}> {
+  if (!isSupabaseConfigured) return { result: { wallet_paid: 0, cash: 0, fallback_cash: 0 } }
   const { data, error } = await supabase.rpc('commute_settle_day', { p_order: orderId })
   if (error) return { error: error.message }
-  return { result: data as { wallet_paid: number; cash: number; skipped: number } }
+  return { result: data as { wallet_paid: number; cash: number; fallback_cash: number } }
 }
 
 /** رحلات الترحيل التي قبِلها السائق (active) — لواجهته. */

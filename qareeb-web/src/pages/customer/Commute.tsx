@@ -255,7 +255,7 @@ export default function Commute() {
             <div className="grid grid-cols-2 gap-2">
               {(
                 [
-                  ['daily', 'يومي', 'تُدفع أجرة كل يوم — كاش للسائق أو من المحفظة'],
+                  ['daily', 'يومي', 'أجرة كل يوم — من المحفظة (بشرط كفاية الرصيد) أو كاش/بنك للسائق'],
                   ['monthly', 'شهري', 'تدفع اشتراك الشهر مقدّماً من محفظتك'],
                 ] as const
               ).map(([id, label, desc]) => (
@@ -279,8 +279,8 @@ export default function Commute() {
                 <div className="grid grid-cols-2 gap-2">
                   {(
                     [
-                      ['cash', 'كاش للسائق'],
                       ['wallet', 'من محفظتي'],
+                      ['cash', 'كاش/بنك للسائق'],
                     ] as const
                   ).map(([id, label]) => (
                     <button
@@ -294,6 +294,11 @@ export default function Commute() {
                     </button>
                   ))}
                 </div>
+                {payMethod === 'wallet' && (
+                  <p className="mt-1 text-[11px] text-ink-muted">
+                    يجب أن يغطّي رصيد محفظتك أجرة اليوم؛ وإلا يتحوّل ذلك اليوم لدفع كاش/بنك للسائق.
+                  </p>
+                )}
               </div>
             )}
 

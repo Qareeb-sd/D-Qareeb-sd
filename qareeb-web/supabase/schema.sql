@@ -5836,3 +5836,165 @@ begin
   return jsonb_build_object('paid_drivers', v_paid, 'refunded', v_refunded);
 end $$;
 grant execute on function public.settle_due_commute_months() to authenticated;
+
+-- ============================================================
+--  صرف الترحيل الشهري تلقائياً (من 2026_07_commute_auto_settle.sql)
+-- ============================================================
+-- ============================================================
+--  صرف اشتراكات الترحيل الشهرية تلقائياً (لا إجراء يدوي من الأدمن).
+--  المبلغ المحجوز يُضاف لمحفظة السائق (القابل للسحب) نهاية الشهر، ثم يسحبه
+--  السائق أو يحوّله لرصيد كبقيّة أرباحه. تُشغَّل يومياً عبر pg_cron.
+--  شغّل هذا المقطع مرّة واحدة (يُلغي الحاجة لزرّ «صرف المستحقّ»).
+-- ============================================================
+
+-- نُعيد تعريف الدالة بلا فحص is_admin (تُستدعى من المجدول فقط)، ونمنع العملاء.
+create or replace function public.settle_due_commute_months()
+returns jsonb language plpgsql security definer set search_path = public as $$
+declare r record; v_rate numeric; v_comm numeric; v_net numeric; v_dwallet uuid; v_cwallet uuid;
+        v_paid int := 0; v_refunded int := 0;
+begin
+  v_rate := public.commute_commission();
+  for r in
+    select m.id, m.user_id, m.held, o.driver_id
+    from public.commute_members m
+    join public.commute_orders o on o.id = m.order_id
+    where m.sub_status = 'active' and m.held > 0
+      and m.month_start <= ((now() at time zone 'Africa/Khartoum')::date - interval '1 month')
+  loop
+    if r.driver_id is not null then
+      v_comm := round(r.held * coalesce(v_rate, 0));
+      v_net  := r.held - v_comm;
+      select id into v_dwallet from public.wallets where user_id = r.driver_id for update;
+      if v_dwallet is not null then
+        -- يُضاف للقابل للسحب — السائق يسحبه أو يحوّله لرصيد لاحقاً.
+        update public.wallets set withdrawable = withdrawable + v_net, updated_at = now() where id = v_dwallet;
+        insert into public.transactions (wallet_id, type, amount, note)
+          values (v_dwallet, 'ride_earning', r.held, 'اشتراك ترحيل شهري');
+        if v_comm > 0 then
+          insert into public.transactions (wallet_id, type, amount, note)
+            values (v_dwallet, 'commission', -v_comm, 'عمولة ترحيل شهري');
+        end if;
+      end if;
+      update public.commute_members set sub_status = 'ended', held = 0 where id = r.id;
+      v_paid := v_paid + 1;
+    else
+      select id into v_cwallet from public.wallets where user_id = r.user_id for update;
+      if v_cwallet is not null then
+        update public.wallets set balance = balance + r.held, updated_at = now() where id = v_cwallet;
+        insert into public.transactions (wallet_id, type, amount, note)
+          values (v_cwallet, 'topup', r.held, 'استرجاع اشتراك ترحيل (بلا سائق)');
+      end if;
+      update public.commute_members set sub_status = 'refunded', held = 0 where id = r.id;
+      v_refunded := v_refunded + 1;
+    end if;
+  end loop;
+  return jsonb_build_object('paid_drivers', v_paid, 'refunded', v_refunded);
+end $$;
+
+-- لا يستدعيها أحد من العملاء — المجدول فقط.
+revoke execute on function public.settle_due_commute_months() from public;
+revoke execute on function public.settle_due_commute_months() from anon;
+revoke execute on function public.settle_due_commute_months() from authenticated;
+
+-- جدولة يومية (02:00 بتوقيت الخادم) عبر pg_cron.
+create extension if not exists pg_cron;
+select cron.unschedule('settle-commute-months')
+  where exists (select 1 from cron.job where jobname = 'settle-commute-months');
+select cron.schedule('settle-commute-months', '0 2 * * *',
+  $cron$ select public.settle_due_commute_months() $cron$);
+
+-- ============================================================
+--  ترحيل يومي: تحوّل تلقائي لكاش/بنك عند نقص الرصيد (من 2026_07_commute_daily_cash_fallback.sql)
+-- ============================================================
+-- ============================================================
+--  الترحيل اليومي: المحفظة تتطلّب رصيداً يغطّي أجرة اليوم (كالمشوار العادي).
+--  وإن اختار الراكب المحفظة ولم يكفِ رصيده لحظة التحصيل، يتحوّل تلقائياً لدفع
+--  كاش/بنك عند السائق (لا يُترك بلا دفع). شغّل هذا المقطع مرّة واحدة.
+-- ============================================================
+create or replace function public.commute_settle_day(p_order uuid)
+returns jsonb language plpgsql security definer set search_path = public as $$
+declare v_driver uuid; v_status commute_status; v_plan text; v_last date; v_today date;
+        v_rate numeric; r record; v_comm numeric; v_net numeric; v_dwallet uuid;
+        v_cwallet uuid; v_cbal numeric; v_paid int := 0; v_cash int := 0; v_fallback int := 0;
+begin
+  v_today := (now() at time zone 'Africa/Khartoum')::date;
+  select driver_id, status, plan, last_settled into v_driver, v_status, v_plan, v_last
+    from public.commute_orders where id = p_order for update;
+  if not found then raise exception 'الطلب غير موجود'; end if;
+  if v_driver is null or v_driver <> auth.uid() then raise exception 'غير مصرّح'; end if;
+  if v_status <> 'active' then raise exception 'الترحيل غير نشط'; end if;
+  if v_plan <> 'daily' then raise exception 'التحصيل اليومي للخطة اليومية فقط'; end if;
+  if v_last = v_today then raise exception 'تم تحصيل اليوم مسبقاً'; end if;
+
+  v_rate := public.commute_commission();
+  select id into v_dwallet from public.wallets where user_id = v_driver for update;
+
+  for r in select user_id, fare, pay_method from public.commute_members where order_id = p_order loop
+    if coalesce(r.fare, 0) <= 0 then continue; end if;
+    v_comm := round(r.fare * coalesce(v_rate, 0));
+    v_net  := r.fare - v_comm;
+
+    if r.pay_method = 'wallet' then
+      select id, balance into v_cwallet, v_cbal from public.wallets where user_id = r.user_id for update;
+      if v_cwallet is not null and v_cbal >= r.fare then
+        -- رصيد كافٍ → خصم من محفظة الراكب وإضافة الصافي للسائق (كالمشوار العادي).
+        update public.wallets set balance = balance - r.fare, updated_at = now() where id = v_cwallet;
+        insert into public.transactions (wallet_id, type, amount, note)
+          values (v_cwallet, 'ride_payment', -r.fare, 'ترحيل يومي');
+        if v_dwallet is not null then
+          update public.wallets set withdrawable = withdrawable + v_net, updated_at = now() where id = v_dwallet;
+          insert into public.transactions (wallet_id, type, amount, note)
+            values (v_dwallet, 'ride_earning', r.fare, 'ترحيل يومي (محفظة)');
+          if v_comm > 0 then
+            insert into public.transactions (wallet_id, type, amount, note)
+              values (v_dwallet, 'commission', -v_comm, 'عمولة ترحيل (محفظة)');
+          end if;
+        end if;
+        v_paid := v_paid + 1;
+      else
+        -- رصيد غير كافٍ → يتحوّل لدفع كاش/بنك عند السائق (تُخصم العمولة من محفظته).
+        if v_dwallet is not null and v_comm > 0 then
+          update public.wallets set balance = balance - v_comm, updated_at = now() where id = v_dwallet;
+          insert into public.transactions (wallet_id, type, amount, note)
+            values (v_dwallet, 'commission', -v_comm, 'عمولة ترحيل (كاش/بنك — رصيد غير كافٍ)');
+        end if;
+        v_fallback := v_fallback + 1;
+      end if;
+    else
+      -- كاش/بنك عند السائق: يحصّل نقداً/تحويلاً، وتُخصم عمولة المنصّة من محفظته.
+      if v_dwallet is not null and v_comm > 0 then
+        update public.wallets set balance = balance - v_comm, updated_at = now() where id = v_dwallet;
+        insert into public.transactions (wallet_id, type, amount, note)
+          values (v_dwallet, 'commission', -v_comm, 'عمولة ترحيل (كاش/بنك)');
+      end if;
+      v_cash := v_cash + 1;
+    end if;
+  end loop;
+
+  update public.commute_orders set last_settled = v_today where id = p_order;
+  return jsonb_build_object('wallet_paid', v_paid, 'cash', v_cash, 'fallback_cash', v_fallback);
+end $$;
+grant execute on function public.commute_settle_day(uuid) to authenticated;
+
+-- ============================================================
+--  ملخّص أمانات الترحيل المحتجَزة (من 2026_07_commute_held_summary.sql)
+-- ============================================================
+-- ============================================================
+--  ملخّص أمانات الترحيل الشهرية المحتجَزة لدى المنصّة (نيابةً عن السائقين)
+--  لعرضه في لوحة الأدمن. للطاقم/الأدمن فقط. شغّل مرّة واحدة.
+-- ============================================================
+create or replace function public.commute_held_summary()
+returns table (held_total numeric, active_count int, due_count int)
+language plpgsql stable security definer set search_path = public as $$
+begin
+  if not public.is_staff_or_admin() then raise exception 'غير مصرّح'; end if;
+  return query
+    select coalesce(sum(held), 0),
+           count(*)::int,
+           count(*) filter (
+             where month_start <= ((now() at time zone 'Africa/Khartoum')::date - interval '1 month')
+           )::int
+    from public.commute_members
+    where sub_status = 'active' and held > 0;
+end $$;
+grant execute on function public.commute_held_summary() to authenticated;
