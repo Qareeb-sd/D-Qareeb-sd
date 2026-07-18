@@ -176,8 +176,8 @@ export default function CommuteJoin() {
                   <div className="grid grid-cols-2 gap-2">
                     {(
                       [
-                        ['cash', 'كاش للسائق'],
                         ['wallet', 'من محفظتي'],
+                        ['cash', 'كاش/بنك للسائق'],
                       ] as const
                     ).map(([id, label]) => (
                       <button
@@ -191,6 +191,11 @@ export default function CommuteJoin() {
                       </button>
                     ))}
                   </div>
+                  {payMethod === 'wallet' && (
+                    <p className="text-[11px] text-ink-muted">
+                      يجب أن يغطّي رصيدك أجرة اليوم؛ وإلا يتحوّل ذلك اليوم لدفع كاش/بنك للسائق.
+                    </p>
+                  )}
                 </>
               ) : (
                 <>

@@ -4292,9 +4292,10 @@ export default function AdminDashboard() {
                 <div className="rounded-2xl border border-hairline bg-ivory/60 p-3">
                   <p className="font-bold text-royal">يومي</p>
                   <p className="mt-1 text-xs text-ink-soft">
-                    يدفع الراكب أجرة كل يوم: <span className="font-bold">كاش للسائق</span> أو{' '}
-                    <span className="font-bold">من محفظته</span>. تُحصَّل عند ضغط السائق «تم ترحيل
-                    اليوم» — تُخصم محفظة الراكب ويُضاف الصافي للسائق (والكاش تُخصم عمولته فقط).
+                    يدفع الراكب أجرة كل يوم: <span className="font-bold">من محفظته</span> (بشرط
+                    كفاية الرصيد) أو <span className="font-bold">كاش/بنك للسائق</span>. تُحصَّل عند
+                    ضغط السائق «تم ترحيل اليوم». وإن اختار المحفظة ولم يكفِ رصيده يتحوّل ذلك اليوم
+                    تلقائياً لكاش/بنك عند السائق.
                   </p>
                 </div>
                 <div className="rounded-2xl border border-hairline bg-ivory/60 p-3">

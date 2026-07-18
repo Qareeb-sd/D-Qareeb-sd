@@ -53,10 +53,12 @@ export default function DriverCommute() {
     const { result, error } = await settleCommuteDay(orderId)
     setBusyId(null)
     if (error) return alert(error)
-    const r = result ?? { wallet_paid: 0, cash: 0, skipped: 0 }
+    const r = result ?? { wallet_paid: 0, cash: 0, fallback_cash: 0 }
     alert(
-      `تم تحصيل اليوم: ${r.wallet_paid} محفظة · ${r.cash} كاش` +
-        (r.skipped ? ` · ${r.skipped} تعذّر (رصيد غير كافٍ)` : ''),
+      `تم تحصيل اليوم: ${r.wallet_paid} محفظة · ${r.cash} كاش/بنك` +
+        (r.fallback_cash
+          ? ` · ${r.fallback_cash} تحوّل لكاش/بنك (رصيد غير كافٍ — حصّل منهم مباشرةً)`
+          : ''),
     )
     void load()
   }
@@ -185,7 +187,7 @@ function CommuteCard({
                   {money(m.fare)}
                   <span className="font-normal text-ink-muted">
                     {' '}
-                    · {m.pay_method === 'wallet' ? 'محفظة' : 'كاش'}
+                    · {m.pay_method === 'wallet' ? 'محفظة' : 'كاش/بنك'}
                   </span>
                 </span>
               )}
