@@ -33,6 +33,7 @@ import {
   Gift,
   Trash2,
   MessageSquare,
+  Bus,
   type LucideIcon,
 } from 'lucide-react'
 import Logo from '@/components/Logo'
@@ -138,7 +139,7 @@ import {
   type FinancialSummary,
 } from '@/lib/api'
 import { subscribeToSos, subscribeToTopups, subscribeToDriverApplications } from '@/lib/realtime'
-import { PERIOD_LABEL, currentPeriod } from '@/lib/pricing'
+import { PERIOD_LABEL, currentPeriod, computeFare } from '@/lib/pricing'
 import { exportCsv } from '@/lib/csv'
 import { getService } from '@/data/services'
 import type {
@@ -186,6 +187,7 @@ type Tab =
   | 'pricing'
   | 'vehicles'
   | 'captain'
+  | 'commute'
   | 'subs'
   | 'topup'
   | 'promo'
@@ -209,6 +211,7 @@ const tabs: { id: Tab; label: string; perm: StaffPerm | null; ownerOnly?: boolea
   { id: 'pricing', label: 'الأسعار والأزمان', perm: 'settings', Icon: Coins },
   { id: 'vehicles', label: 'المركبات', perm: 'settings', Icon: Car },
   { id: 'captain', label: 'إعدادات الكابتن', perm: 'settings', Icon: SettingsIcon },
+  { id: 'commute', label: 'الترحيل', perm: 'settings', Icon: Bus },
   { id: 'subs', label: 'الاشتراكات', perm: 'settings', Icon: Crown },
   { id: 'topup', label: 'تعبئة العملاء', perm: 'settings', Icon: CreditCard },
   { id: 'promo', label: 'البريمو كود', perm: 'settings', Icon: BadgePercent },
@@ -227,6 +230,10 @@ const STATE_OPTS: { value: ServiceState; label: string; color: string }[] = [
 
 /** ترتيب الفترات الزمنية للعرض: صباحاً ← ظهراً ← مساءً ← ليلاً. */
 const PERIOD_ORDER: ServicePeriod['period'][] = ['morning', 'afternoon', 'evening', 'night']
+
+// مسافة/زمن تقريبيان لمعاينة سعر الترحيل في لوحة الأدمن (السعر الفعلي حسب كل راكب).
+const COMMUTE_SAMPLE_KM = 8
+const COMMUTE_SAMPLE_MIN = 19
 
 /** يحوّل ساعات الذروة (0..23) إلى أعمدة كل ٣ ساعات لعرض أوضح. */
 function peakHourBars(hours: { hour: number; value: number }[]): { label: string; value: number }[] {
@@ -585,7 +592,8 @@ export default function AdminDashboard() {
     if (tab === 'complaints' && complaints === null)
       void listComplaints().then((c) => setComplaints(c as Complaint[]))
     if (tab === 'promo') void listPromos().then(setPromos)
-    if (tab === 'pricing') void listServicePeriods().then(setPeriods)
+    if ((tab === 'pricing' || tab === 'commute') && periods.length === 0)
+      void listServicePeriods().then(setPeriods)
     if (tab === 'rewards') {
       if (rewards === null) void adminListRewards().then(setRewards)
       if (rewardRedemptions === null)
@@ -4256,56 +4264,164 @@ export default function AdminDashboard() {
                   </div>
                 </div>
 
-                {/* تسعير الترحيل */}
-                <div className="rounded-2xl border border-sand/40 bg-sand-soft/40 p-3">
-                  <label className="flex items-center justify-between">
-                    <span className="font-bold text-royal">تسعير الترحيل</span>
-                    <input
-                      type="checkbox"
-                      checked={settings.commute_enabled ?? true}
-                      onChange={(e) => setSettings({ ...settings, commute_enabled: e.target.checked })}
-                      className="h-5 w-5 accent-green"
-                    />
-                  </label>
-                  <p className="mb-2 text-xs text-ink-muted">
-                    سعر كل راكب = منزله → الوجهة (ذهاباً وإياباً) بأسعار فترة المركبة، ناقص
-                    خصم الترحيل. اليومي يُحصَّل بتأكيد السائق؛ الشهري يُدفع مقدّماً في المحفظة
-                    ويُصرف للسائق نهاية الشهر.
-                  </p>
-                  <div className="grid grid-cols-3 gap-2">
-                    <NumField
-                      label="عمولة الترحيل %"
-                      step={1}
-                      value={Math.round((settings.commute_commission_rate ?? settings.commission_rate) * 100)}
-                      onChange={(v) => setSettings({ ...settings, commute_commission_rate: Math.max(0, v) / 100 })}
-                    />
-                    <NumField
-                      label="خصم الترحيل %"
-                      step={1}
-                      value={Math.round((settings.commute_discount ?? 0) * 100)}
-                      onChange={(v) => setSettings({ ...settings, commute_discount: Math.max(0, Math.min(95, v)) / 100 })}
-                    />
-                    <NumField
-                      label="أسابيع الشهر"
-                      step={1}
-                      value={settings.commute_weeks_per_month ?? 4}
-                      onChange={(v) => setSettings({ ...settings, commute_weeks_per_month: Math.max(1, v) })}
-                    />
-                  </div>
-                </div>
-
               {savedMsg && <p className="text-sm text-green">{savedMsg}</p>}
               <button className="btn-primary w-full" type="submit">
                 حفظ إعدادات الكابتن
               </button>
             </form>
 
-            {/* صرف اشتراكات الترحيل الشهرية المستحقّة */}
+            {/* حوافز ومكافآت السائق */}
+            <IncentivesManager />
+          </>
+        )}
+
+        {tab === 'commute' && settings && (
+          <div className="space-y-4">
+            {/* شرح الميزة */}
             <div className="card p-4">
-              <p className="font-bold text-royal">صرف اشتراكات الترحيل الشهرية</p>
+              <div className="mb-2 flex items-center gap-2">
+                <span className="grid h-9 w-9 place-items-center rounded-full bg-royal-soft text-royal">
+                  <Bus className="h-5 w-5" strokeWidth={1.9} />
+                </span>
+                <p className="text-lg font-bold text-royal">الترحيل — المشوار اليومي المشترك</p>
+              </div>
+              <p className="text-sm text-ink-soft">
+                سعر كل راكب يُحسب كالمشوار العادي: من <span className="font-bold">منزله إلى الوجهة</span>{' '}
+                (ذهاباً وإياباً) بأسعار فترة المركبة المختارة، ناقص خصم الترحيل. للترحيل خطّتان:
+              </p>
+              <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                <div className="rounded-2xl border border-hairline bg-ivory/60 p-3">
+                  <p className="font-bold text-royal">يومي</p>
+                  <p className="mt-1 text-xs text-ink-soft">
+                    يدفع الراكب أجرة كل يوم: <span className="font-bold">كاش للسائق</span> أو{' '}
+                    <span className="font-bold">من محفظته</span>. تُحصَّل عند ضغط السائق «تم ترحيل
+                    اليوم» — تُخصم محفظة الراكب ويُضاف الصافي للسائق (والكاش تُخصم عمولته فقط).
+                  </p>
+                </div>
+                <div className="rounded-2xl border border-hairline bg-ivory/60 p-3">
+                  <p className="font-bold text-royal">شهري</p>
+                  <p className="mt-1 text-xs text-ink-soft">
+                    يدفع الراكب اشتراك الشهر <span className="font-bold">مقدّماً من محفظته</span>{' '}
+                    (يُحجز)، ويُصرف للسائق <span className="font-bold">نهاية الشهر</span> ناقص العمولة —
+                    بلا تجديد تلقائي.
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            {/* الإعدادات */}
+            <form onSubmit={saveSettings} className="card space-y-4 p-4">
+              <label className="flex items-center justify-between">
+                <div>
+                  <p className="font-bold text-royal">تفعيل الترحيل</p>
+                  <p className="text-xs text-ink-muted">عند الإطفاء يختفي التسعير من التطبيق.</p>
+                </div>
+                <input
+                  type="checkbox"
+                  checked={settings.commute_enabled ?? true}
+                  onChange={(e) => setSettings({ ...settings, commute_enabled: e.target.checked })}
+                  className="h-6 w-6 accent-green"
+                />
+              </label>
+
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                <div className="rounded-2xl border border-sand/40 bg-sand-soft/40 p-3">
+                  <NumField
+                    label="عمولة المنصّة %"
+                    step={1}
+                    value={Math.round((settings.commute_commission_rate ?? settings.commission_rate) * 100)}
+                    onChange={(v) => setSettings({ ...settings, commute_commission_rate: Math.max(0, v) / 100 })}
+                  />
+                  <p className="mt-1 text-[11px] text-ink-muted">نصيب المنصّة من كل أجرة ترحيل.</p>
+                </div>
+                <div className="rounded-2xl border border-sand/40 bg-sand-soft/40 p-3">
+                  <NumField
+                    label="خصم الترحيل %"
+                    step={1}
+                    value={Math.round((settings.commute_discount ?? 0) * 100)}
+                    onChange={(v) => setSettings({ ...settings, commute_discount: Math.max(0, Math.min(95, v)) / 100 })}
+                  />
+                  <p className="mt-1 text-[11px] text-ink-muted">خصم على السعر لأنّه مشوار متكرّر (0 = بلا خصم).</p>
+                </div>
+                <div className="rounded-2xl border border-sand/40 bg-sand-soft/40 p-3">
+                  <NumField
+                    label="أسابيع الشهر"
+                    step={1}
+                    value={settings.commute_weeks_per_month ?? 4}
+                    onChange={(v) => setSettings({ ...settings, commute_weeks_per_month: Math.max(1, v) })}
+                  />
+                  <p className="mt-1 text-[11px] text-ink-muted">لحساب الاشتراك الشهري = يومي × أيام/أسبوع × أسابيع.</p>
+                </div>
+              </div>
+
+              {savedMsg && <p className="text-sm text-green">{savedMsg}</p>}
+              <button className="btn-primary w-full" type="submit">
+                حفظ إعدادات الترحيل
+              </button>
+            </form>
+
+            {/* أسعار المركبات (معاينة) */}
+            <div className="card p-4">
+              <p className="font-bold text-royal">أسعار المركبات في الترحيل</p>
               <p className="mb-3 text-xs text-ink-muted">
-                يُحوّل المبلغ المحجوز لمحفظة السائق (ناقص العمولة) لكل اشتراك أتمّ شهراً، وإن
-                لم يوجد سائق يُعاد للراكب. شغّله نهاية كل شهر.
+                معاينة لمسافة تقريبية {num(COMMUTE_SAMPLE_KM)} كم بين المنزل والوجهة (الفترة{' '}
+                {PERIOD_LABEL[currentPeriod()]}). السعر الفعلي يُحسب حسب مسافة كل راكب. لتعديل أسعار
+                المركبات نفسها استخدم تبويب «الأسعار والأزمان».
+              </p>
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b border-hairline text-right text-xs text-ink-muted">
+                      <th className="py-2">المركبة</th>
+                      <th className="py-2">أجرة يومية (ذهاب/إياب)</th>
+                      <th className="py-2">اشتراك شهري (٥ أيام)</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {services
+                      .filter((s) => s.sharable)
+                      .map((s) => {
+                        const row = periods.find(
+                          (r) => r.service_id === s.id && r.period === currentPeriod(),
+                        )
+                        const disc = settings.commute_discount ?? 0
+                        const weeks = settings.commute_weeks_per_month ?? 4
+                        const oneWay = row
+                          ? computeFare(COMMUTE_SAMPLE_KM, COMMUTE_SAMPLE_MIN, {
+                              base_fare: row.base_fare,
+                              per_km: row.per_km,
+                              per_min: row.per_min,
+                              min_fare: row.min_fare,
+                            })
+                          : 0
+                        const daily = Math.round((oneWay * 2 * (1 - disc)) / 100) * 100
+                        const monthly = daily * 5 * weeks
+                        return (
+                          <tr key={s.id} className="border-b border-hairline/60">
+                            <td className="py-2.5 font-medium">
+                              {s.name}
+                              <span className="mr-1 text-[11px] text-ink-muted"> · {s.seats} مقاعد</span>
+                            </td>
+                            <td className="py-2.5 font-bold text-royal">
+                              {row ? money(daily) : '—'}
+                            </td>
+                            <td className="py-2.5 font-bold text-sand-ink">
+                              {row ? money(monthly) : '—'}
+                            </td>
+                          </tr>
+                        )
+                      })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            {/* صرف الاشتراكات الشهرية المستحقّة */}
+            <div className="card p-4">
+              <p className="font-bold text-royal">صرف الاشتراكات الشهرية المستحقّة</p>
+              <p className="mb-3 text-xs text-ink-muted">
+                يُحوّل المبلغ المحجوز لمحفظة السائق (ناقص العمولة) لكل اشتراك أتمّ شهراً، وإن لم
+                يوجد سائق يُعاد للراكب. شغّله نهاية كل شهر.
               </p>
               <button
                 onClick={async () => {
@@ -4320,10 +4436,7 @@ export default function AdminDashboard() {
                 صرف المستحقّ الآن
               </button>
             </div>
-
-            {/* حوافز ومكافآت السائق */}
-            <IncentivesManager />
-          </>
+          </div>
         )}
 
         {tab === 'subs' && settings && (
