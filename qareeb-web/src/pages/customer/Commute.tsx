@@ -308,7 +308,7 @@ export default function Commute() {
                 {plan === 'daily' ? (
                   <p>
                     أجرتك اليومية <span className="font-bold text-sand-ink">{money(orgDaily)}</span>
-                    {roundTrip ? ' (ذهاباً وإياباً)' : ''}
+                    {roundTrip ? ' (ذهاباً وإياباً)' : ' (ذهاب فقط)'}
                   </p>
                 ) : (
                   <>

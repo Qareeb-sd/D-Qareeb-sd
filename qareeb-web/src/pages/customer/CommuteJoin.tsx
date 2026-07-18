@@ -171,7 +171,7 @@ export default function CommuteJoin() {
                 <>
                   <p>
                     أجرتك اليومية <span className="font-bold text-sand-ink">{money(daily)}</span>
-                    {order.round_trip ? ' (ذهاباً وإياباً)' : ''}
+                    {order.round_trip ? ' (ذهاباً وإياباً)' : ' (ذهاب فقط)'}
                   </p>
                   <div className="grid grid-cols-2 gap-2">
                     {(
