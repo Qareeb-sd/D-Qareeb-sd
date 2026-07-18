@@ -95,25 +95,30 @@ Deno.serve(async (req) => {
   if (!subs || subs.length === 0) return json({ sent: 0, reason: 'no subscriptions' })
 
   const key = await importSigningKey()
+  // إرسال بتزامن محدود (50) بدل إطلاق كل الطلبات دفعةً — ثابت الذاكرة عند الحجم الكبير.
+  const CONCURRENCY = 50
   let sent = 0
-  await Promise.all(
-    subs.map(async (s) => {
-      try {
-        const res = await fetch(s.endpoint, {
-          method: 'POST',
-          headers: { Authorization: await vapidAuth(s.endpoint, key), TTL: '120', Urgency: 'high' },
-        })
-        if (res.status === 404 || res.status === 410) {
-          // اشتراك منتهٍ — نظّفه.
-          await supabase.from('push_subscriptions').delete().eq('endpoint', s.endpoint)
-        } else if (res.ok) {
-          sent++
+  for (let i = 0; i < subs.length; i += CONCURRENCY) {
+    const chunk = subs.slice(i, i + CONCURRENCY)
+    await Promise.all(
+      chunk.map(async (s) => {
+        try {
+          const res = await fetch(s.endpoint, {
+            method: 'POST',
+            headers: { Authorization: await vapidAuth(s.endpoint, key), TTL: '120', Urgency: 'high' },
+          })
+          if (res.status === 404 || res.status === 410) {
+            // اشتراك منتهٍ — نظّفه.
+            await supabase.from('push_subscriptions').delete().eq('endpoint', s.endpoint)
+          } else if (res.ok) {
+            sent++
+          }
+        } catch {
+          /* عطل فردي — لا يوقف البقية */
         }
-      } catch {
-        /* عطل فردي — لا يوقف البقية */
-      }
-    }),
-  )
+      }),
+    )
+  }
 
   return json({ sent })
 })

@@ -47,14 +47,19 @@ export function subscribeToRideMessages(
   }
 }
 
-/** يستمع لأي تغيّر على الرحلات (لواجهة السائق) ويستدعي onEvent لإعادة الجلب. */
+/**
+ * يستمع لظهور طلبات جديدة قابلة للقبول فقط (status=searching) — لواجهة السائق.
+ * مُصفّى على الخادم حتى لا تصل تحديثات موقع السائق (على رحلات جارية) لكل السائقين،
+ * وهو ما كان يُحدث فيضان رسائل Realtime عند الحجم الكبير. إزالة الطلبات المأخوذة
+ * يتكفّل بها الاستطلاع الدوري (poll) لقائمة الطلبات المتاحة.
+ */
 export function subscribeToRides(onEvent: () => void): Unsubscribe {
   if (!isSupabaseConfigured) return () => {}
   const channel = supabase
     .channel('rides:feed')
     .on(
       'postgres_changes',
-      { event: '*', schema: 'public', table: 'rides' },
+      { event: '*', schema: 'public', table: 'rides', filter: 'status=eq.searching' },
       () => onEvent(),
     )
     .subscribe()

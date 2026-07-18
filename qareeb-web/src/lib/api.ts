@@ -279,6 +279,7 @@ export async function listTransactions(walletId: string): Promise<Transaction[]>
     .select('*')
     .eq('wallet_id', walletId)
     .order('created_at', { ascending: false })
+    .limit(100) // آخر 100 حركة — يمنع جلب دفتر المحفظة كاملاً
   return data ?? []
 }
 
@@ -707,6 +708,7 @@ export async function listRides(customerId: string): Promise<Ride[]> {
     .select('*')
     .eq('customer_id', customerId)
     .order('created_at', { ascending: false })
+    .limit(100) // آخر 100 رحلة — يمنع جلب السجلّ كاملاً مع نموّه
   return data ?? []
 }
 
@@ -2184,5 +2186,6 @@ export async function listDriverTransactions(walletId: string): Promise<Transact
     .select('*')
     .eq('wallet_id', walletId)
     .order('created_at', { ascending: false })
+    .limit(100) // آخر 100 حركة — يمنع جلب دفتر السائق كاملاً
   return data ?? []
 }

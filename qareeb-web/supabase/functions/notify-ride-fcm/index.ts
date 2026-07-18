@@ -101,14 +101,18 @@ Deno.serve(async (req) => {
   // الرحلة يجب أن تكون في حالة بحث (لا نُشعِر عن رحلة مأخوذة/ملغاة).
   const { data: ride } = await supabase
     .from('rides')
-    .select('id, status, service_id, pickup_address, fare')
+    .select('id, status, service_id, pickup_address, pickup_lat, pickup_lng, fare')
     .eq('id', ride_id)
     .maybeSingle()
   if (!ride || ride.status !== 'searching') return json({ ok: true, skipped: true })
 
-  // رموز أجهزة السائقين المتصلين فقط.
-  const { data: drivers } = await supabase.from('drivers').select('user_id').eq('is_online', true)
-  const ids = (drivers ?? []).map((d) => d.user_id)
+  // السائقون المتصلون القريبون من نقطة الانطلاق فقط (لا بثّ لكل السائقين).
+  const { data: near } = await supabase.rpc('nearby_online_driver_ids', {
+    p_lat: ride.pickup_lat,
+    p_lng: ride.pickup_lng,
+    p_radius_km: 10,
+  })
+  const ids = ((near ?? []) as { user_id: string }[]).map((d) => d.user_id)
   if (ids.length === 0) return json({ ok: true, sent: 0 })
 
   const { data: tokens } = await supabase
@@ -123,29 +127,38 @@ Deno.serve(async (req) => {
   const title = 'طلب رحلة جديد'
   const body = ride.pickup_address ? `انطلاق: ${ride.pickup_address}` : 'يوجد طلب جديد قريب منك'
 
+  // إرسال بتزامن محدود (50) بدل إطلاق كل الطلبات دفعةً.
+  const CONCURRENCY = 50
   let sent = 0
   const stale: string[] = []
-  await Promise.all(
-    list.map(async (t) => {
-      const res = await fetch(url, {
-        method: 'POST',
-        headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
-        body: JSON.stringify({
-          message: {
-            token: t,
-            notification: { title, body },
-            data: { ride_id: String(ride.id), type: 'new_ride' },
-            android: {
-              priority: 'HIGH',
-              notification: { sound: 'default', channel_id: 'qareeb_rides', default_vibrate_timings: true },
-            },
-          },
-        }),
-      })
-      if (res.ok) sent++
-      else if (res.status === 404 || res.status === 400) stale.push(t) // رمز منتهٍ
-    }),
-  )
+  for (let i = 0; i < list.length; i += CONCURRENCY) {
+    const chunk = list.slice(i, i + CONCURRENCY)
+    await Promise.all(
+      chunk.map(async (t) => {
+        try {
+          const res = await fetch(url, {
+            method: 'POST',
+            headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
+            body: JSON.stringify({
+              message: {
+                token: t,
+                notification: { title, body },
+                data: { ride_id: String(ride.id), type: 'new_ride' },
+                android: {
+                  priority: 'HIGH',
+                  notification: { sound: 'default', channel_id: 'qareeb_rides', default_vibrate_timings: true },
+                },
+              },
+            }),
+          })
+          if (res.ok) sent++
+          else if (res.status === 404 || res.status === 400) stale.push(t) // رمز منتهٍ
+        } catch {
+          /* عطل فردي — لا يوقف البقية */
+        }
+      }),
+    )
+  }
 
   // نظافة: احذف الرموز المنتهية.
   if (stale.length) await supabase.from('device_tokens').delete().in('token', stale)
