@@ -31,11 +31,11 @@ import { useResumeActiveRide } from '@/hooks/useResumeActiveRide'
  * زمردي عميق + عاجي + لمسات ذهبية | خط IBM Plex Sans Arabic | أيقونات خطية.
  */
 
-/** يعلّم إعلاناً كمقروء محلياً حتى لا يظهر مجدداً بعد مشاهدته. */
-function markAnnouncementSeen(id: string) {
+/** يعلّم إعلاناً (أو عدّة إعلانات) كمقروء محلياً حتى لا تظهر مجدداً بعد مشاهدتها. */
+function markAnnouncementSeen(...ids: string[]) {
   try {
     const seen: string[] = JSON.parse(localStorage.getItem('qareeb_seen_ann') ?? '[]')
-    if (!seen.includes(id)) seen.push(id)
+    for (const id of ids) if (!seen.includes(id)) seen.push(id)
     localStorage.setItem('qareeb_seen_ann', JSON.stringify(seen.slice(-50)))
   } catch {
     /* لا يهمّ */
@@ -102,7 +102,9 @@ export default function Home() {
       const fresh = list.find((a) => !seen.includes(a.id))
       if (fresh) {
         setAnnouncement(fresh)
-        markAnnouncementSeen(fresh.id) // يُعلَّم كمقروء فور عرضه فلا يعود بعد مشاهدته
+        // نعلّم كامل الدفعة كمقروءة فور العرض — يمنع تكرار نسخ متطابقة أرسلها الأدمن،
+        // ويضمن ألّا يعود الإعلان بعد أن يشاهده العميل مرّة واحدة.
+        markAnnouncementSeen(...list.map((a) => a.id))
       }
     })
   }, [])
