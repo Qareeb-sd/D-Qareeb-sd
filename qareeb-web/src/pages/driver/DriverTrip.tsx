@@ -37,8 +37,10 @@ import {
   getDriver,
   getActiveDriverRide,
   getRideCustomer,
+  getRide,
   updateDriverLocation,
 } from '@/lib/api'
+import { isSupabaseConfigured } from '@/lib/supabase'
 import type { Driver } from '@/lib/types'
 import { subscribeToRide } from '@/lib/realtime'
 import { getService } from '@/data/services'
@@ -144,6 +146,8 @@ export default function DriverTrip() {
   const [routePts, setRoutePts] = useState<google.maps.LatLngLiteral[]>([])
   const [eta, setEta] = useState<{ km: number; min: number } | null>(null)
   const [navSteps, setNavSteps] = useState<NavStep[]>([])
+  // ألغى الراكب الرحلة — إشعار قابل للإغلاق بدل alert معطِّل أثناء القيادة.
+  const [riderCancelled, setRiderCancelled] = useState(false)
   // اللوحة السفلية مطويّة افتراضياً لتملأ الخريطة الشاشة (إحساس ملاحة حقيقي).
   const [sheetOpen, setSheetOpen] = useState(false)
   // كتم التوجيه الصوتي (يُحفظ بين الجلسات).
@@ -268,18 +272,33 @@ export default function DriverTrip() {
     else setGpsStuck(true)
   }
 
-  // Realtime: إن ألغى الراكب الرحلة، أبلغ السائق وأعده لقائمة الطلبات.
+  // إلغاء الراكب: Realtime (فوري) + استطلاع احتياطي كل ٤ ثوانٍ (يعمل لو تعطّل
+  // Realtime على شبكة ضعيفة — وإلّا بقي السائق يقود لرحلة أُلغيت).
   useEffect(() => {
-    if (!activeRide?.id) return
-    const unsub = subscribeToRide(activeRide.id, (ride) => {
-      if (ride.status === 'cancelled') {
-        setActiveRide(null)
-        alert('ألغى الراكب الرحلة.')
-        navigate('/driver', { replace: true })
-      }
+    const rid = activeRide?.id
+    if (!rid) return
+    const onCancelled = () => setRiderCancelled(true) // إشعار قابل للإغلاق (لا نغادر أثناء القيادة فجأة)
+    const unsub = subscribeToRide(rid, (ride) => {
+      if (ride.status === 'cancelled') onCancelled()
     })
-    return unsub
-  }, [activeRide?.id, setActiveRide, navigate])
+    const poll =
+      isSupabaseConfigured
+        ? setInterval(async () => {
+            const ride = await getRide(rid)
+            if (ride?.status === 'cancelled') onCancelled()
+          }, 4000)
+        : undefined
+    return () => {
+      unsub()
+      if (poll) clearInterval(poll)
+    }
+  }, [activeRide?.id])
+
+  const dismissRiderCancel = () => {
+    setRiderCancelled(false)
+    setActiveRide(null)
+    navigate('/driver', { replace: true })
+  }
 
   // الهدف الحالي للملاحة: نقطة الالتقاط قبل بدء الرحلة، ثم الوجهة أثناءها.
   const heading = activeRide?.status === 'in_progress' ? 'dropoff' : 'pickup'
@@ -516,6 +535,19 @@ export default function DriverTrip() {
   return (
     <Screen bare>
       <SosButton rideId={activeRide.id} role="driver" />
+      {riderCancelled && (
+        <div className="fixed inset-0 z-50 grid place-items-center bg-black/50 p-6">
+          <div className="w-full max-w-sm space-y-3 rounded-3xl bg-white p-6 text-center shadow-float">
+            <p className="text-lg font-bold text-royal">أُلغيت الرحلة</p>
+            <p className="text-sm text-ink-soft">
+              ألغى الراكب هذه الرحلة. عُد لقائمة الطلبات لاستقبال رحلة جديدة.
+            </p>
+            <button className="btn-primary w-full" onClick={dismissRiderCancel}>
+              حسناً
+            </button>
+          </div>
+        </div>
+      )}
       {/* حاوية بارتفاع الشاشة الكامل (fixed) — تضمن ملء الخريطة للمساحة دون فراغ */}
       <div
         className="fixed inset-0 z-0 flex flex-col bg-ivory font-plex"
