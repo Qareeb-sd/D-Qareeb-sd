@@ -43,6 +43,28 @@ create policy "create own topups" on public.topups
     and status = 'pending'
   );
 
+-- ── ٤٫٥) عمود زمن الاكتمال (احتياطاً إن لم يُطبَّق سابقاً) + طابع زمني تلقائي ──
+--    يعتمد عليه الكشف الأسبوعي؛ إن كان غير موجود على القاعدة الحيّة أضفناه هنا.
+alter table public.rides add column if not exists started_at   timestamptz;
+alter table public.rides add column if not exists completed_at timestamptz;
+
+create or replace function public.stamp_ride_times()
+returns trigger language plpgsql as $$
+begin
+  if new.status = 'in_progress' and old.status is distinct from 'in_progress'
+     and new.started_at is null then
+    new.started_at := now();
+  end if;
+  if new.status = 'completed' and old.status is distinct from 'completed'
+     and new.completed_at is null then
+    new.completed_at := now();
+  end if;
+  return new;
+end $$;
+drop trigger if exists trg_stamp_ride_times on public.rides;
+create trigger trg_stamp_ride_times before update on public.rides
+  for each row execute function public.stamp_ride_times();
+
 -- ── ٥) رحلات المحفظة كانت لا تُسجّل عمولة (قيد واحد ride_earning=net) فتظهر ──
 --    العمولة صفراً والصافي = الإجمالي في الكشوف. نعتمد قيداً مزدوجاً: أجرة
 --    كاملة دخلاً + عمولة المنصة (لا تغيّر الرصيد، فالصافي أُضيف للقابل للسحب).
