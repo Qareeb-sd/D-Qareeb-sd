@@ -99,8 +99,10 @@ export async function createCommuteOrder(
     .single()
   if (error || !order) throw new Error(error?.message ?? 'تعذّر إنشاء الطلب')
 
+  // user_id = المنظّم (لازم لسياسة إدراج/قراءة الأعضاء بعد إحكام الخصوصية).
   await supabase.from('commute_members').insert({
     order_id: order.id,
+    user_id: organizerId,
     name: input.organizer.name,
     home_lat: input.organizer.home.lat,
     home_lng: input.organizer.home.lng,
@@ -108,6 +110,12 @@ export async function createCommuteOrder(
     is_organizer: true,
   })
   return order as CommuteOrder
+}
+
+/** مُعرّف المستخدم الحالي من الجلسة (محلّي، بلا نداء شبكة). */
+async function currentUid(): Promise<string | null> {
+  const { data } = await supabase.auth.getSession()
+  return data.session?.user.id ?? null
 }
 
 // ------------------------------- الجلب -------------------------------
@@ -121,12 +129,10 @@ export async function getCommuteOrder(id: string): Promise<CommuteOrder | null> 
 export async function getCommuteOrderByCode(code: string): Promise<CommuteOrder | null> {
   if (!isSupabaseConfigured)
     return lsGet<CommuteOrder>(LS_ORDERS).find((o) => o.invite_code === code) ?? null
-  const { data } = await supabase
-    .from('commute_orders')
-    .select('*')
-    .eq('invite_code', code)
-    .single()
-  return (data as CommuteOrder) ?? null
+  // عبر دالة آمنة — الطلبات لم تعد قابلة للقراءة المباشرة لغير المشاركين.
+  const { data } = await supabase.rpc('commute_order_by_code', { p_code: code })
+  const row = Array.isArray(data) ? data[0] : data
+  return (row as CommuteOrder) ?? null
 }
 
 export async function listCommuteMembers(orderId: string): Promise<CommuteMember[]> {
@@ -134,12 +140,17 @@ export async function listCommuteMembers(orderId: string): Promise<CommuteMember
     return lsGet<CommuteMember>(LS_MEMBERS)
       .filter((m) => m.order_id === orderId)
       .sort((a, b) => Number(b.is_organizer) - Number(a.is_organizer))
-  const { data } = await supabase
-    .from('commute_members')
-    .select('*')
-    .eq('order_id', orderId)
-    .order('is_organizer', { ascending: false })
+  // عبر دالة آمنة — تُرجع الأعضاء للمصرّح لهم فقط (منظّم/سائق/عضو/طاقم).
+  const { data } = await supabase.rpc('commute_members_of', { p_order: orderId })
   return (data as CommuteMember[]) ?? []
+}
+
+/** عدد أعضاء الطلب (لفحص السعة قبل الانضمام) — بلا كشف تفاصيلهم. */
+export async function commuteMemberCount(orderId: string): Promise<number> {
+  if (!isSupabaseConfigured)
+    return lsGet<CommuteMember>(LS_MEMBERS).filter((m) => m.order_id === orderId).length
+  const { data } = await supabase.rpc('commute_order_member_count', { p_order: orderId })
+  return typeof data === 'number' ? data : 0
 }
 
 // ------------------------------- الانضمام -------------------------------
@@ -163,6 +174,7 @@ export async function joinCommuteOrder(
   }
   const { error } = await supabase.from('commute_members').insert({
     order_id: orderId,
+    user_id: await currentUid(), // يربط الصفّ بمُدرِجه (لازم لسياسة الإدراج/القراءة)
     name: input.name,
     home_lat: input.home.lat,
     home_lng: input.home.lng,
@@ -200,11 +212,8 @@ export async function acceptCommuteOrder(
     lsSet(LS_ORDERS, orders)
     return {}
   }
-  const { error } = await supabase
-    .from('commute_orders')
-    .update({ status: 'active', driver_id: driverId })
-    .eq('id', orderId)
-    .eq('status', 'dispatched')
+  // عبر دالة آمنة ذرّية (dispatched → active، السائق = المتصل).
+  const { error } = await supabase.rpc('accept_commute_order', { p_order: orderId })
   return error ? { error: error.message } : {}
 }
 
@@ -212,11 +221,8 @@ export async function acceptCommuteOrder(
 export async function listDispatchedCommutes(): Promise<CommuteOrder[]> {
   if (!isSupabaseConfigured)
     return lsGet<CommuteOrder>(LS_ORDERS).filter((o) => o.status === 'dispatched')
-  const { data } = await supabase
-    .from('commute_orders')
-    .select('*')
-    .eq('status', 'dispatched')
-    .order('created_at', { ascending: false })
+  // عبر دالة آمنة — الطلبات لم تعد قابلة للقراءة المباشرة لغير المشاركين.
+  const { data } = await supabase.rpc('list_dispatched_commutes')
   return (data as CommuteOrder[]) ?? []
 }
 
