@@ -200,6 +200,9 @@ export default function SelectLocation() {
   // معرّف الطلب — يمنع نتيجة محاولة قديمة/بطيئة من الكتابة فوق محاولة أحدث ناجحة
   // (تفادي رسالة خطأ حمراء عالقة رغم نجاح التحديد).
   const gpsReqId = useRef(0)
+  // حارس تزامني ضدّ الضغط المزدوج على «تأكيد الرحلة» — يمنع إنشاء رحلتين
+  // وخصماً مزدوجاً من المحفظة قبل أن يُعطّل الزرّ عبر إعادة التصيير.
+  const submittingRef = useRef(false)
   const useMyLocation = async () => {
     const myId = ++gpsReqId.current
     setGpsBusy(true)
@@ -464,12 +467,15 @@ export default function SelectLocation() {
         return alert('أدخل رقم هاتف صحيح للمستلِم (مثال: 09xxxxxxxx).')
       }
     }
+    if (submittingRef.current) return // ضغط مزدوج — الطلب الأول قيد التنفيذ
+    submittingRef.current = true
     setBusy(true)
     // منع طلب أكثر من رحلة في وقت واحد — إن وُجدت رحلة نشطة، عُد لمتابعتها.
     if (profile?.id) {
       const existing = await getActiveCustomerRide(profile.id)
       if (existing) {
         restore(existing)
+        submittingRef.current = false
         setBusy(false)
         alert('لديك رحلة جارية بالفعل — سنعيدك لمتابعتها.')
         navigate(
@@ -522,6 +528,7 @@ export default function SelectLocation() {
       ...(isIntercity ? { intercity: true } : {}),
     })
     if (error || !id) {
+      submittingRef.current = false
       setBusy(false)
       return alert(error ?? 'تعذّر إنشاء الرحلة، حاول مجدداً.')
     }
@@ -537,6 +544,7 @@ export default function SelectLocation() {
           if (!cErr) cancelled = true
           else if (i < 2) await new Promise((r) => setTimeout(r, 1500))
         }
+        submittingRef.current = false
         setBusy(false)
         if (!cancelled) {
           // لم نتمكّن من إلغاء الرحلة غير المدفوعة — نُبقيها في السياق ليعيدنا
@@ -556,6 +564,7 @@ export default function SelectLocation() {
     // إشعار السائقين المتصلين بالطلب الجديد (أفضل جهد — لا يعطّل التدفّق).
     void notifyDriversOfRide(id)
     setRideId(id)
+    submittingRef.current = false
     setBusy(false)
     // استبدال بدل الإضافة: بعد إنشاء الطلب لا يجوز الرجوع لتحديد الخريطة.
     navigate('/find-driver', { replace: true })

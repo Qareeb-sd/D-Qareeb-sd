@@ -58,6 +58,7 @@ export default function Trip() {
   const service = serviceId ? getService(serviceId) : undefined
   const total = fare ?? 0
   const [driver, setDriver] = useState<RideDriverInfo | null>(null)
+  const [driverId, setDriverId] = useState<string | null>(null) // لإعادة جلب بيانات السائق عند تغيّره
   const [status, setStatus] = useState<RideStatus | null>(null)
   const [driverPos, setDriverPos] = useState<google.maps.LatLngLiteral | null>(null)
   const [routePts, setRoutePts] = useState<google.maps.LatLngLiteral[]>([])
@@ -69,6 +70,7 @@ export default function Trip() {
   const [cancelInfo, setCancelInfo] = useState<string | null>(null)
   const [cancelledByOther, setCancelledByOther] = useState(false)
   const notified = useRef(false)
+  const feeAck = useRef(false) // بانتظار تأكيد العميل لرسوم الإلغاء — يمنع الانتقال التلقائي
   const selfCancel = useRef(false) // يميّز إلغاء العميل نفسه عن إلغاء السائق/الإدارة
 
   // استرجاع الرحلة الجارية بعد تحديث الصفحة (تُفقد الحالة من الذاكرة).
@@ -82,11 +84,12 @@ export default function Trip() {
     })
   }, [rideId, profile?.id, restore, navigate])
 
-  // جلب بيانات السائق المُسنَد فعلياً.
+  // جلب بيانات السائق المُسنَد فعلياً — ويُعاد الجلب إن تغيّر السائق (تخلّى الأول
+  // وقبِل غيره)، حتى لا يرى/يتّصل العميل بالسائق الخطأ أو لوحة مركبة خاطئة.
   useEffect(() => {
     if (!rideId) return
     void getRideDriver(rideId).then(setDriver)
-  }, [rideId])
+  }, [rideId, driverId])
 
   // تهيئة حالة الرحلة أول مرة (قبل وصول أي حدث Realtime).
   useEffect(() => {
@@ -110,6 +113,7 @@ export default function Trip() {
     if (!rideId) return // لا نشترك قبل استرجاع مُعرّف الرحلة (يتجنّب اشتراكاً على '')
     const unsub = subscribeToRide(rideId, (ride) => {
       setStatus(ride.status)
+      if (ride.driver_id) setDriverId(ride.driver_id) // يُطلق إعادة جلب بيانات السائق إن تغيّر
       if (ride.driver_lat != null && ride.driver_lng != null)
         setDriverPos({ lat: ride.driver_lat, lng: ride.driver_lng })
       // إشعار العميل مرّة واحدة لحظة قبول السائق.
@@ -120,6 +124,7 @@ export default function Trip() {
       if (ride.status === 'completed') navigate('/rate', { replace: true })
       else if (ride.status === 'searching') navigate('/find-driver', { replace: true }) // تخلّى السائق → إعادة البحث
       else if (ride.status === 'cancelled') {
+        if (feeAck.current) return // بانتظار ضغط العميل «حسناً» على إشعار الرسوم — لا نغادر
         if (selfCancel.current) {
           reset()
           navigate('/home', { replace: true })
@@ -140,10 +145,14 @@ export default function Trip() {
       const ride = await getRide(rideId)
       if (!ride) return
       setStatus(ride.status)
+      if (ride.driver_id) setDriverId(ride.driver_id)
       if (ride.driver_lat != null && ride.driver_lng != null)
         setDriverPos({ lat: ride.driver_lat, lng: ride.driver_lng })
       if (ride.status === 'completed') navigate('/rate', { replace: true })
+      // تخلّى السائق وعاد الطلب للبحث — نعيد العميل لشاشة البحث حتى لو تعطّل Realtime.
+      else if (ride.status === 'searching') navigate('/find-driver', { replace: true })
       else if (ride.status === 'cancelled') {
+        if (feeAck.current) return // بانتظار تأكيد العميل لرسوم الإلغاء
         if (selfCancel.current) {
           reset()
           navigate('/home', { replace: true })
@@ -203,6 +212,7 @@ export default function Trip() {
         const parts: string[] = []
         if (result.charged > 0) parts.push(`خُصم ${money(result.charged)} من محفظتك`)
         if (result.debt > 0) parts.push(`${money(result.debt)} تُضاف لأجرة رحلتك القادمة`)
+        feeAck.current = true // يمنع Realtime/الاستطلاع من إخفاء الإشعار قبل قراءته
         setBusy(false)
         setCancelInfo(`رسوم إلغاء: ${parts.join('، ')}.`)
         return

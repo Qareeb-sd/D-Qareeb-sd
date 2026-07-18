@@ -24,26 +24,37 @@ export function useResumeActiveRide(): boolean {
       return
     }
     let alive = true
-    void getActiveCustomerRide(profile.id).then(async (ride) => {
-      if (!alive) return
-      if (ride) {
-        restore(ride)
-        navigate(
-          ride.status === 'searching' || ride.status === 'requested' ? '/find-driver' : '/trip',
-          { replace: true },
-        )
-        return
-      }
-      // لا رحلة جارية — لكن قد تكون رحلة اكتملت والتطبيق مغلق ولم تُقيَّم بعد.
-      const toRate = await getPendingRateRide(profile.id)
-      if (!alive) return
-      if (toRate) {
-        restore(toRate)
-        navigate('/rate', { replace: true })
-      } else {
-        setChecking(false)
-      }
-    })
+    void getActiveCustomerRide(profile.id)
+      .then(async (ride) => {
+        if (!alive) return
+        if (ride) {
+          restore(ride)
+          navigate(
+            ride.status === 'searching' || ride.status === 'requested' ? '/find-driver' : '/trip',
+            { replace: true },
+          )
+          return
+        }
+        // لا رحلة جارية — لكن قد تكون رحلة اكتملت والتطبيق مغلق ولم تُقيَّم بعد.
+        // نلتقط فشل هذا الاستعلام وحده حتى لا يمنع رفع مؤشّر التحميل.
+        let toRate = null
+        try {
+          toRate = await getPendingRateRide(profile.id)
+        } catch {
+          /* تجاهل — نُكمل لعرض الشاشة */
+        }
+        if (!alive) return
+        if (toRate) {
+          restore(toRate)
+          navigate('/rate', { replace: true })
+        } else {
+          setChecking(false)
+        }
+      })
+      // فشل الشبكة (السيناريو الشائع بالسودان) يجب ألّا يُبقي المستخدم على مؤشّر تحميل أبدي.
+      .catch(() => {
+        if (alive) setChecking(false)
+      })
     return () => {
       alive = false
     }
