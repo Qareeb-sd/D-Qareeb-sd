@@ -3,8 +3,9 @@ import { AlertTriangle } from 'lucide-react'
 import { money } from '@/lib/format'
 
 /**
- * أسباب الإلغاء مع رموزها. الأسباب المبرّرة (بعيد فعلاً / سيارة مختلفة / سائق
- * مختلف) لا تُطبَّق عليها رسوم بعد قبول السائق؛ الخادم يتحقّق من «بعيد» فعلياً.
+ * أسباب الإلغاء مع رموزها. الإعفاء الوحيد المؤكَّد آلياً هو «السائق بعيد»
+ * (يتحقّق منه الخادم بالمسافة/الزمن). ادّعاءات «سيارة/سائق مختلف» تُسجَّل
+ * لمراجعة الأدمن وردّ الرسوم للحالات الصادقة — لا إعفاء تلقائي (منع التهرّب).
  */
 export interface CancelReason {
   code: string
@@ -15,8 +16,8 @@ export interface CancelReason {
 
 export const CANCEL_REASONS: CancelReason[] = [
   { code: 'driver_far', label: 'السائق بعيد عني', excusable: true },
-  { code: 'car_mismatch', label: 'السيارة مختلفة عن المعروضة', excusable: true },
-  { code: 'driver_mismatch', label: 'السائق مختلف عن المعروض', excusable: true },
+  { code: 'car_mismatch', label: 'السيارة مختلفة عن المعروضة', excusable: false },
+  { code: 'driver_mismatch', label: 'السائق مختلف عن المعروض', excusable: false },
   { code: 'changed_mind', label: 'غيّرت رأيي', excusable: false },
   { code: 'long_wait', label: 'الانتظار طويل', excusable: false },
   { code: 'other', label: 'سبب آخر', excusable: false },
@@ -79,6 +80,11 @@ export default function CancelReasonSheet({
       {picked?.code === 'driver_far' && fee > 0 && (
         <p className="text-center text-[11px] text-ink-muted">
           بلا رسوم إن كان السائق بعيداً فعلاً عنك.
+        </p>
+      )}
+      {(picked?.code === 'car_mismatch' || picked?.code === 'driver_mismatch') && fee > 0 && (
+        <p className="text-center text-[11px] text-ink-muted">
+          تُراجع الإدارة بلاغك، وتُعاد الرسوم إن ثبتت المخالفة.
         </p>
       )}
 
