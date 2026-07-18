@@ -90,6 +90,8 @@ export interface Ride {
   recipient_name?: string | null // اسم المستلِم عند التسليم
   recipient_phone?: string | null // هاتف المستلِم
   intercity?: boolean | null // رحلة بين المدن
+  started_at?: string | null // لحظة تحرّك الرحلة (بدء القيادة)
+  completed_at?: string | null // لحظة الوصول/اكتمال الرحلة
   created_at: string
   // تظهر فقط في قائمة الطلبات المتاحة للسائق (من list_available_rides).
   customer_name?: string | null

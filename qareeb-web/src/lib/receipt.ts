@@ -1,19 +1,31 @@
 import { Capacitor } from '@capacitor/core'
 import { Share } from '@capacitor/share'
 import { Filesystem, Directory } from '@capacitor/filesystem'
+import { getRideDriver } from './api'
 import type { Ride } from './types'
 
 const isNative = Capacitor.isNativePlatform()
 
 /** يرسم إيصال الرحلة على canvas ويعيده كصورة PNG (Blob + base64). */
-async function renderReceipt(ride: Ride, serviceName: string): Promise<{ blob: Blob; base64: string } | null> {
+async function renderReceipt(
+  ride: Ride,
+  serviceName: string,
+  extra?: { plate?: string | null },
+): Promise<{ blob: Blob; base64: string } | null> {
   const W = 720
   const pad = 48
   const canvas = document.createElement('canvas')
   const scale = 2 // دقّة مضاعفة لوضوح على الشاشات الحادّة
   const rows: { label: string; value: string }[] = [
-    { label: 'التاريخ', value: fmtDate(ride.created_at) },
+    { label: 'التاريخ', value: fmtDateOnly(ride.created_at) },
+    { label: 'وقت الطلب', value: fmtTime(ride.created_at) },
+    ...(ride.started_at ? [{ label: 'وقت التحرّك', value: fmtTime(ride.started_at) }] : []),
+    ...(ride.completed_at ? [{ label: 'وقت الوصول', value: fmtTime(ride.completed_at) }] : []),
+    ...(ride.started_at && ride.completed_at
+      ? [{ label: 'مدّة الرحلة', value: fmtDuration(ride.started_at, ride.completed_at) }]
+      : []),
     { label: 'الخدمة', value: serviceName },
+    ...(extra?.plate ? [{ label: 'رقم السيارة', value: extra.plate }] : []),
     { label: 'من', value: ride.pickup_address ?? '—' },
     { label: 'إلى', value: ride.dropoff_address ?? '—' },
     { label: 'طريقة الدفع', value: payLabel(ride.payment_method) },
@@ -102,33 +114,21 @@ async function renderReceipt(ride: Ride, serviceName: string): Promise<{ blob: B
   return { blob, base64 }
 }
 
-/** ملخّص نصّي مختصر يُرفَق كتعليق مع صورة الإيصال. */
-function receiptCaption(ride: Ride, serviceName: string): string {
-  return [
-    '🚗 إيصال رحلة قريب',
-    `📅 ${fmtDate(ride.created_at)}`,
-    `🚕 ${serviceName} · من ${ride.pickup_address ?? '—'} إلى ${ride.dropoff_address ?? '—'}`,
-    `💰 الإجمالي: ${Math.round(ride.fare ?? 0).toLocaleString('en')} ج.س`,
-    `رقم الرحلة: ${ride.id.slice(0, 8)}`,
-  ].join('\n')
-}
-
 /**
- * يشارك صورة الإيصال عبر ورقة المشاركة الأصلية (واتساب/تيليجرام/حفظ للمعرض…).
+ * يشارك صورة الإيصال فقط (بلا نصّ) عبر ورقة المشاركة الأصلية (واتساب/تيليجرام/حفظ للمعرض…).
  * على الجوّال الأصلي يكتب الصورة لملفّ ويشاركها كملف حقيقي عبر Capacitor Share؛
  * وعلى الويب يستعمل Web Share للملفّات ثم يرجع للتنزيل.
  */
-export async function shareRideReceipt(
-  ride: Ride,
-  serviceName: string,
-  caption = false,
-): Promise<{ ok: boolean; reason?: string }> {
-  const img = await renderReceipt(ride, serviceName)
+export async function shareRideReceipt(ride: Ride, serviceName: string): Promise<{ ok: boolean; reason?: string }> {
+  // رقم السيارة من دالة آمنة (قد تفشل بلا اتصال — نتجاهلها ونكمل).
+  const plate = await getRideDriver(ride.id)
+    .then((d) => d?.plate_number ?? null)
+    .catch(() => null)
+  const img = await renderReceipt(ride, serviceName, { plate })
   if (!img) return { ok: false, reason: 'تعذّر إنشاء صورة الإيصال' }
   const fileName = `qareeb-receipt-${ride.id.slice(0, 8)}.png`
-  const text = caption ? receiptCaption(ride, serviceName) : undefined
 
-  // ===== الجوّال الأصلي: كتابة الصورة لملفّ ثم مشاركتها كملفّ =====
+  // ===== الجوّال الأصلي: كتابة الصورة لملفّ ثم مشاركتها كملفّ (صورة فقط) =====
   if (isNative) {
     try {
       const written = await Filesystem.writeFile({
@@ -140,7 +140,6 @@ export async function shareRideReceipt(
       if (canShare) {
         await Share.share({
           title: 'إيصال رحلة قريب',
-          text,
           files: [written.uri],
           dialogTitle: 'مشاركة الإيصال',
         })
@@ -154,15 +153,15 @@ export async function shareRideReceipt(
     }
   }
 
-  // ===== الويب: Web Share للملفّات إن دعمها المتصفّح =====
+  // ===== الويب: Web Share للملفّات إن دعمها المتصفّح (صورة فقط) =====
   const file = new File([img.blob], fileName, { type: 'image/png' })
   const nav = navigator as Navigator & {
     canShare?: (d: { files: File[] }) => boolean
-    share?: (d: { files?: File[]; title?: string; text?: string }) => Promise<void>
+    share?: (d: { files?: File[]; title?: string }) => Promise<void>
   }
   try {
     if (nav.canShare && nav.canShare({ files: [file] }) && nav.share) {
-      await nav.share({ files: [file], title: 'إيصال رحلة قريب', text })
+      await nav.share({ files: [file], title: 'إيصال رحلة قريب' })
       return { ok: true }
     }
   } catch (e) {
@@ -181,27 +180,28 @@ export async function shareRideReceipt(
 }
 
 /**
- * زرّ واتساب: يشارك صورة الإيصال (لا نصّاً قابلاً للتزوير) مع تعليق مختصر.
- * على الجوّال تفتح ورقة المشاركة وواتساب أوّل الخيارات؛ وإن تعذّر يرجع لرابط واتساب نصّي.
+ * زرّ واتساب: يشارك صورة الإيصال فقط (بلا نصّ قابل للتزوير) — نفس ورقة المشاركة
+ * حيث واتساب أوّل الخيارات على الجوّال.
  */
 export async function shareReceiptWhatsApp(ride: Ride, serviceName: string): Promise<{ ok: boolean; reason?: string }> {
-  const res = await shareRideReceipt(ride, serviceName, true)
-  if (res.ok) return res
-  // على الجوّال الأصلي لا نرجع لنصّ واتساب قابل للتزوير — نُظهر الخطأ الحقيقي بدلاً من ذلك.
-  if (isNative) return res
-  // على الويب فقط: رجوع نهائي لرابط واتساب نصّي إن لم يدعم المتصفّح مشاركة الملفّات.
-  window.open(`https://wa.me/?text=${encodeURIComponent(receiptCaption(ride, serviceName))}`, '_blank', 'noopener')
-  return { ok: true }
+  return shareRideReceipt(ride, serviceName)
 }
 
-function fmtDate(iso: string): string {
-  return new Date(iso).toLocaleString('ar-SD', {
-    year: 'numeric',
-    month: 'long',
-    day: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-  })
+function fmtDateOnly(iso: string): string {
+  return new Date(iso).toLocaleDateString('ar-SD', { year: 'numeric', month: 'long', day: 'numeric' })
+}
+function fmtTime(iso: string): string {
+  return new Date(iso).toLocaleTimeString('ar-SD', { hour: '2-digit', minute: '2-digit' })
+}
+/** مدّة الرحلة بين لحظتين، بصيغة «س ساعة د دقيقة» أو «د دقيقة». */
+function fmtDuration(startIso: string, endIso: string): string {
+  const ms = new Date(endIso).getTime() - new Date(startIso).getTime()
+  if (!Number.isFinite(ms) || ms <= 0) return '—'
+  const mins = Math.round(ms / 60000)
+  const h = Math.floor(mins / 60)
+  const m = mins % 60
+  if (h > 0) return m > 0 ? `${h} ساعة ${m} دقيقة` : `${h} ساعة`
+  return `${m} دقيقة`
 }
 function payLabel(m: string): string {
   return m === 'wallet' ? 'محفظة قريب' : m === 'bank_transfer' ? 'تحويل بنكي' : 'كاش'
