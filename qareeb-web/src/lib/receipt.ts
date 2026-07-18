@@ -147,10 +147,10 @@ export async function shareRideReceipt(
         return { ok: true }
       }
     } catch (e) {
-      const msg = (e as Error)?.message ?? ''
+      const msg = (e as Error)?.message ?? String(e)
       // إلغاء المستخدم لورقة المشاركة ليس خطأً.
       if (/cancel|dismiss/i.test(msg)) return { ok: true }
-      return { ok: false, reason: 'تعذّرت المشاركة على الجهاز' }
+      return { ok: false, reason: `تعذّرت المشاركة: ${msg}` }
     }
   }
 
@@ -187,7 +187,9 @@ export async function shareRideReceipt(
 export async function shareReceiptWhatsApp(ride: Ride, serviceName: string): Promise<{ ok: boolean; reason?: string }> {
   const res = await shareRideReceipt(ride, serviceName, true)
   if (res.ok) return res
-  // رجوع نهائي (متصفّح لا يدعم مشاركة الملفّات): رابط واتساب نصّي.
+  // على الجوّال الأصلي لا نرجع لنصّ واتساب قابل للتزوير — نُظهر الخطأ الحقيقي بدلاً من ذلك.
+  if (isNative) return res
+  // على الويب فقط: رجوع نهائي لرابط واتساب نصّي إن لم يدعم المتصفّح مشاركة الملفّات.
   window.open(`https://wa.me/?text=${encodeURIComponent(receiptCaption(ride, serviceName))}`, '_blank', 'noopener')
   return { ok: true }
 }
