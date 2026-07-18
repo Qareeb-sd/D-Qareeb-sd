@@ -3,13 +3,14 @@
  *  1) تخزين مؤقت (PWA) — فتح سريع حتى على شبكة ضعيفة/منقطعة (مهم للسودان).
  *  2) استقبال إشعارات Web Push وعرضها والنقر عليها.
  *
- * استراتيجية التخزين:
- *  - التنقّل (HTML): الشبكة أولاً ثم الكاش (يمنع بقاء نسخة قديمة).
- *  - أصول Vite المُبصَمة (/assets/*) والأيقونات: الكاش أولاً (ثابتة وآمنة).
+ * استراتيجية التخزين (الشبكة أولاً دائماً لضمان أحدث كود بعد كل تحديث):
+ *  - التنقّل (HTML) والأصول (/assets/*): الشبكة أولاً ثم الكاش عند انقطاع الشبكة.
+ *    (داخل التطبيق الأصلي «الشبكة» = ملفّات محلّية فورية، فلا بطء؛ ويمنع بقاء
+ *     نسخة قديمة بعد تحديث الـ APK بـ install -r دون حذف.)
  *  - أي شيء آخر (Supabase/قوقل/الخطوط): لا نتدخّل — يذهب للشبكة مباشرة.
  */
 
-const CACHE = 'qareeb-v1'
+const CACHE = 'qareeb-v3'
 const SHELL = [
   '/',
   '/index.html',
@@ -65,18 +66,16 @@ self.addEventListener('fetch', (event) => {
     return
   }
 
-  // الأصول المُبصَمة: الكاش أولاً ثم الشبكة (وتُخزَّن للمرّات القادمة).
+  // الأصول: الشبكة أولاً (أحدث كود دائماً) ثم الكاش عند انقطاع الشبكة فقط.
   if (isStaticAsset(url)) {
     event.respondWith(
-      caches.match(request).then(
-        (cached) =>
-          cached ||
-          fetch(request).then((res) => {
-            const copy = res.clone()
-            caches.open(CACHE).then((c) => c.put(request, copy)).catch(() => {})
-            return res
-          }),
-      ),
+      fetch(request)
+        .then((res) => {
+          const copy = res.clone()
+          caches.open(CACHE).then((c) => c.put(request, copy)).catch(() => {})
+          return res
+        })
+        .catch(() => caches.match(request)),
     )
   }
 })

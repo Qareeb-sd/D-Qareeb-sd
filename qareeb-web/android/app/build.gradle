@@ -24,8 +24,8 @@ android {
         applicationId "sd.qareeb.app"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 3
-        versionName "1.2-receipt"
+        versionCode 4
+        versionName "1.3-fresh"
         // يُحقن في <meta-data com.google.android.geo.API_KEY> بالمانيفست.
         manifestPlaceholders = [MAPS_API_KEY: googleMapsApiKey]
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"

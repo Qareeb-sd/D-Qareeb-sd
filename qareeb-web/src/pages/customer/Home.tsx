@@ -31,6 +31,17 @@ import { useResumeActiveRide } from '@/hooks/useResumeActiveRide'
  * زمردي عميق + عاجي + لمسات ذهبية | خط IBM Plex Sans Arabic | أيقونات خطية.
  */
 
+/** يعلّم إعلاناً كمقروء محلياً حتى لا يظهر مجدداً بعد مشاهدته. */
+function markAnnouncementSeen(id: string) {
+  try {
+    const seen: string[] = JSON.parse(localStorage.getItem('qareeb_seen_ann') ?? '[]')
+    if (!seen.includes(id)) seen.push(id)
+    localStorage.setItem('qareeb_seen_ann', JSON.stringify(seen.slice(-50)))
+  } catch {
+    /* لا يهمّ */
+  }
+}
+
 export default function Home() {
   const navigate = useNavigate()
   const { setServiceId } = useRide()
@@ -89,19 +100,16 @@ export default function Home() {
         seen = []
       }
       const fresh = list.find((a) => !seen.includes(a.id))
-      if (fresh) setAnnouncement(fresh)
+      if (fresh) {
+        setAnnouncement(fresh)
+        markAnnouncementSeen(fresh.id) // يُعلَّم كمقروء فور عرضه فلا يعود بعد مشاهدته
+      }
     })
   }, [])
 
   const dismissAnnouncement = () => {
     if (!announcement) return
-    try {
-      const seen: string[] = JSON.parse(localStorage.getItem('qareeb_seen_ann') ?? '[]')
-      seen.push(announcement.id)
-      localStorage.setItem('qareeb_seen_ann', JSON.stringify(seen.slice(-50)))
-    } catch {
-      /* لا يهمّ */
-    }
+    markAnnouncementSeen(announcement.id)
     setAnnouncement(null)
   }
 
