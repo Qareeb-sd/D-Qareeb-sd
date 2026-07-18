@@ -4729,3 +4729,163 @@ begin
   return true;
 end $$;
 grant execute on function public.accept_ride(uuid) to authenticated;
+-- ============================================================
+--  تغطية «السفر بين المدن»: تفعيله افتراضياً (نموذج انسحاب) كي لا ينتظر
+--  العميل بلا سائق. السائق الذي لا يرغب يعطّله من «حسابي». (#4)
+--  شغّل هذا المقطع مرّة واحدة.
+-- ============================================================
+alter table public.drivers alter column accepts_intercity set default true;
+update public.drivers set accepts_intercity = true where accepts_intercity is not true;
+-- ============================================================
+--  رقم العضوية: رقم تسلسلي فريد يُمنح تلقائياً لكل مستخدم (عميل/سائق)
+--  عند إنشاء حسابه، ويُعبّأ للحسابات الحالية بترتيب التسجيل.
+--  شغّل هذا المقطع مرّة واحدة في Supabase SQL Editor.
+-- ============================================================
+create sequence if not exists public.member_seq start 1000;
+alter table public.users add column if not exists member_no int unique;
+alter table public.users alter column member_no set default nextval('public.member_seq');
+
+-- تعبئة الحسابات الحالية بترتيب تاريخ التسجيل.
+do $$
+declare r record;
+begin
+  for r in select id from public.users where member_no is null order by created_at, id loop
+    update public.users set member_no = nextval('public.member_seq') where id = r.id;
+  end loop;
+end $$;
+-- ============================================================
+--  رقم العضوية (نسخة محسّنة): سلسلة مستقلّة لكل فئة + بادئة حرفية.
+--   • العميل  → «ع‑رقم» يبدأ من ١٠٠٠
+--   • الكابتن → «ك‑رقم» يبدأ من ١٠٠٠
+--  يتّسع لملايين الأعضاء، والحرف يميّز النوع. يُعاد الترقيم للحسابات الحالية.
+--  شغّل هذا المقطع مرّة واحدة (بعد تشغيل member_number الأساسي أو بدونه).
+-- ============================================================
+create sequence if not exists public.member_seq_customer start 1000;
+create sequence if not exists public.member_seq_driver   start 1000;
+
+-- العمود موجود مسبقاً؛ نُزيل التفرّد العام والقيمة الافتراضية (السلاسل والبادئة تكفيان).
+alter table public.users add column if not exists member_no int;
+alter table public.users drop constraint if exists users_member_no_key;
+alter table public.users alter column member_no drop default;
+
+-- منح الرقم عند إنشاء الحساب حسب الدور (قبل الإدراج).
+create or replace function public.assign_member_no()
+returns trigger language plpgsql security definer set search_path = public as $$
+begin
+  if new.member_no is null then
+    new.member_no := nextval(
+      (case when new.role = 'driver'
+            then 'public.member_seq_driver'
+            else 'public.member_seq_customer' end)::regclass);
+  end if;
+  return new;
+end $$;
+drop trigger if exists trg_assign_member_no on public.users;
+create trigger trg_assign_member_no before insert on public.users
+  for each row execute function public.assign_member_no();
+
+-- عند ترقية عميل إلى سائق: يُمنح رقم كابتن جديد من سلسلة السائقين.
+create or replace function public.reassign_driver_member_no()
+returns trigger language plpgsql security definer set search_path = public as $$
+begin
+  if new.role = 'driver' and old.role is distinct from 'driver' then
+    new.member_no := nextval('public.member_seq_driver');
+  end if;
+  return new;
+end $$;
+drop trigger if exists trg_reassign_driver_member_no on public.users;
+create trigger trg_reassign_driver_member_no before update of role on public.users
+  for each row execute function public.reassign_driver_member_no();
+
+-- إعادة ترقيم الحسابات الحالية بترتيب التسجيل: العملاء ثم السائقون.
+do $$
+declare r record;
+begin
+  perform setval('public.member_seq_customer', 999, true);
+  perform setval('public.member_seq_driver',   999, true);
+  for r in select id from public.users where role = 'customer' order by created_at, id loop
+    update public.users set member_no = nextval('public.member_seq_customer') where id = r.id;
+  end loop;
+  for r in select id from public.users where role = 'driver' order by created_at, id loop
+    update public.users set member_no = nextval('public.member_seq_driver') where id = r.id;
+  end loop;
+  -- الأدمن بلا رقم عضوية (اتركه فارغاً).
+  update public.users set member_no = null where role = 'admin';
+end $$;
+-- ============================================================
+--  رقم العضوية (نهائي): يبدأ من ١، ببادئة C للعميل و D للسائق.
+--   • العميل  → C01, C02 … C999, C1000 …
+--   • الكابتن → D01, D02 … D999, D1000 …
+--  يتّسع لملايين الأعضاء، والحرف يميّز النوع. يُعاد الترقيم للحسابات الحالية.
+--  شغّل هذا المقطع مرّة واحدة (يُغني عن ملفات رقم العضوية السابقة).
+-- ============================================================
+create sequence if not exists public.member_seq_customer;
+create sequence if not exists public.member_seq_driver;
+
+alter table public.users add column if not exists member_no int;
+alter table public.users drop constraint if exists users_member_no_key;
+alter table public.users alter column member_no drop default;
+
+-- منح الرقم عند إنشاء الحساب حسب الدور (قبل الإدراج).
+create or replace function public.assign_member_no()
+returns trigger language plpgsql security definer set search_path = public as $$
+begin
+  if new.member_no is null then
+    new.member_no := nextval(
+      (case when new.role = 'driver'
+            then 'public.member_seq_driver'
+            else 'public.member_seq_customer' end)::regclass);
+  end if;
+  return new;
+end $$;
+drop trigger if exists trg_assign_member_no on public.users;
+create trigger trg_assign_member_no before insert on public.users
+  for each row execute function public.assign_member_no();
+
+-- عند ترقية عميل إلى سائق: يُمنح رقم كابتن جديد من سلسلة السائقين.
+create or replace function public.reassign_driver_member_no()
+returns trigger language plpgsql security definer set search_path = public as $$
+begin
+  if new.role = 'driver' and old.role is distinct from 'driver' then
+    new.member_no := nextval('public.member_seq_driver');
+  end if;
+  return new;
+end $$;
+drop trigger if exists trg_reassign_driver_member_no on public.users;
+create trigger trg_reassign_driver_member_no before update of role on public.users
+  for each row execute function public.reassign_driver_member_no();
+
+-- إعادة ترقيم الحسابات الحالية بدءاً من ١ (العملاء ثم السائقون).
+do $$
+declare r record;
+begin
+  perform setval('public.member_seq_customer', 1, false); -- التالي = 1
+  perform setval('public.member_seq_driver',   1, false);
+  for r in select id from public.users where role = 'customer' order by created_at, id loop
+    update public.users set member_no = nextval('public.member_seq_customer') where id = r.id;
+  end loop;
+  for r in select id from public.users where role = 'driver' order by created_at, id loop
+    update public.users set member_no = nextval('public.member_seq_driver') where id = r.id;
+  end loop;
+  update public.users set member_no = null where role = 'admin';
+end $$;
+-- ============================================================
+--  إظهار رقم العضوية في لوحة الأدمن: إضافة member_no لقائمة العملاء.
+--  (السائقون يُجلبون عبر join مباشر فلا يحتاجون تعديل دالة.)
+--  شغّل هذا المقطع مرّة واحدة.
+-- ============================================================
+drop function if exists public.admin_list_customers();
+create or replace function public.admin_list_customers()
+returns table (
+  id uuid, full_name text, phone text, rating numeric,
+  ratings_count int, rides_count bigint, banned boolean, ban_note text,
+  member_no int, created_at timestamptz
+) language sql security definer set search_path = public as $$
+  select u.id, u.full_name, u.phone, u.rating, u.ratings_count,
+         (select count(*) from public.rides r where r.customer_id = u.id),
+         coalesce(u.banned, false), u.ban_note, u.member_no, u.created_at
+    from public.users u
+   where u.role = 'customer' and public.is_staff_or_admin()
+   order by u.created_at desc
+$$;
+grant execute on function public.admin_list_customers() to authenticated;

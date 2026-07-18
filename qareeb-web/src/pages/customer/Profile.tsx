@@ -21,7 +21,7 @@ import ShareRideButton from '@/components/ShareRideButton'
 import { useAuth } from '@/store/AuthContext'
 import { useRide } from '@/store/RideContext'
 import { updateEmergencyContacts, getWallet, listRides } from '@/lib/api'
-import { money } from '@/lib/format'
+import { money, memberCode } from '@/lib/format'
 
 export default function Profile() {
   const navigate = useNavigate()
@@ -80,6 +80,11 @@ export default function Profile() {
           <p className="text-sm text-ink-soft" dir="ltr">
             {profile?.phone ?? '—'}
           </p>
+          {profile?.member_no != null && (
+            <span className="mt-1.5 inline-block rounded-full bg-gold-soft px-2.5 py-0.5 text-xs font-bold text-sand-ink" dir="ltr">
+              {memberCode(profile.role, profile.member_no)}
+            </span>
+          )}
         </div>
 
         {/* بطاقات الإحصاء */}

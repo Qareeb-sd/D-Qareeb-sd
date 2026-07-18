@@ -74,6 +74,14 @@ export default function DriverRate() {
       <button className="btn-driver mt-6 w-full" onClick={finish} disabled={busy || stars === 0}>
         {busy ? '…' : stars === 0 ? 'اختر تقييماً' : 'تم'}
       </button>
+      {/* تخطّي التقييم — لا يُجبر السائق على البقاء بعد تسوية الرحلة. */}
+      <button
+        onClick={() => navigate('/driver/wallet', { replace: true })}
+        disabled={busy}
+        className="mt-3 w-full text-center text-sm font-medium text-ink-muted"
+      >
+        تخطّي
+      </button>
     </Screen>
   )
 }

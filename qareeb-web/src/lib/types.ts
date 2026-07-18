@@ -29,6 +29,7 @@ export interface AppUser {
   phone: string
   full_name: string | null
   role: 'customer' | 'driver' | 'admin'
+  member_no?: number | null // رقم العضوية التسلسلي (يُمنح تلقائياً عند التسجيل)
   sos_contact1?: string | null // جهة طوارئ 1 (يضبطها العميل)
   sos_contact2?: string | null // جهة طوارئ 2
   birthdate?: string | null // تاريخ الميلاد (YYYY-MM-DD)
@@ -553,6 +554,7 @@ export interface AdminCustomer {
   rides_count: number
   banned?: boolean
   ban_note?: string | null
+  member_no?: number | null
   created_at: string
 }
 

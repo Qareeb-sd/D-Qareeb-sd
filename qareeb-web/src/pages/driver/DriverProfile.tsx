@@ -8,6 +8,7 @@ import VipSubscribe from '@/components/VipSubscribe'
 import { useAuth } from '@/store/AuthContext'
 import { getDriver, updateEmergencyContacts, setDriverServicePrefs } from '@/lib/api'
 import { getService } from '@/data/services'
+import { memberCode } from '@/lib/format'
 import { Package, Building2 } from 'lucide-react'
 
 export default function DriverProfile() {
@@ -30,7 +31,7 @@ export default function DriverProfile() {
   useEffect(() => {
     if (driver) {
       setPrefPkg(driver.accepts_packages ?? true)
-      setPrefInter(driver.accepts_intercity ?? false)
+      setPrefInter(driver.accepts_intercity ?? true)
     }
   }, [driver])
   const savePrefs = async (pkg: boolean, inter: boolean) => {
@@ -40,7 +41,7 @@ export default function DriverProfile() {
     if (error) {
       // تراجع بصري عند الفشل
       setPrefPkg(driver?.accepts_packages ?? true)
-      setPrefInter(driver?.accepts_intercity ?? false)
+      setPrefInter(driver?.accepts_intercity ?? true)
       alert(error)
     } else {
       void refetchDriver()
@@ -81,6 +82,11 @@ export default function DriverProfile() {
             <p className="text-sm text-ink-soft" dir="ltr">
               {profile?.phone ?? '—'}
             </p>
+            {profile?.member_no != null && (
+              <span className="mt-1 inline-block rounded-full bg-sand-soft px-2.5 py-0.5 text-xs font-bold text-sand-ink" dir="ltr">
+                {memberCode(profile.role, profile.member_no)}
+              </span>
+            )}
           </div>
         </div>
 
