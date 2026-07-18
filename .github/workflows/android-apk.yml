@@ -12,6 +12,8 @@ on:
 jobs:
   build-apk:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write # لنشر إصدار (Release) بروابط تنزيل مباشرة
     defaults:
       run:
         working-directory: qareeb-web
@@ -73,3 +75,17 @@ jobs:
           name: qareeb-captain-apk
           path: qareeb-web/android/app/build/outputs/apk/driver/debug/app-driver-debug.apk
           if-no-files-found: error
+
+      # ===== نشر إصدار «latest» بروابط تنزيل مباشرة للتثبيت من الهاتف =====
+      - name: نشر إصدار قابل للتثبيت مباشرة
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          cp android/app/build/outputs/apk/customer/debug/app-customer-debug.apk qareeb-customer.apk
+          cp android/app/build/outputs/apk/driver/debug/app-driver-debug.apk qareeb-captain.apk
+          gh release delete latest --repo "$GITHUB_REPOSITORY" --yes --cleanup-tag || true
+          gh release create latest qareeb-customer.apk qareeb-captain.apk \
+            --repo "$GITHUB_REPOSITORY" \
+            --target "$GITHUB_SHA" \
+            --title "أحدث إصدار — قريب" \
+            --notes $'ثبّت مباشرة من هاتفك (اضغط الرابط ثم «تثبيت»):\n\n- تطبيق العميل «قريب»: qareeb-customer.apk\n- تطبيق السائق «كابتن قريب»: qareeb-captain.apk\n\nملاحظة: عند أول تثبيت فعّل «السماح بتثبيت التطبيقات من هذا المصدر».'
