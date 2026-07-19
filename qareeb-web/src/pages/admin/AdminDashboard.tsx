@@ -593,8 +593,7 @@ export default function AdminDashboard() {
     if (tab === 'complaints' && complaints === null)
       void listComplaints().then((c) => setComplaints(c as Complaint[]))
     if (tab === 'promo') void listPromos().then(setPromos)
-    if ((tab === 'pricing' || tab === 'commute') && periods.length === 0)
-      void listServicePeriods().then(setPeriods)
+    if (tab === 'pricing' && periods.length === 0) void listServicePeriods().then(setPeriods)
     if (tab === 'commute') void getCommuteHeld().then(setCommuteHeld)
     if (tab === 'rewards') {
       if (rewards === null) void adminListRewards().then(setRewards)
@@ -4396,56 +4395,6 @@ export default function AdminDashboard() {
                 كبقيّة أرباحه) — بلا إجراء يدوي.
               </p>
             </form>
-
-            {/* مرجع تسعير الترحيل لكل مركبة — سعر الكم بعد الخصم (بلا مبالغ وهمية) */}
-            <div className="card p-4">
-              <p className="font-bold text-royal">مرجع تسعير الترحيل لكل مركبة</p>
-              <p className="mb-3 text-xs text-ink-muted">
-                سعر الراكب = سعر المشوار العادي حسب <span className="font-bold">مسافته الحقيقية</span>،
-                بعد خصم الترحيل
-                {settings.commute_discount ? ` ${Math.round(settings.commute_discount * 100)}%` : ''}،{' '}
-                <span className="font-bold">×2</span> إن كان ذهاباً وإياباً. القيم أدناه أسعار الفترة{' '}
-                {PERIOD_LABEL[currentPeriod()]} — لتعديلها استخدم تبويب «الأسعار والأزمان».
-              </p>
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="border-b border-hairline text-right text-xs text-ink-muted">
-                      <th className="py-2">المركبة</th>
-                      <th className="py-2">لكل كم (بعد الخصم)</th>
-                      <th className="py-2">الحدّ الأدنى للأجرة</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {services
-                      .filter((s) => s.sharable)
-                      .map((s) => {
-                        const row = periods.find(
-                          (r) => r.service_id === s.id && r.period === currentPeriod(),
-                        )
-                        const disc = settings.commute_discount ?? 0
-                        const perKm = row ? Math.round(row.per_km * (1 - disc)) : 0
-                        const minFare = row ? Math.round(row.min_fare * (1 - disc)) : 0
-                        return (
-                          <tr key={s.id} className="border-b border-hairline/60">
-                            <td className="py-2.5 font-medium">
-                              {s.name}
-                              <span className="mr-1 text-[11px] text-ink-muted"> · {s.seats} مقاعد</span>
-                            </td>
-                            <td className="py-2.5 font-bold text-royal">{row ? money(perKm) : '—'}</td>
-                            <td className="py-2.5 font-bold text-sand-ink">{row ? money(minFare) : '—'}</td>
-                          </tr>
-                        )
-                      })}
-                  </tbody>
-                </table>
-              </div>
-              <p className="mt-2 text-[11px] text-ink-muted">
-                مثال: راكب على بُعد 5 كم بمركبة سعر الكم فيها 3٬000 ≈ 15٬000 ذهاباً فقط، أو 30٬000
-                ذهاباً وإياباً (قبل حدّ الأدنى).
-              </p>
-            </div>
-
           </div>
         )}
 
