@@ -139,6 +139,7 @@ import {
   type FinancialSummary,
 } from '@/lib/api'
 import { subscribeToSos, subscribeToTopups, subscribeToDriverApplications } from '@/lib/realtime'
+import { isSupabaseConfigured } from '@/lib/supabase'
 import { PERIOD_LABEL, currentPeriod } from '@/lib/pricing'
 import { exportCsv } from '@/lib/csv'
 import { getService } from '@/data/services'
@@ -1818,6 +1819,18 @@ export default function AdminDashboard() {
         </header>
 
       <main className="flex-1 space-y-4 p-4">
+        {!isSupabaseConfigured && (
+          <div className="card border-2 border-danger/50 bg-danger/10 p-4 text-center">
+            <p className="font-extrabold text-danger">⚠️ وضع تجريبي — بيانات وهمية</p>
+            <p className="mt-1 text-sm text-ink-soft">
+              هذه اللوحة غير متّصلة بقاعدة البيانات الحقيقية (مفاتيح Supabase غير مضبوطة في بيئة
+              النشر). كل ما تراه هنا عيّنات تجريبية — أضف
+              <span className="font-bold"> VITE_SUPABASE_URL </span>و
+              <span className="font-bold"> VITE_SUPABASE_ANON_KEY </span>
+              في إعدادات الاستضافة ثم أعد النشر.
+            </p>
+          </div>
+        )}
         {loadErr && (
           <div className="card border border-danger/40 bg-danger/5 p-3 text-center text-sm font-medium text-danger">
             {loadErr}
