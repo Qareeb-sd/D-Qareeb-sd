@@ -1,5 +1,6 @@
 import { Routes, Route, Navigate } from 'react-router-dom'
 import DriverRoute from '@/components/DriverRoute'
+import { useDriverPresence } from '@/hooks/useDriverPresence'
 
 import DriverOnboarding from '@/pages/driver/DriverOnboarding'
 import DriverLogin from '@/pages/driver/DriverLogin'
@@ -20,6 +21,7 @@ const driverGuard = (el: React.ReactNode) => <DriverRoute>{el}</DriverRoute>
 
 /** مسارات تطبيق «قريب كابتن» (السائق) — مستقلّ عن تطبيق العميل. */
 export default function DriverRoutes() {
+  useDriverPresence() // بثّ موقع السائق المتّصل من أيّ شاشة
   return (
     <div className="font-plex">
     <Routes>

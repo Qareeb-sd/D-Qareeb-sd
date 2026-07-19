@@ -34,6 +34,7 @@ import {
   setRideStatus,
   cancelRide,
   getSettings,
+  getServicePricing,
   getDriver,
   getActiveDriverRide,
   getRideCustomer,
@@ -170,9 +171,16 @@ export default function DriverTrip() {
   const navIdxRef = useRef(0)
 
   useEffect(() => {
-    void getSettings().then((s) => setRate(s.commission_rate))
     if (profile?.id) void getDriver(profile.id).then(setDriver)
   }, [profile?.id])
+
+  // نسبة العمولة المعروضة = نسبة المركبة إن وُجدت وإلا العامّة (يطابق settle_ride تماماً).
+  useEffect(() => {
+    const sid = activeRide?.service_id
+    void Promise.all([getSettings(), sid ? getServicePricing(sid) : Promise.resolve(null)]).then(
+      ([s, sp]) => setRate(sp?.commission_rate ?? s.commission_rate),
+    )
+  }, [activeRide?.service_id])
 
   // معلومات الراكب (اسم/هاتف/تقييم) للاتصال والتحقّق.
   useEffect(() => {

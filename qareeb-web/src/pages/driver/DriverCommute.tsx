@@ -150,7 +150,8 @@ function CommuteCard({
   onSettleDay?: () => void
 }) {
   const service = getService(o.service_id)
-  const today = new Date().toISOString().slice(0, 10)
+  // تاريخ اليوم بتوقيت الخرطوم (يطابق ما يكتبه الخادم في last_settled) — يمنع تضليل زرّ التحصيل قرب منتصف الليل.
+  const today = new Date().toLocaleDateString('en-CA', { timeZone: 'Africa/Khartoum' })
   const settledToday = o.last_settled === today
   return (
     <div className="card p-4">

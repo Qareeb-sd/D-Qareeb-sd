@@ -14,7 +14,6 @@ import {
   listAvailableRides,
   acceptRide,
   getWallet,
-  updateMyLocation,
   getSettings,
   getActiveDriverRide,
   getDriverRideStats,
@@ -229,20 +228,12 @@ export default function DriverHome() {
   useEffect(() => {
     if (!online) return
     let alive = true
-    let last = 0
     const report = (lat: number, lng: number) => {
-      if (alive) setMyPos({ lat, lng }) // نحتفظ بالموقع لحساب بُعد الراكب
-      const now = Date.now()
-      if (now - last < 10000) return // خنق: مرّة كل ١٠ ثوانٍ على الأكثر
-      last = now
-      void updateMyLocation(lat, lng)
+      if (alive) setMyPos({ lat, lng }) // نحتفظ بالموقع لحساب بُعد الراكب (بثّ الموقع للخادم يتكفّل به useDriverPresence)
     }
     // أوّل تقرير فوري + متابعة الحركة + استطلاع احتياطي (لو GPS واقف).
     void getCurrentPos().then((p) => {
-      if (alive && p) {
-        last = 0
-        report(p.lat, p.lng)
-      }
+      if (alive && p) report(p.lat, p.lng)
     })
     let stop = () => {}
     void watchPos((p) => alive && report(p.lat, p.lng)).then((fn) => {
@@ -251,10 +242,7 @@ export default function DriverHome() {
     })
     const iv = setInterval(() => {
       void getCurrentPos().then((p) => {
-        if (alive && p) {
-          last = 0
-          report(p.lat, p.lng)
-        }
+        if (alive && p) report(p.lat, p.lng)
       })
     }, 20000)
     return () => {
@@ -272,13 +260,13 @@ export default function DriverHome() {
     // لا نُغيّر الحالة (ولا نبدأ الاستطلاع/البثّ) إلا بعد تأكيد الخادم — الخادم يفرض
     // الحدّ الأدنى للرصيد عند الاتصال، فقد يرفض. هذا يمنع ظهور السائق «متصلاً» لحظياً.
     setToggling(true)
-    if (driver) {
-      const { error } = await setDriverOnline(driver.id, next)
-      if (error) {
-        setToggling(false)
-        setAcceptMsg(error) // رُفض الاتصال (رصيد غير كافٍ)
-        return
-      }
+    // نمرّ دائماً عبر الحارس الخادمي (يعمل على السائق الحالي عبر auth.uid) حتى لو لم
+    // يُحمّل كائن driver بعد — فلا يظهر «متصل» دون تأكيد الرصيد/عدم الإيقاف.
+    const { error } = await setDriverOnline(driver?.id ?? '', next)
+    if (error) {
+      setToggling(false)
+      setAcceptMsg(error) // رُفض الاتصال (رصيد غير كافٍ)
+      return
     }
     setOnline(next)
     setToggling(false)

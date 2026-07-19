@@ -94,6 +94,7 @@ export default function CommuteJoin() {
 
   const join = async () => {
     if (!name.trim() || full) return
+    if (!periodRate || daily <= 0) return alert('يجري حساب السعر… أعد المحاولة بعد لحظة')
     setBusy(true)
     // إعادة التحقق من السعة قبل الإضافة (قد ينضمّ آخرون في نفس اللحظة).
     const current = await commuteMemberCount(order.id)

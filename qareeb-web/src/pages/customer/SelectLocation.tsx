@@ -341,7 +341,9 @@ export default function SelectLocation() {
   }, [sid])
 
   useEffect(() => {
-    if (!pricing || !settings) return
+    // يكفي وجود الإعدادات + (أسعار فترة أو تسعير أساسي) — فلا تُحجَب خدمة لها فترات
+    // بلا صفّ service_pricing أساسي (كان يُبقي زرّ التأكيد معطّلاً للأبد).
+    if (!settings || (!pricing && !periodRate)) return
     let alive = true
     const bothPlaced = pickupSet && dropoffSet
     const t = setTimeout(async () => {
@@ -361,7 +363,9 @@ export default function SelectLocation() {
       // النموذج الجديد (فترات) إن توفّر، وإلا التسعير القديم (شرائح).
       const rawFare = periodRate
         ? computeFare(km, min, periodRate)
-        : estimateFare({ distanceKm: km, durationMin: min, pricing, settings }).total
+        : pricing
+          ? estimateFare({ distanceKm: km, durationMin: min, pricing, settings }).total
+          : 0
       // الطرود والسفر بين المدن لها تسعيرها الخاص (خدمات مستقلّة في جدول الأسعار
       // والأزمان)، فيُحسب سعرها بالمسافة والزمن تماماً كالمركبات دون أي مضاعف إضافي.
       const baseFare = rawFare
@@ -570,7 +574,11 @@ export default function SelectLocation() {
     navigate('/find-driver', { replace: true })
   }
 
-  const canConfirm = !busy && quote && (destOptional || destChosen)
+  // منع تأكيد رحلة بالمحفظة إن لم يكفِ الرصيد — يمنع إنشاء رحلة تُلغى بعد فشل الدفع
+  // (وما قد يترتّب عليها من رسوم إلغاء أو رحلات وهمية للسائقين).
+  const walletShort =
+    payment === 'wallet' && walletBal != null && quote != null && walletBal < effectiveFare + debt
+  const canConfirm = !busy && quote && (destOptional || destChosen) && !walletShort
   const pinLabel =
     active === 'pickup' ? 'حرّك الخريطة لتحديد الانطلاق' : 'حرّك الخريطة لتحديد الوجهة'
 

@@ -5,7 +5,10 @@
 type Row = Record<string, string | number | null | undefined>
 
 function cell(v: string | number | null | undefined): string {
-  const s = v == null ? '' : String(v)
+  let s = v == null ? '' : String(v)
+  // منع حقن صيغ Excel: خلية تبدأ بـ = + - @ (أو تبويب/سطر) قد تُنفَّذ كصيغة —
+  // نسبقها بفاصلة عليا لتُعامَل كنصّ. (اسم/هاتف المستخدم قد يكون خبيثاً.)
+  if (/^[=+\-@\t\r]/.test(s)) s = `'${s}`
   // تغليف الخلايا التي تحوي فاصلة/سطر/اقتباس.
   return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s
 }

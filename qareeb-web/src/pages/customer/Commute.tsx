@@ -127,6 +127,7 @@ export default function Commute() {
 
   const create = async () => {
     if (selected.length === 0) return
+    if (!periodRate || orgDaily <= 0) return alert('يجري حساب السعر… أعد المحاولة بعد لحظة')
     setBusy(true)
     try {
       const order = await createCommuteOrder(

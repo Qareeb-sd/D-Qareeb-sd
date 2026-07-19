@@ -38,8 +38,18 @@ interface AuthValue {
 
 const AuthContext = createContext<AuthValue | null>(null)
 
+// نوحّد رقم الهاتف السوداني لصيغة قانونية واحدة مهما أُدخل (0..، +249..، 249..، 00249..)
+// حتى لا ينقسم المستخدم لهويّتين حسب طريقة كتابته للرقم.
+export function normalizeSudanPhone(phone: string): string {
+  let d = (phone || '').replace(/\D/g, '')
+  d = d.replace(/^00/, '') // بادئة دولية 00
+  if (d.startsWith('249')) d = d.slice(3) // رمز دولة السودان
+  d = d.replace(/^0+/, '') // صفر محلّي في المقدّمة
+  return d
+}
+
 // نربط الرقم بحساب Supabase عبر بريد اصطناعي (مصادقة بلا مزوّد SMS).
-const phoneToEmail = (phone: string) => `${phone.replace(/\D/g, '')}@qareeb.sd`
+const phoneToEmail = (phone: string) => `${normalizeSudanPhone(phone)}@qareeb.sd`
 
 // نحمل الرقم/الاسم/الميلاد لإنشاء ملف المستخدم بعد أول دخول.
 let pendingPhone: string | undefined
@@ -186,6 +196,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     async signOut() {
       await unregisterPush() // أزِل رمز هذا الجهاز حتى لا تصل إشعارات لمستخدم آخر
+      // إن كان سائقاً متّصلاً، اجعله غير متّصل قبل الخروج (منعاً لسائق «متصل» وهمي).
+      if (isSupabaseConfigured && profile?.role === 'driver') {
+        try {
+          await supabase.rpc('set_driver_online', { p_online: false })
+        } catch {
+          /* تجاهل — سنُسجّل الخروج على أي حال */
+        }
+      }
       if (isSupabaseConfigured) await supabase.auth.signOut()
       setSession(null)
       setProfile(null)
