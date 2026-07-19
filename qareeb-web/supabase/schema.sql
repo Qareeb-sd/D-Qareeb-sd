@@ -1289,6 +1289,8 @@ end $$;
 grant execute on function public.submit_review(uuid, int, text) to authenticated;
 
 -- قائمة العملاء المسجّلين وتقييماتهم (للأدمن/الموظف).
+-- drop-first حتى يعمل تشغيل schema.sql كاملاً حتى لو تغيّر نوع الإرجاع لاحقاً في الملف.
+drop function if exists public.admin_list_customers();
 create or replace function public.admin_list_customers()
 returns table (
   id uuid, full_name text, phone text, rating numeric,
