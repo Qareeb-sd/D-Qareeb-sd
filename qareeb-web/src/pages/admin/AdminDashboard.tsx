@@ -139,7 +139,7 @@ import {
   type FinancialSummary,
 } from '@/lib/api'
 import { subscribeToSos, subscribeToTopups, subscribeToDriverApplications } from '@/lib/realtime'
-import { PERIOD_LABEL, currentPeriod, computeFare } from '@/lib/pricing'
+import { PERIOD_LABEL, currentPeriod } from '@/lib/pricing'
 import { exportCsv } from '@/lib/csv'
 import { getService } from '@/data/services'
 import type {
@@ -230,10 +230,6 @@ const STATE_OPTS: { value: ServiceState; label: string; color: string }[] = [
 
 /** ترتيب الفترات الزمنية للعرض: صباحاً ← ظهراً ← مساءً ← ليلاً. */
 const PERIOD_ORDER: ServicePeriod['period'][] = ['morning', 'afternoon', 'evening', 'night']
-
-// مسافة/زمن تقريبيان لمعاينة سعر الترحيل في لوحة الأدمن (السعر الفعلي حسب كل راكب).
-const COMMUTE_SAMPLE_KM = 8
-const COMMUTE_SAMPLE_MIN = 19
 
 /** يحوّل ساعات الذروة (0..23) إلى أعمدة كل ٣ ساعات لعرض أوضح. */
 function peakHourBars(hours: { hour: number; value: number }[]): { label: string; value: number }[] {
@@ -4401,21 +4397,23 @@ export default function AdminDashboard() {
               </p>
             </form>
 
-            {/* أسعار المركبات (معاينة) */}
+            {/* مرجع تسعير الترحيل لكل مركبة — سعر الكم بعد الخصم (بلا مبالغ وهمية) */}
             <div className="card p-4">
-              <p className="font-bold text-royal">أسعار المركبات في الترحيل</p>
+              <p className="font-bold text-royal">مرجع تسعير الترحيل لكل مركبة</p>
               <p className="mb-3 text-xs text-ink-muted">
-                معاينة لمسافة تقريبية {num(COMMUTE_SAMPLE_KM)} كم بين المنزل والوجهة (الفترة{' '}
-                {PERIOD_LABEL[currentPeriod()]}). السعر الفعلي يُحسب حسب مسافة كل راكب. لتعديل أسعار
-                المركبات نفسها استخدم تبويب «الأسعار والأزمان».
+                سعر الراكب = سعر المشوار العادي حسب <span className="font-bold">مسافته الحقيقية</span>،
+                بعد خصم الترحيل
+                {settings.commute_discount ? ` ${Math.round(settings.commute_discount * 100)}%` : ''}،{' '}
+                <span className="font-bold">×2</span> إن كان ذهاباً وإياباً. القيم أدناه أسعار الفترة{' '}
+                {PERIOD_LABEL[currentPeriod()]} — لتعديلها استخدم تبويب «الأسعار والأزمان».
               </p>
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
                   <thead>
                     <tr className="border-b border-hairline text-right text-xs text-ink-muted">
                       <th className="py-2">المركبة</th>
-                      <th className="py-2">أجرة يومية (ذهاب/إياب)</th>
-                      <th className="py-2">اشتراك شهري (٥ أيام)</th>
+                      <th className="py-2">لكل كم (بعد الخصم)</th>
+                      <th className="py-2">الحدّ الأدنى للأجرة</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -4426,35 +4424,26 @@ export default function AdminDashboard() {
                           (r) => r.service_id === s.id && r.period === currentPeriod(),
                         )
                         const disc = settings.commute_discount ?? 0
-                        const weeks = settings.commute_weeks_per_month ?? 4
-                        const oneWay = row
-                          ? computeFare(COMMUTE_SAMPLE_KM, COMMUTE_SAMPLE_MIN, {
-                              base_fare: row.base_fare,
-                              per_km: row.per_km,
-                              per_min: row.per_min,
-                              min_fare: row.min_fare,
-                            })
-                          : 0
-                        const daily = Math.round((oneWay * 2 * (1 - disc)) / 100) * 100
-                        const monthly = daily * 5 * weeks
+                        const perKm = row ? Math.round(row.per_km * (1 - disc)) : 0
+                        const minFare = row ? Math.round(row.min_fare * (1 - disc)) : 0
                         return (
                           <tr key={s.id} className="border-b border-hairline/60">
                             <td className="py-2.5 font-medium">
                               {s.name}
                               <span className="mr-1 text-[11px] text-ink-muted"> · {s.seats} مقاعد</span>
                             </td>
-                            <td className="py-2.5 font-bold text-royal">
-                              {row ? money(daily) : '—'}
-                            </td>
-                            <td className="py-2.5 font-bold text-sand-ink">
-                              {row ? money(monthly) : '—'}
-                            </td>
+                            <td className="py-2.5 font-bold text-royal">{row ? money(perKm) : '—'}</td>
+                            <td className="py-2.5 font-bold text-sand-ink">{row ? money(minFare) : '—'}</td>
                           </tr>
                         )
                       })}
                   </tbody>
                 </table>
               </div>
+              <p className="mt-2 text-[11px] text-ink-muted">
+                مثال: راكب على بُعد 5 كم بمركبة سعر الكم فيها 3٬000 ≈ 15٬000 ذهاباً فقط، أو 30٬000
+                ذهاباً وإياباً (قبل حدّ الأدنى).
+              </p>
             </div>
 
           </div>
