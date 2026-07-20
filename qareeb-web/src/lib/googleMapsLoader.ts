@@ -26,7 +26,7 @@ export function loadGoogleMaps(): Promise<typeof google.maps> {
     const s = document.createElement('script')
     s.src =
       `https://maps.googleapis.com/maps/api/js?key=${GOOGLE_MAPS_API_KEY}` +
-      `&callback=${cbName}&language=ar&region=SD&loading=async`
+      `&callback=${cbName}&language=ar&region=SD&loading=async&libraries=places`
     s.async = true
     s.defer = true
     s.onerror = () => {
