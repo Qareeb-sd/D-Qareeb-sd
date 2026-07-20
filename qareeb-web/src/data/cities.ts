@@ -64,6 +64,21 @@ export const sudanCities: City[] = [
   { id: 'obeid', name: 'الأبيّض', center: { lat: 13.1833, lng: 30.2167 }, zoom: 12, radiusKm: 30, state: 'شمال كردفان', displacement: 'conflict', active: true },
   { id: 'kadugli', name: 'كادقلي', center: { lat: 11.0111, lng: 29.7172 }, zoom: 12, radiusKm: 30, state: 'جنوب كردفان', displacement: 'conflict', active: false },
   { id: 'damazin', name: 'الدمازين', center: { lat: 11.7898, lng: 34.3593 }, zoom: 12, radiusKm: 30, state: 'النيل الأزرق', displacement: 'conflict', active: false },
+  // مدن إضافية (مرشّحة) — لتغطية أوسع في قسم التوسّع.
+  { id: 'merowe', name: 'مروي', center: { lat: 18.4667, lng: 31.8167 }, zoom: 12, radiusKm: 30, state: 'الشمالية', displacement: 'host', active: false },
+  { id: 'debba', name: 'الدبة', center: { lat: 18.0546, lng: 30.9505 }, zoom: 12, radiusKm: 30, state: 'الشمالية', displacement: 'host', active: false },
+  { id: 'berber', name: 'بربر', center: { lat: 18.0186, lng: 33.986 }, zoom: 12, radiusKm: 30, state: 'نهر النيل', displacement: 'host', active: false },
+  { id: 'newhalfa', name: 'حلفا الجديدة', center: { lat: 15.3167, lng: 35.6 }, zoom: 12, radiusKm: 30, state: 'كسلا', displacement: 'host', active: false },
+  { id: 'girba', name: 'خشم القربة', center: { lat: 14.9333, lng: 35.9167 }, zoom: 12, radiusKm: 30, state: 'كسلا', displacement: 'host', active: false },
+  { id: 'tokar', name: 'طوكر', center: { lat: 18.4333, lng: 37.7333 }, zoom: 12, radiusKm: 30, state: 'البحر الأحمر', displacement: 'host', active: false },
+  { id: 'singa', name: 'سنجة', center: { lat: 13.15, lng: 33.9333 }, zoom: 12, radiusKm: 30, state: 'سنار', displacement: 'returning', active: false },
+  { id: 'hasahisa', name: 'الحصاحيصا', center: { lat: 14.7444, lng: 33.2914 }, zoom: 12, radiusKm: 30, state: 'الجزيرة', displacement: 'returning', active: false },
+  { id: 'managil', name: 'المناقل', center: { lat: 14.2506, lng: 32.9906 }, zoom: 12, radiusKm: 30, state: 'الجزيرة', displacement: 'returning', active: false },
+  { id: 'umruwaba', name: 'أم روابة', center: { lat: 12.9061, lng: 31.2144 }, zoom: 12, radiusKm: 30, state: 'شمال كردفان', displacement: 'conflict', active: false },
+  { id: 'nahud', name: 'النهود', center: { lat: 12.7, lng: 28.4333 }, zoom: 12, radiusKm: 30, state: 'غرب كردفان', displacement: 'conflict', active: false },
+  { id: 'babanusa', name: 'بابنوسة', center: { lat: 11.3333, lng: 27.8 }, zoom: 12, radiusKm: 30, state: 'غرب كردفان', displacement: 'conflict', active: false },
+  { id: 'zalingei', name: 'زالنجي', center: { lat: 12.9092, lng: 23.4706 }, zoom: 12, radiusKm: 30, state: 'وسط دارفور', displacement: 'conflict', active: false },
+  { id: 'kutum', name: 'كتم', center: { lat: 14.2, lng: 24.6667 }, zoom: 12, radiusKm: 30, state: 'شمال دارفور', displacement: 'conflict', active: false },
 ]
 
 /** المدن النشطة فقط — تُستخدم في تبويبات الخريطة المباشرة. */
