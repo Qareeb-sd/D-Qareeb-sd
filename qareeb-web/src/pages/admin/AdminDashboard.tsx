@@ -41,6 +41,7 @@ import Logo from '@/components/Logo'
 import MapView from '@/components/MapView'
 import { cities, sudanCities, DISPLACEMENT_LABEL, SUDAN_CENTER, SUDAN_ZOOM } from '@/data/cities'
 import { fetchDtmSudan, DTM_FALLBACK, type DtmSnapshot } from '@/lib/iomDtm'
+import { fetchCityTraffic, TRAFFIC_LABEL, type CityTraffic } from '@/lib/cityTraffic'
 import { StatCard, ChartCard, StatusBadge, BarChart, DonutChart } from '@/components/admin/AdminUI'
 import IncentivesManager from '@/components/admin/IncentivesManager'
 import DriverPerformance from '@/components/admin/DriverPerformance'
@@ -407,6 +408,9 @@ export default function AdminDashboard() {
   const [mapCity, setMapCity] = useState<string>('all')
   // لقطة النزوح (IOM DTM) — تُحدَّث تلقائياً عند فتح اللوحة، وإلا اللقطة الثابتة.
   const [dtm, setDtm] = useState<DtmSnapshot>(DTM_FALLBACK)
+  // مؤشّر ازدحام المدن (Google) — يُقاس عند الطلب فقط توفيراً للتكلفة.
+  const [traffic, setTraffic] = useState<Record<string, CityTraffic>>({})
+  const [trafficBusy, setTrafficBusy] = useState(false)
   const [sos, setSos] = useState<SosAlert[]>([])
 
   // صلاحياتي (مالك أم موظف؟) + قائمة الموظفين (للمالك)
@@ -2270,9 +2274,24 @@ export default function AdminDashboard() {
                 </div>
 
                 <div className="card p-4">
-                  <p className="mb-1 font-bold">مدن السودان حسب حالة النزوح</p>
+                  <div className="mb-1 flex flex-wrap items-center gap-2">
+                    <p className="font-bold">مدن السودان حسب حالة النزوح</p>
+                    <button
+                      onClick={async () => {
+                        setTrafficBusy(true)
+                        const t = await fetchCityTraffic(cities.map((c) => ({ id: c.id, center: c.center })))
+                        setTraffic(t)
+                        setTrafficBusy(false)
+                      }}
+                      disabled={trafficBusy}
+                      className="mr-auto rounded-full border border-hairline bg-white px-3 py-1 text-xs font-bold text-royal hover:bg-royal-soft disabled:opacity-50"
+                    >
+                      {trafficBusy ? 'يقيس الازدحام…' : '🚦 قِس ازدحام المدن النشطة (قوقل)'}
+                    </button>
+                  </div>
                   <p className="mb-3 text-xs text-ink-muted">
                     مرتّبة بفرصة التوسّع (الأعلى استضافةً للنازحين أولاً) — 🟢 نشطة · ⚪ مرشّحة.
+                    {Object.keys(traffic).length > 0 && ' الازدحام حيّ من قوقل الآن.'}
                   </p>
                   <div className="space-y-1.5">
                     {ranked.map((c) => (
@@ -2282,6 +2301,11 @@ export default function AdminDashboard() {
                         <span className={`rounded-full px-2 py-0.5 text-[11px] font-bold ${CHIP[c.displacement]}`}>
                           {DISPLACEMENT_LABEL[c.displacement]}
                         </span>
+                        {traffic[c.id] && (
+                          <span className="rounded-full bg-royal-soft px-2 py-0.5 text-[11px] font-bold text-royal">
+                            {TRAFFIC_LABEL[traffic[c.id].level]}
+                          </span>
+                        )}
                         <span
                           className={`mr-auto rounded-full px-2 py-0.5 text-[11px] font-bold ${
                             c.active ? 'bg-green-soft text-green' : 'bg-hairline text-ink-soft'
