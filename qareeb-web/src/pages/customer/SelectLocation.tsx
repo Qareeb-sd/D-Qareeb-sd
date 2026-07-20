@@ -52,6 +52,7 @@ import {
 import FareReceipt from '@/components/FareReceipt'
 import { fetchRoute } from '@/lib/maps'
 import { getCurrentPos, loadLastPos } from '@/lib/geo'
+import { isServedLocation } from '@/lib/serviceArea'
 import { reverseGeocode } from '@/lib/geocode'
 import {
   SAVED_SLOTS,
@@ -444,6 +445,9 @@ export default function SelectLocation() {
   const [scheduleAt, setScheduleAt] = useState('')
   const schedule = async () => {
     if (!scheduleAt || !quote) return
+    if (!isServedLocation(pickupPos, settings)) {
+      return alert('الخدمة غير متوفّرة في هذه المنطقة حالياً — «قريب» يعمل في مدن محدّدة.')
+    }
     setBusy(true)
     const { id, error } = await createScheduledRide({
       serviceId: sid,
@@ -460,6 +464,10 @@ export default function SelectLocation() {
   }
 
   const confirm = async () => {
+    // نطاق الخدمة: نقطة الانطلاق يجب أن تكون داخل مدينة فعّلها الأدمن.
+    if (!isServedLocation(pickupPos, settings)) {
+      return alert('الخدمة غير متوفّرة في هذه المنطقة حالياً — «قريب» يعمل في مدن محدّدة.')
+    }
     // توصيل طرد: اسم وهاتف المستلِم إلزاميان قبل الطلب.
     if (isPackage) {
       if (!recipientName.trim() || !recipientPhone.trim()) {
