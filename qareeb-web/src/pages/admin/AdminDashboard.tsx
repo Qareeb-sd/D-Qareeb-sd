@@ -39,7 +39,7 @@ import {
 } from 'lucide-react'
 import Logo from '@/components/Logo'
 import MapView from '@/components/MapView'
-import { cities, sudanCities, DISPLACEMENT_LABEL, STATE_POP, SUDAN_CENTER, SUDAN_ZOOM } from '@/data/cities'
+import { cities, sudanCities, DISPLACEMENT_LABEL, SUDAN_CENTER, SUDAN_ZOOM } from '@/data/cities'
 import { fetchDtmSudan, DTM_FALLBACK, type DtmSnapshot } from '@/lib/iomDtm'
 import {
   fetchDayReport,
@@ -66,8 +66,6 @@ import {
   approveWithdrawal,
   rejectWithdrawal,
   updateSettings,
-  getCityDemand,
-  type CityDemand,
   getCommuteHeld,
   getProofUrl,
   listServicePricing,
@@ -418,8 +416,6 @@ export default function AdminDashboard() {
   // تقرير ازدحام المدينة المختارة عبر ساعات اليوم (Google) — عند الطلب فقط.
   const [dayReport, setDayReport] = useState<DaySlot[]>([])
   const [dayBusy, setDayBusy] = useState(false)
-  // طلبنا الفعلي لكل مدينة (عملاء/سائقون + تفصيل المركبات) — من بياناتنا.
-  const [demand, setDemand] = useState<Record<string, CityDemand>>({})
   // المدينة المعروضة على خريطة الازدحام الحيّة (TrafficLayer).
   const [trafficCity, setTrafficCity] = useState<string>(cities[0]?.id ?? 'khartoum')
   const [sos, setSos] = useState<SosAlert[]>([])
@@ -508,15 +504,6 @@ export default function AdminDashboard() {
       if (d) setDtm(d)
     })
     return () => ctrl.abort()
-  }, [])
-
-  // طلبنا الفعلي لكل مدينة (من قاعدتنا) — يُحمَّل مرّة عند فتح اللوحة.
-  useEffect(() => {
-    void getCityDemand(
-      sudanCities.map((c) => ({ id: c.id, lat: c.center.lat, lng: c.center.lng, radius: c.radiusKm })),
-    )
-      .then(setDemand)
-      .catch(() => {})
   }, [])
 
   useEffect(() => {
@@ -2293,10 +2280,6 @@ export default function AdminDashboard() {
                     . أعلى الولايات استضافةً في دارفور ونهر النيل والقضارف.
                   </p>
                   <p className="text-[11px] text-ink-muted">
-                    السكان: ~٥١ مليون نسمة، منهم <b>٣٠.٤ مليون</b> بحاجة للمساعدة (نصف السكان) —
-                    OCHA HNRP ٢٠٢٥. تقدير سكان كل ولاية يظهر بجانب مدنها أدناه.
-                  </p>
-                  <p className="text-[11px] text-ink-muted">
                     المؤشّر أدناه على مستوى <b>الولاية</b> (لا المدينة) — دلالة على أين يتركّز
                     الناس اليوم بدل تعداد قديم.{' '}
                     <a
@@ -2410,25 +2393,6 @@ export default function AdminDashboard() {
                   )
                 })()}
 
-                {/* سكان الولايات (تقدير UN/OCHA) */}
-                <div className="card p-4">
-                  <p className="mb-2 font-bold">سكان الولايات — تقدير الأمم المتحدة (أساس)</p>
-                  <div className="grid grid-cols-2 gap-x-4 gap-y-1 md:grid-cols-3">
-                    {Object.entries(STATE_POP)
-                      .sort((a, b) => b[1] - a[1])
-                      .map(([state, pop]) => (
-                        <div key={state} className="flex items-center justify-between border-b border-hairline py-1 text-xs">
-                          <span className="text-ink-soft">{state}</span>
-                          <span className="font-bold text-royal">{num(pop)}</span>
-                        </div>
-                      ))}
-                  </div>
-                  <p className="mt-1.5 text-[11px] text-ink-muted">
-                    إجمالي السودان ~٥١ مليون نسمة (OCHA HNRP ٢٠٢٥). الأرقام أساس ما قبل الحرب —
-                    غيّرها النزوح، فقارنها بحالة النزوح وأرقامك الفعلية.
-                  </p>
-                </div>
-
                 <div className="card p-4">
                   <p className="font-bold">مدن السودان — تحكّم بالتفعيل والمركبات</p>
                   <p className="mb-3 text-xs text-ink-muted">
@@ -2437,8 +2401,6 @@ export default function AdminDashboard() {
                   </p>
                   <div className="space-y-2">
                     {ranked.map((c) => {
-                      const d = demand[c.id]
-                      const pop = STATE_POP[c.state]
                       const on = isActive(c.id)
                       const enabled = new Set(cityVehIds(c.id))
                       return (
@@ -2446,13 +2408,10 @@ export default function AdminDashboard() {
                           key={c.id}
                           className={`rounded-xl border p-2.5 ${on ? 'border-royal/40 bg-royal-soft/30' : 'border-hairline'}`}
                         >
-                          {/* السطر الأول: الاسم + الولاية/السكان + حالة النزوح + مفتاح التفعيل */}
+                          {/* الاسم + الولاية + حالة النزوح + مفتاح التفعيل */}
                           <div className="flex flex-wrap items-center gap-2">
                             <span className="text-sm font-bold text-royal">{c.name}</span>
-                            <span className="text-[11px] text-ink-muted">
-                              {c.state}
-                              {pop ? ` · ~${(pop / 1_000_000).toFixed(1)}م نسمة` : ''}
-                            </span>
+                            <span className="text-[11px] text-ink-muted">{c.state}</span>
                             <span className={`rounded-full px-2 py-0.5 text-[11px] font-bold ${CHIP[c.displacement]}`}>
                               {DISPLACEMENT_LABEL[c.displacement]}
                             </span>
@@ -2465,17 +2424,12 @@ export default function AdminDashboard() {
                               {on ? '🟢 نشطة — إلغاء' : '⚪ تفعيل المدينة'}
                             </button>
                           </div>
-                          {/* أرقامنا الفعلية */}
-                          <div className="mt-1 text-[11px] font-bold text-ink">
-                            👥 {d?.customers ?? 0} عميل · 🚗 {d?.drivers ?? 0} سائق
-                          </div>
-                          {/* أنواع المركبات المتاحة في المدينة (قابلة للتفعيل عند تنشيط المدينة) */}
+                          {/* أنواع المركبات المتاحة في المدينة (عند تنشيطها) */}
                           {on && (
                             <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
                               <span className="text-[10px] text-ink-muted">المركبات:</span>
                               {vehicleTypes.map((s) => {
                                 const active = enabled.has(s.id)
-                                const cnt = d?.byType[s.id]?.drivers ?? 0
                                 return (
                                   <button
                                     key={s.id}
@@ -2485,7 +2439,6 @@ export default function AdminDashboard() {
                                     }`}
                                   >
                                     {s.name}
-                                    {cnt > 0 ? ` (${cnt})` : ''}
                                   </button>
                                 )
                               })}
@@ -2495,18 +2448,6 @@ export default function AdminDashboard() {
                       )
                     })}
                   </div>
-                  {/* طلبات خارج كل مدننا = فرص مدن جديدة */}
-                  {demand['__outside__'] && (demand['__outside__'].customers > 0 || demand['__outside__'].rides > 0) && (
-                    <div className="mt-3 rounded-2xl bg-gold-soft p-3 text-sm text-ink">
-                      <b>طلبات خارج كل مدننا:</b> 👥 {demand['__outside__'].customers} عميل · {demand['__outside__'].rides} طلب —
-                      إشارة توسّع: ناس يطلبون «قريب» في أماكن لا نخدمها بعد.
-                    </div>
-                  )}
-                  {Object.keys(demand).length === 0 && (
-                    <p className="mt-3 text-center text-[11px] text-ink-muted">
-                      👥/🚗 من طلباتك الفعلية — تظهر الأرقام بعد بدء التشغيل.
-                    </p>
-                  )}
                 </div>
 
                 <p className="text-center text-[11px] text-ink-muted">
