@@ -1,0 +1,39 @@
+name: نشر دوال Supabase (Edge Functions)
+
+# يرفع دوال الإشعارات إلى خوادم Supabase تلقائياً — بلا Terminal.
+# يعمل يدوياً من تبويب Actions، أو تلقائياً عند تغيّر أي دالّة على main.
+#
+# يتطلّب سرّين في المستودع (Settings → Secrets and variables → Actions):
+#   SUPABASE_ACCESS_TOKEN  — من https://supabase.com/dashboard/account/tokens
+#   SUPABASE_PROJECT_REF   — معرّف المشروع (الجزء من رابط لوحة Supabase)
+
+on:
+  workflow_dispatch: {}
+  push:
+    branches: [main]
+    paths: ['qareeb-web/supabase/functions/**']
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: qareeb-web
+    env:
+      SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: تثبيت Supabase CLI
+        uses: supabase/setup-cli@v1
+        with:
+          version: latest
+
+      - name: نشر دوال الإشعارات
+        run: |
+          for fn in notify-drivers notify-admins; do
+            echo "→ نشر $fn"
+            supabase functions deploy "$fn" \
+              --project-ref "${{ secrets.SUPABASE_PROJECT_REF }}" \
+              --no-verify-jwt
+          done
