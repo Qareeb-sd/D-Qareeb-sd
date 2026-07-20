@@ -39,8 +39,7 @@ import {
 } from 'lucide-react'
 import Logo from '@/components/Logo'
 import MapView from '@/components/MapView'
-import { cities, sudanCities, DISPLACEMENT_LABEL, SUDAN_CENTER, SUDAN_ZOOM } from '@/data/cities'
-import { fetchDtmSudan, DTM_FALLBACK, type DtmSnapshot } from '@/lib/iomDtm'
+import { cities, sudanCities, DISPLACEMENT_LABEL, STATE_POP, SUDAN_CENTER, SUDAN_ZOOM } from '@/data/cities'
 import {
   fetchDayReport,
   LEVEL_LABEL,
@@ -411,8 +410,6 @@ export default function AdminDashboard() {
   const [onlineDrivers, setOnlineDrivers] = useState<AdminOnlineDriver[]>([])
   // تبويب مدينة الخريطة المباشرة ('all' = كل السودان، أو معرّف مدينة).
   const [mapCity, setMapCity] = useState<string>('all')
-  // لقطة النزوح (IOM DTM) — تُحدَّث تلقائياً عند فتح اللوحة، وإلا اللقطة الثابتة.
-  const [dtm, setDtm] = useState<DtmSnapshot>(DTM_FALLBACK)
   // تقرير ازدحام المدينة المختارة عبر ساعات اليوم (Google) — عند الطلب فقط.
   const [dayReport, setDayReport] = useState<DaySlot[]>([])
   const [dayBusy, setDayBusy] = useState(false)
@@ -497,14 +494,6 @@ export default function AdminDashboard() {
     sharable: true,
   })
 
-  // تحديث لقطة النزوح تلقائياً من IOM DTM (مرّة عند الفتح) — يفشل بصمت للّقطة الثابتة.
-  useEffect(() => {
-    const ctrl = new AbortController()
-    void fetchDtmSudan(ctrl.signal).then((d) => {
-      if (d) setDtm(d)
-    })
-    return () => ctrl.abort()
-  }, [])
 
   useEffect(() => {
     let alive = true
@@ -2230,6 +2219,7 @@ export default function AdminDashboard() {
             const activeIds = settings?.active_cities ?? sudanCities.filter((c) => c.active).map((c) => c.id)
             const activeSet = new Set(activeIds)
             const isActive = (id: string) => activeSet.has(id)
+            const activeCityObjs = sudanCities.filter((c) => activeSet.has(c.id))
             const cityVehicles = settings?.city_vehicles ?? {}
             // أنواع المركبات المشتركة (لتحديد المتاح في كل مدينة).
             const vehicleTypes = visibleServices().filter((s) => s.sharable && s.id !== 'open')
@@ -2254,43 +2244,24 @@ export default function AdminDashboard() {
             const topCandidate = ranked.find((c) => !isActive(c.id) && c.displacement === 'host')
             return (
               <div className="flex flex-col gap-4">
-                {/* لقطة بيانات النزوح — تُحدَّث تلقائياً من IOM DTM (وإلا لقطة ثابتة) */}
-                <div className="card space-y-1.5 p-4">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <p className="font-bold text-royal">
-                      بيانات النزوح — IOM DTM
-                      {dtm.round ? ` (الجولة ${dtm.round}${dtm.date ? `، ${dtm.date}` : ''})` : ''}
-                    </p>
-                    <span
-                      className={`rounded-full px-2 py-0.5 text-[11px] font-bold ${
-                        dtm.live ? 'bg-green-soft text-green' : 'bg-gold-soft text-gold-deep'
-                      }`}
-                    >
-                      {dtm.live ? '⟳ محدّث تلقائياً' : 'لقطة'}
+                {/* تعداد السكان بالأرقام — المصدر: الأمم المتحدة (OCHA) */}
+                <div className="card space-y-2 p-4">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <p className="font-bold text-royal">تعداد سكان السودان</p>
+                    <span className="text-xs text-ink-muted">
+                      الإجمالي ~<b className="text-royal">٥١ مليون</b> · المصدر: الأمم المتحدة (OCHA HNRP 2025)
                     </span>
                   </div>
-                  <p className="text-xs text-ink-soft">
-                    <b>{num(dtm.idps)}</b> نازح داخل السودان
-                    {dtm.returnees ? (
-                      <>
-                        {' '}
-                        و<b>{num(dtm.returnees)}</b> عادوا لمناطقهم
-                      </>
-                    ) : null}
-                    . أعلى الولايات استضافةً في دارفور ونهر النيل والقضارف.
-                  </p>
-                  <p className="text-[11px] text-ink-muted">
-                    المؤشّر أدناه على مستوى <b>الولاية</b> (لا المدينة) — دلالة على أين يتركّز
-                    الناس اليوم بدل تعداد قديم.{' '}
-                    <a
-                      href="https://dtm.iom.int/sudan"
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-info underline"
-                    >
-                      المصدر الحيّ (IOM DTM)
-                    </a>
-                  </p>
+                  <div className="grid grid-cols-2 gap-x-4 gap-y-1 md:grid-cols-3">
+                    {Object.entries(STATE_POP)
+                      .sort((a, b) => b[1] - a[1])
+                      .map(([state, pop]) => (
+                        <div key={state} className="flex items-center justify-between border-b border-hairline py-1 text-xs">
+                          <span className="text-ink-soft">{state}</span>
+                          <span className="font-bold text-royal">{num(pop)}</span>
+                        </div>
+                      ))}
+                  </div>
                 </div>
 
                 <div className="grid grid-cols-2 gap-3 md:grid-cols-3">
@@ -2306,9 +2277,11 @@ export default function AdminDashboard() {
                   />
                 </div>
 
-                {/* خريطة الازدحام الحيّة + تقرير أوقات اليوم — لأي مدينة */}
+                {/* خريطة الازدحام الحيّة + تقرير أوقات اليوم — لمدنك النشطة */}
                 {(() => {
-                  const tc = sudanCities.find((c) => c.id === trafficCity) ?? sudanCities[0]
+                  // قائمة مدن الخريطة = مدنك النشطة (وإلا كل المدن إن لم تُفعّل شيئاً).
+                  const mapCities = activeCityObjs.length ? activeCityObjs : sudanCities
+                  const tc = mapCities.find((c) => c.id === trafficCity) ?? mapCities[0]
                   const fmtHour = (h: number) => (h === 12 ? '12ظ' : h < 12 ? `${h}ص` : `${h - 12}م`)
                   const peak = dayReport.length
                     ? dayReport.reduce((a, b) => (b.ratio > a.ratio ? b : a))
@@ -2316,22 +2289,22 @@ export default function AdminDashboard() {
                   const maxR = dayReport.length ? Math.max(1.6, ...dayReport.map((s) => s.ratio)) : 1.6
                   return (
                     <div className="card p-4">
-                      <p className="mb-2 font-bold">🗺️ خريطة الازدحام الحيّة</p>
-                      <div className="mb-2 flex flex-wrap gap-2">
-                        {sudanCities.map((c) => (
-                          <button
-                            key={c.id}
-                            onClick={() => {
-                              setTrafficCity(c.id)
-                              setDayReport([])
-                            }}
-                            className={`chip border px-3 py-1 text-xs ${
-                              trafficCity === c.id ? 'border-royal bg-royal text-white' : 'border-hairline bg-white text-ink-soft'
-                            }`}
-                          >
-                            {c.name}
-                          </button>
-                        ))}
+                      <div className="mb-2 flex flex-wrap items-center gap-2">
+                        <p className="font-bold">🗺️ خريطة الازدحام الحيّة</p>
+                        <select
+                          value={tc?.id ?? ''}
+                          onChange={(e) => {
+                            setTrafficCity(e.target.value)
+                            setDayReport([])
+                          }}
+                          className="mr-auto rounded-xl border border-hairline bg-white px-3 py-1.5 text-sm font-bold text-royal"
+                        >
+                          {mapCities.map((c) => (
+                            <option key={c.id} value={c.id}>
+                              {c.name}
+                            </option>
+                          ))}
+                        </select>
                       </div>
                       <MapView
                         key={`traffic-${trafficCity}`}

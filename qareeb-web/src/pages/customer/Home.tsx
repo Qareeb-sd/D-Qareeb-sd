@@ -12,9 +12,11 @@ import {
   nearbyOnlineDrivers,
   getMyCustomerWarnings,
   getMyAnnouncements,
+  getSettings,
   type DriverWarning,
 } from '@/lib/api'
-import type { Announcement } from '@/lib/types'
+import { isServedLocation } from '@/lib/serviceArea'
+import type { Announcement, Settings } from '@/lib/types'
 import { currentPeriod } from '@/lib/pricing'
 import { money } from '@/lib/format'
 import { getCurrentPos, loadLastPos } from '@/lib/geo'
@@ -57,11 +59,19 @@ export default function Home() {
   const [nearby, setNearby] = useState<{ lat: number; lng: number; icon?: string }[]>([])
   const [warning, setWarning] = useState<DriverWarning | null>(null)
   const [announcement, setAnnouncement] = useState<Announcement | null>(null)
+  // نطاق الخدمة: هل موقع العميل داخل مدينة فعّلها الأدمن؟
+  const [settings, setSettings] = useState<Settings | null>(null)
+  const served = isServedLocation(mapCenter, settings)
 
   // تسجيل رمز الإشعارات عند فتح الرئيسية (محاولة موثوقة بعد جهوز التطبيق).
   useEffect(() => {
     if (profile?.id) void registerPush(profile.id)
   }, [profile?.id])
+
+  // إعدادات نطاق الخدمة (المدن النشطة).
+  useEffect(() => {
+    void getSettings().then(setSettings)
+  }, [])
 
   // تحذير الإدارة — أحدث تحذير لم يُطّلع عليه (يُخفى بعد الإغلاق محليّاً).
   useEffect(() => {
@@ -273,10 +283,23 @@ export default function Home() {
             </div>
           )}
 
+          {/* نطاق الخدمة: خارج المدن المفعّلة → غير متوفّرة */}
+          {!served && (
+            <div className="mb-3 rounded-2xl border border-warning/30 bg-gold-soft p-3 text-sm text-warning">
+              <b>الخدمة غير متوفّرة في منطقتك حالياً.</b>
+              <span className="mt-0.5 block text-[12px] text-ink-soft">
+                «قريب» يعمل في مدن محدّدة، ونعمل على التوسّع قريباً — تابعنا.
+              </span>
+            </div>
+          )}
+
           {/* بحث الوجهة — بتوقيع خط المسار */}
           <button
-            onClick={() => navigate('/select-location')}
-            className="press-scale flex w-full items-center gap-3 rounded-2xl border border-sand/35 bg-ivory/80 px-4 py-4 text-right shadow-card"
+            onClick={() => served && navigate('/select-location')}
+            disabled={!served}
+            className={`press-scale flex w-full items-center gap-3 rounded-2xl border border-sand/35 bg-ivory/80 px-4 py-4 text-right shadow-card ${
+              served ? '' : 'pointer-events-none opacity-50'
+            }`}
           >
             <span className="ml-1 flex shrink-0 flex-col items-center gap-[3px]">
               <span className="h-2 w-2 rounded-full bg-royal" />
@@ -291,7 +314,7 @@ export default function Home() {
           </button>
 
           {/* خدمات إضافية: توصيل طرد + رحلة بين المدن */}
-          <div className="mt-3 grid grid-cols-2 gap-3">
+          <div className={`mt-3 grid grid-cols-2 gap-3 ${served ? '' : 'pointer-events-none opacity-50'}`}>
             <button
               onClick={() => {
                 setServiceId('package')
