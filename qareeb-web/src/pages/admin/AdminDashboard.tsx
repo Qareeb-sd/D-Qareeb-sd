@@ -195,28 +195,52 @@ type Tab =
   | 'audit'
 
 /** التبويبات مع الصلاحية المطلوبة لكلٍّ (null = تكفي أي صلاحية). */
-const tabs: { id: Tab; label: string; perm: StaffPerm | null; ownerOnly?: boolean; Icon: LucideIcon }[] = [
-  { id: 'overview', label: 'نظرة عامة', perm: null, Icon: LayoutDashboard },
-  { id: 'map', label: 'الخريطة المباشرة', perm: null, Icon: MapPinned },
-  { id: 'requests', label: 'الطلبات', perm: 'requests', Icon: Inbox },
-  { id: 'drivers', label: 'السائقون', perm: 'drivers', Icon: Car },
-  { id: 'customers', label: 'العملاء', perm: 'drivers', Icon: Users },
-  { id: 'announcements', label: 'الإشعارات', perm: 'requests', Icon: Megaphone },
-  { id: 'support', label: 'الدعم', perm: 'requests', Icon: MessageSquare },
-  { id: 'rides', label: 'الرحلات', perm: 'rides', Icon: Route },
-  { id: 'complaints', label: 'الشكاوى', perm: 'requests', Icon: Flag },
-  { id: 'finance', label: 'المالية', perm: null, ownerOnly: true, Icon: Wallet },
-  { id: 'hr', label: 'المنصرفات والرواتب', perm: null, ownerOnly: true, Icon: Coins },
-  { id: 'pricing', label: 'الأسعار والأزمان', perm: 'settings', Icon: Coins },
-  { id: 'vehicles', label: 'المركبات', perm: 'settings', Icon: Car },
-  { id: 'captain', label: 'إعدادات الكابتن', perm: 'settings', Icon: SettingsIcon },
-  { id: 'commute', label: 'الترحيل', perm: 'settings', Icon: Bus },
-  { id: 'subs', label: 'الاشتراكات', perm: 'settings', Icon: Crown },
-  { id: 'topup', label: 'تعبئة العملاء', perm: 'settings', Icon: CreditCard },
-  { id: 'promo', label: 'البريمو كود', perm: 'settings', Icon: BadgePercent },
-  { id: 'rewards', label: 'متجر المكافآت', perm: 'settings', Icon: Gift },
-  { id: 'staff', label: 'الموظفون', perm: null, ownerOnly: true, Icon: ShieldCheck },
-  { id: 'audit', label: 'سجلّ النشاط', perm: null, ownerOnly: true, Icon: ScrollText },
+/** مجموعات الشريط الجانبي (توزيع منطقي بدل قائمة مسطّحة طويلة). */
+type TabGroup = 'main' | 'ops' | 'people' | 'finance' | 'config' | 'system'
+const GROUP_LABEL: Record<TabGroup, string> = {
+  main: '',
+  ops: 'العمليات',
+  people: 'الأشخاص',
+  finance: 'المالية',
+  config: 'الضبط والتسعير',
+  system: 'النظام',
+}
+const GROUP_ORDER: TabGroup[] = ['main', 'ops', 'people', 'finance', 'config', 'system']
+
+const tabs: {
+  id: Tab
+  label: string
+  perm: StaffPerm | null
+  ownerOnly?: boolean
+  group: TabGroup
+  Icon: LucideIcon
+}[] = [
+  { id: 'overview', label: 'نظرة عامة', perm: null, group: 'main', Icon: LayoutDashboard },
+  { id: 'map', label: 'الخريطة المباشرة', perm: null, group: 'main', Icon: MapPinned },
+
+  { id: 'requests', label: 'الطلبات', perm: 'requests', group: 'ops', Icon: Inbox },
+  { id: 'rides', label: 'الرحلات', perm: 'rides', group: 'ops', Icon: Route },
+  { id: 'complaints', label: 'الشكاوى', perm: 'requests', group: 'ops', Icon: Flag },
+  { id: 'support', label: 'الدعم', perm: 'requests', group: 'ops', Icon: MessageSquare },
+  { id: 'announcements', label: 'الإشعارات', perm: 'requests', group: 'ops', Icon: Megaphone },
+
+  { id: 'drivers', label: 'السائقون', perm: 'drivers', group: 'people', Icon: Car },
+  { id: 'customers', label: 'العملاء', perm: 'drivers', group: 'people', Icon: Users },
+
+  { id: 'finance', label: 'المالية', perm: null, ownerOnly: true, group: 'finance', Icon: Wallet },
+  { id: 'hr', label: 'المنصرفات والرواتب', perm: null, ownerOnly: true, group: 'finance', Icon: Coins },
+
+  { id: 'pricing', label: 'الأسعار والأزمان', perm: 'settings', group: 'config', Icon: Coins },
+  { id: 'vehicles', label: 'المركبات', perm: 'settings', group: 'config', Icon: Car },
+  { id: 'captain', label: 'إعدادات الكابتن', perm: 'settings', group: 'config', Icon: SettingsIcon },
+  { id: 'commute', label: 'الترحيل', perm: 'settings', group: 'config', Icon: Bus },
+  { id: 'subs', label: 'الاشتراكات', perm: 'settings', group: 'config', Icon: Crown },
+  { id: 'topup', label: 'تعبئة العملاء', perm: 'settings', group: 'config', Icon: CreditCard },
+  { id: 'promo', label: 'البريمو كود', perm: 'settings', group: 'config', Icon: BadgePercent },
+  { id: 'rewards', label: 'متجر المكافآت', perm: 'settings', group: 'config', Icon: Gift },
+
+  { id: 'staff', label: 'الموظفون', perm: null, ownerOnly: true, group: 'system', Icon: ShieldCheck },
+  { id: 'audit', label: 'سجلّ النشاط', perm: null, ownerOnly: true, group: 'system', Icon: ScrollText },
 ]
 
 /** حالات الخدمة كما يتحكّم بها الأدمن وتنعكس على تطبيق العميل. */
@@ -1752,29 +1776,42 @@ export default function AdminDashboard() {
             <X className="h-5 w-5" />
           </button>
         </div>
-        <nav className="flex-1 space-y-1 overflow-y-auto p-3">
-          {visibleTabs.map((tb) => {
-            const Icon = tb.Icon
-            const active = tab === tb.id
+        <nav className="flex-1 space-y-4 overflow-y-auto p-3">
+          {GROUP_ORDER.map((g) => {
+            const items = visibleTabs.filter((t) => t.group === g)
+            if (items.length === 0) return null
             return (
-              <button
-                key={tb.id}
-                onClick={() => {
-                  setTab(tb.id)
-                  setNavOpen(false)
-                }}
-                className={`flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-bold transition ${
-                  active ? 'bg-green text-white shadow-card' : 'text-ink-soft hover:bg-green-soft'
-                }`}
-              >
-                <Icon className="h-[18px] w-[18px] shrink-0" strokeWidth={1.8} />
-                <span className="flex-1 text-right">{tb.label}</span>
-                {tb.id === 'requests' && pendingCount > 0 && (
-                  <span className="grid h-5 min-w-5 place-items-center rounded-full bg-danger px-1 text-[11px] font-extrabold text-white">
-                    {pendingCount}
-                  </span>
+              <div key={g} className="space-y-1">
+                {GROUP_LABEL[g] && (
+                  <p className="px-3 pb-0.5 pt-1 text-[10px] font-extrabold uppercase tracking-wider text-ink-muted/70">
+                    {GROUP_LABEL[g]}
+                  </p>
                 )}
-              </button>
+                {items.map((tb) => {
+                  const Icon = tb.Icon
+                  const active = tab === tb.id
+                  return (
+                    <button
+                      key={tb.id}
+                      onClick={() => {
+                        setTab(tb.id)
+                        setNavOpen(false)
+                      }}
+                      className={`flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-bold transition ${
+                        active ? 'bg-green text-white shadow-card' : 'text-ink-soft hover:bg-green-soft'
+                      }`}
+                    >
+                      <Icon className="h-[18px] w-[18px] shrink-0" strokeWidth={1.8} />
+                      <span className="flex-1 text-right">{tb.label}</span>
+                      {tb.id === 'requests' && pendingCount > 0 && (
+                        <span className="grid h-5 min-w-5 place-items-center rounded-full bg-danger px-1 text-[11px] font-extrabold text-white">
+                          {pendingCount}
+                        </span>
+                      )}
+                    </button>
+                  )
+                })}
+              </div>
             )
           })}
         </nav>
@@ -1816,7 +1853,7 @@ export default function AdminDashboard() {
           </button>
         </header>
 
-      <main className="flex-1 space-y-4 p-4">
+      <main className="mx-auto w-full max-w-6xl flex-1 space-y-4 p-4 md:p-6">
         {!isSupabaseConfigured && (
           <div className="card border-2 border-danger/50 bg-danger/10 p-4 text-center">
             <p className="font-extrabold text-danger">⚠️ وضع تجريبي — بيانات وهمية</p>
