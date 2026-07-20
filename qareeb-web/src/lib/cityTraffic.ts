@@ -1,35 +1,41 @@
 /**
- * مؤشّر ازدحام لكل مدينة **حسب الوقت** عبر Google Directions مع توقّع حركة المرور:
- * نقيس زمن مسار يعبر مركز المدينة في ٣ فترات (صباح/ظهر/مساء) باستخدام
- * departureTime مستقبليّ (توقّع قوقل) مقابل الزمن الطبيعي → نسبة ازدحام لكل فترة.
+ * تقرير ازدحام يوميّ لمدينة عبر Google Directions مع توقّع حركة المرور:
+ * نقيس زمن مسار يعبر مركز المدينة عبر ساعات اليوم (departureTime مستقبليّ)
+ * مقابل الزمن الطبيعي → نسبة ازدحام لكل ساعة (مقياس + منحنى خلال اليوم).
  * يُشغَّل عند الطلب فقط (زرّ) توفيراً للتكلفة. يتطلّب تفعيل «Directions API».
  */
 import { loadGoogleMaps } from './googleMapsLoader'
 import { GOOGLE_MAPS_API_KEY } from './maps'
 
-export type TrafficLevel = 'light' | 'moderate' | 'heavy'
-export type Period = 'morning' | 'afternoon' | 'evening'
+export type TrafficLevel = 'light' | 'moderate' | 'heavy' | 'severe'
 
-export const PERIODS: Period[] = ['morning', 'afternoon', 'evening']
-export const PERIOD_HOUR: Record<Period, number> = { morning: 8, afternoon: 15, evening: 20 }
-export const PERIOD_LABEL: Record<Period, string> = {
-  morning: 'ص',
-  afternoon: 'ظ',
-  evening: 'م',
+export const LEVEL_LABEL: Record<TrafficLevel, string> = {
+  light: 'انسيابي',
+  moderate: 'متوسّط',
+  heavy: 'مزدحم',
+  severe: 'متوقّف',
 }
-export const LEVEL_DOT: Record<TrafficLevel, string> = {
-  light: '🟢',
-  moderate: '🟠',
-  heavy: '🔴',
+export const LEVEL_COLOR: Record<TrafficLevel, string> = {
+  light: '#12A150',
+  moderate: '#F59E0B',
+  heavy: '#EF4444',
+  severe: '#991B1B',
 }
 
-/** مستوى الازدحام لكل فترة قِيست. */
-export type CityTraffic = Partial<Record<Period, TrafficLevel>>
-
-function levelOf(ratio: number): TrafficLevel {
+export function levelOf(ratio: number): TrafficLevel {
+  if (ratio >= 1.7) return 'severe'
   if (ratio >= 1.4) return 'heavy'
   if (ratio >= 1.15) return 'moderate'
   return 'light'
+}
+
+/** ساعات القياس عبر اليوم (تقرير الأوقات الزمنية). */
+export const DAY_HOURS = [6, 8, 10, 12, 14, 16, 18, 20]
+
+export interface DaySlot {
+  hour: number
+  ratio: number // زمن-مع-الزحمة ÷ الزمن-الطبيعي
+  level: TrafficLevel
 }
 
 /** أقرب وقت مستقبليّ عند الساعة hour (اليوم أو الغد) — لتوقّع قوقل. */
@@ -41,12 +47,12 @@ function nextAt(hour: number): Date {
   return d
 }
 
-async function routeLevel(
+async function routeRatio(
   ds: google.maps.DirectionsService,
   maps: typeof google.maps,
   center: google.maps.LatLngLiteral,
   departureTime: Date,
-): Promise<TrafficLevel | null> {
+): Promise<number | null> {
   const origin = { lat: center.lat - 0.03, lng: center.lng - 0.03 }
   const destination = { lat: center.lat + 0.03, lng: center.lng + 0.03 }
   return new Promise((resolve) => {
@@ -63,27 +69,21 @@ async function routeLevel(
         const base = leg?.duration?.value
         const traf = leg?.duration_in_traffic?.value ?? base
         if (!base || !traf) return resolve(null)
-        resolve(levelOf(traf / base))
+        resolve(traf / base)
       },
     )
   })
 }
 
-/** يقيس ازدحام قائمة مدن في ٣ فترات (تسلسليّاً). {} إن لا مفتاح. */
-export async function fetchCityTraffic(
-  list: { id: string; center: google.maps.LatLngLiteral }[],
-): Promise<Record<string, CityTraffic>> {
-  if (!GOOGLE_MAPS_API_KEY) return {}
+/** تقرير ازدحام مدينة واحدة عبر ساعات اليوم (نسبة لكل ساعة). [] إن لا مفتاح. */
+export async function fetchDayReport(center: google.maps.LatLngLiteral): Promise<DaySlot[]> {
+  if (!GOOGLE_MAPS_API_KEY) return []
   const maps = await loadGoogleMaps()
   const ds = new maps.DirectionsService()
-  const out: Record<string, CityTraffic> = {}
-  for (const c of list) {
-    const t: CityTraffic = {}
-    for (const p of PERIODS) {
-      const lvl = await routeLevel(ds, maps, c.center, nextAt(PERIOD_HOUR[p]))
-      if (lvl) t[p] = lvl
-    }
-    if (Object.keys(t).length) out[c.id] = t
+  const out: DaySlot[] = []
+  for (const h of DAY_HOURS) {
+    const r = await routeRatio(ds, maps, center, nextAt(h))
+    if (r != null) out.push({ hour: h, ratio: r, level: levelOf(r) })
   }
   return out
 }

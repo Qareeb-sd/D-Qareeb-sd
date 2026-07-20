@@ -42,11 +42,10 @@ import MapView from '@/components/MapView'
 import { cities, sudanCities, DISPLACEMENT_LABEL, STATE_POP, SUDAN_CENTER, SUDAN_ZOOM } from '@/data/cities'
 import { fetchDtmSudan, DTM_FALLBACK, type DtmSnapshot } from '@/lib/iomDtm'
 import {
-  fetchCityTraffic,
-  PERIODS,
-  PERIOD_LABEL as TRAFFIC_PERIOD_LABEL,
-  LEVEL_DOT,
-  type CityTraffic,
+  fetchDayReport,
+  LEVEL_LABEL,
+  LEVEL_COLOR,
+  type DaySlot,
 } from '@/lib/cityTraffic'
 import { StatCard, ChartCard, StatusBadge, BarChart, DonutChart } from '@/components/admin/AdminUI'
 import IncentivesManager from '@/components/admin/IncentivesManager'
@@ -416,9 +415,9 @@ export default function AdminDashboard() {
   const [mapCity, setMapCity] = useState<string>('all')
   // لقطة النزوح (IOM DTM) — تُحدَّث تلقائياً عند فتح اللوحة، وإلا اللقطة الثابتة.
   const [dtm, setDtm] = useState<DtmSnapshot>(DTM_FALLBACK)
-  // مؤشّر ازدحام المدن (Google) — يُقاس عند الطلب فقط توفيراً للتكلفة.
-  const [traffic, setTraffic] = useState<Record<string, CityTraffic>>({})
-  const [trafficBusy, setTrafficBusy] = useState(false)
+  // تقرير ازدحام المدينة المختارة عبر ساعات اليوم (Google) — عند الطلب فقط.
+  const [dayReport, setDayReport] = useState<DaySlot[]>([])
+  const [dayBusy, setDayBusy] = useState(false)
   // طلبنا الفعلي لكل مدينة (عملاء/سائقون + تفصيل المركبات) — من بياناتنا.
   const [demand, setDemand] = useState<Record<string, CityDemand>>({})
   // المدينة المعروضة على خريطة الازدحام الحيّة (TrafficLayer).
@@ -2298,34 +2297,91 @@ export default function AdminDashboard() {
                   />
                 </div>
 
-                {/* خريطة الازدحام الحيّة (ألوان الطرق) لمدينة مختارة */}
-                <div className="card p-4">
-                  <p className="mb-2 font-bold">🗺️ خريطة الازدحام الحيّة</p>
-                  <div className="mb-2 flex flex-wrap gap-2">
-                    {cities.map((c) => (
-                      <button
-                        key={c.id}
-                        onClick={() => setTrafficCity(c.id)}
-                        className={`chip border px-3 py-1 text-xs ${
-                          trafficCity === c.id ? 'border-royal bg-royal text-white' : 'border-hairline bg-white text-ink-soft'
-                        }`}
-                      >
-                        {c.name}
-                      </button>
-                    ))}
-                  </div>
-                  <MapView
-                    key={`traffic-${trafficCity}`}
-                    traffic
-                    center={(cities.find((c) => c.id === trafficCity) ?? cities[0])?.center ?? SUDAN_CENTER}
-                    zoom={12}
-                    className="h-72 w-full rounded-2xl border border-hairline"
-                  />
-                  <p className="mt-1.5 text-[11px] text-ink-muted">
-                    ألوان الطرق حيّة من قوقل: 🟢 انسيابي · 🟠 متوسّط · 🔴 مزدحم · 🔴🔴 متوقّف. يعمل
-                    فوراً بلا تكلفة إضافية (طبقة الخريطة). إن ظهرت الخريطة بلا ألوان فالطرق انسيابية الآن.
-                  </p>
-                </div>
+                {/* خريطة الازدحام الحيّة + تقرير أوقات اليوم — لأي مدينة */}
+                {(() => {
+                  const tc = sudanCities.find((c) => c.id === trafficCity) ?? sudanCities[0]
+                  const fmtHour = (h: number) => (h === 12 ? '12ظ' : h < 12 ? `${h}ص` : `${h - 12}م`)
+                  const peak = dayReport.length
+                    ? dayReport.reduce((a, b) => (b.ratio > a.ratio ? b : a))
+                    : null
+                  const maxR = dayReport.length ? Math.max(1.6, ...dayReport.map((s) => s.ratio)) : 1.6
+                  return (
+                    <div className="card p-4">
+                      <p className="mb-2 font-bold">🗺️ خريطة الازدحام الحيّة</p>
+                      <div className="mb-2 flex flex-wrap gap-2">
+                        {sudanCities.map((c) => (
+                          <button
+                            key={c.id}
+                            onClick={() => {
+                              setTrafficCity(c.id)
+                              setDayReport([])
+                            }}
+                            className={`chip border px-3 py-1 text-xs ${
+                              trafficCity === c.id ? 'border-royal bg-royal text-white' : 'border-hairline bg-white text-ink-soft'
+                            }`}
+                          >
+                            {c.name}
+                          </button>
+                        ))}
+                      </div>
+                      <MapView
+                        key={`traffic-${trafficCity}`}
+                        traffic
+                        center={tc?.center ?? SUDAN_CENTER}
+                        zoom={12}
+                        className="h-64 w-full rounded-2xl border border-hairline"
+                      />
+                      <p className="mt-1.5 text-[11px] text-ink-muted">
+                        ألوان الطرق حيّة من قوقل: 🟢 انسيابي · 🟠 متوسّط · 🔴 مزدحم. إن ظهرت بلا ألوان
+                        فالطرق انسيابية الآن.
+                      </p>
+
+                      {/* مقياس + تقرير الازدحام خلال اليوم للمدينة المختارة */}
+                      <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-hairline pt-3">
+                        <p className="text-sm font-bold">📊 مقياس الازدحام خلال اليوم — {tc?.name}</p>
+                        <button
+                          onClick={async () => {
+                            if (!tc) return
+                            setDayBusy(true)
+                            setDayReport(await fetchDayReport(tc.center))
+                            setDayBusy(false)
+                          }}
+                          disabled={dayBusy}
+                          className="mr-auto rounded-full border border-hairline bg-white px-3 py-1 text-xs font-bold text-royal hover:bg-royal-soft disabled:opacity-50"
+                        >
+                          {dayBusy ? 'يقيس…' : 'قِس ازدحام اليوم (قوقل)'}
+                        </button>
+                      </div>
+                      {peak && (
+                        <p className="mt-1 text-xs text-ink-soft">
+                          الذروة الساعة <b>{fmtHour(peak.hour)}</b> —{' '}
+                          <b style={{ color: LEVEL_COLOR[peak.level] }}>{LEVEL_LABEL[peak.level]}</b>{' '}
+                          (+{Math.round((peak.ratio - 1) * 100)}% زمن إضافي).
+                        </p>
+                      )}
+                      {dayReport.length > 0 && (
+                        <div className="mt-2 flex items-end gap-1.5" style={{ height: 100 }}>
+                          {dayReport.map((s) => (
+                            <div key={s.hour} className="flex flex-1 flex-col items-center justify-end gap-1">
+                              <span className="text-[9px] font-bold text-ink-muted">
+                                +{Math.round((s.ratio - 1) * 100)}%
+                              </span>
+                              <div
+                                className="w-full rounded-t"
+                                style={{
+                                  height: Math.max(6, ((s.ratio - 1) / (maxR - 1)) * 72),
+                                  backgroundColor: LEVEL_COLOR[s.level],
+                                }}
+                                title={LEVEL_LABEL[s.level]}
+                              />
+                              <span className="text-[9px] text-ink-muted">{fmtHour(s.hour)}</span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )
+                })()}
 
                 {/* سكان الولايات (تقدير UN/OCHA) */}
                 <div className="card p-4">
@@ -2347,29 +2403,13 @@ export default function AdminDashboard() {
                 </div>
 
                 <div className="card p-4">
-                  <div className="mb-1 flex flex-wrap items-center gap-2">
-                    <p className="font-bold">مدن السودان حسب حالة النزوح</p>
-                    <button
-                      onClick={async () => {
-                        setTrafficBusy(true)
-                        const t = await fetchCityTraffic(cities.map((c) => ({ id: c.id, center: c.center })))
-                        setTraffic(t)
-                        setTrafficBusy(false)
-                      }}
-                      disabled={trafficBusy}
-                      className="mr-auto rounded-full border border-hairline bg-white px-3 py-1 text-xs font-bold text-royal hover:bg-royal-soft disabled:opacity-50"
-                    >
-                      {trafficBusy ? 'يقيس الازدحام…' : '🚦 مؤشّر ازدحام بالوقت (ص/ظ/م)'}
-                    </button>
-                  </div>
+                  <p className="font-bold">مدن السودان حسب حالة النزوح</p>
                   <p className="mb-3 text-xs text-ink-muted">
                     مرتّبة بفرصة التوسّع (الأعلى استضافةً للنازحين أولاً) — 🟢 نشطة · ⚪ مرشّحة.
-                    {Object.keys(traffic).length > 0 && ' 🚦 الازدحام المتوقّع صباح(ص)/ظهر(ظ)/مساء(م) من قوقل.'}
                   </p>
                   <div className="space-y-2">
                     {ranked.map((c) => {
                       const d = demand[c.id]
-                      const t = traffic[c.id]
                       const pop = STATE_POP[c.state]
                       const types = d
                         ? Object.entries(d.byType).filter(([, v]) => v.drivers > 0 || v.rides > 0)
@@ -2404,12 +2444,6 @@ export default function AdminDashboard() {
                                 {types
                                   .map(([vt, v]) => `${getService(vt)?.name ?? vt}: ${v.drivers}`)
                                   .join(' · ')}
-                              </span>
-                            )}
-                            {t && (
-                              <span className="text-ink-soft" title="الازدحام المتوقّع صباح/ظهر/مساء">
-                                🚦{' '}
-                                {PERIODS.filter((p) => t[p]).map((p) => `${TRAFFIC_PERIOD_LABEL[p]}${LEVEL_DOT[t[p]!]}`).join(' ')}
                               </span>
                             )}
                           </div>
