@@ -39,7 +39,7 @@ import {
 } from 'lucide-react'
 import Logo from '@/components/Logo'
 import MapView from '@/components/MapView'
-import { cities, sudanCities, SUDAN_CENTER, SUDAN_ZOOM } from '@/data/cities'
+import { cities, sudanCities, DISPLACEMENT_LABEL, SUDAN_CENTER, SUDAN_ZOOM } from '@/data/cities'
 import { StatCard, ChartCard, StatusBadge, BarChart, DonutChart } from '@/components/admin/AdminUI'
 import IncentivesManager from '@/components/admin/IncentivesManager'
 import DriverPerformance from '@/components/admin/DriverPerformance'
@@ -2189,22 +2189,51 @@ export default function AdminDashboard() {
 
         {tab === 'expansion' &&
           (() => {
-            const ranked = [...sudanCities].sort((a, b) => b.population - a.population)
+            // ترتيب يُبرز فرص التوسّع: الولايات المستضيفة للنازحين أولاً (تركّز
+            // سكّاني حالي = طلب)، ثم العودة/التعافي، ثم المستقرّة، والنزاع أخيراً.
+            const PRIO: Record<string, number> = { host: 0, returning: 1, stable: 2, conflict: 3 }
+            const CHIP: Record<string, string> = {
+              conflict: 'bg-danger/10 text-danger',
+              host: 'bg-gold-soft text-gold-deep',
+              returning: 'bg-green-soft text-green',
+              stable: 'bg-hairline text-ink-soft',
+            }
+            const ranked = [...sudanCities].sort(
+              (a, b) => PRIO[a.displacement] - PRIO[b.displacement] || Number(b.active) - Number(a.active),
+            )
             const activeCount = ranked.filter((c) => c.active).length
-            const coveredPop = ranked.filter((c) => c.active).reduce((s, c) => s + c.population, 0)
-            const topCandidate = ranked.find((c) => !c.active)
-            const maxPop = ranked[0]?.population || 1
-            const fmt = (n: number) => (n >= 1000 ? `${(n / 1000).toFixed(n >= 100000 ? 0 : 1)} ألف` : `${n}`)
+            const topCandidate = ranked.find((c) => !c.active && c.displacement === 'host')
             return (
               <div className="flex flex-col gap-4">
-                {/* بطاقات ملخّص */}
+                {/* لقطة بيانات النزوح الحقيقية — IOM DTM */}
+                <div className="card space-y-1.5 p-4">
+                  <p className="font-bold text-royal">بيانات النزوح — IOM DTM (سبتمبر ٢٠٢٥)</p>
+                  <p className="text-xs text-ink-soft">
+                    ~٨.٩ مليون نازح داخل السودان حالياً (انخفاض ٢٣٪ عن الذروة ١١.٦ مليون في يناير
+                    ٢٠٢٥)، وعاد نحو ٤ ملايين لمناطقهم. أعلى الولايات استضافةً: جنوب دارفور، شمال
+                    دارفور، نهر النيل، القضارف.
+                  </p>
+                  <p className="text-[11px] text-ink-muted">
+                    المؤشّر أدناه على مستوى <b>الولاية</b> (لا المدينة) — دلالة على أين يتركّز
+                    الناس اليوم بدل تعداد قديم.{' '}
+                    <a
+                      href="https://dtm.iom.int/sudan"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-info underline"
+                    >
+                      المصدر الحيّ (IOM DTM)
+                    </a>
+                  </p>
+                </div>
+
                 <div className="grid grid-cols-2 gap-3 md:grid-cols-3">
                   <StatCard label="مدن نشطة" value={`${activeCount} / ${ranked.length}`} Icon={MapPinned} iconBg="#E8F1EC" accent="#1B6B3F" />
-                  <StatCard label="سكان مغطّون (تقديري)" value={fmt(coveredPop)} Icon={Users} iconBg="#E3EEF7" accent="#3A6FB0" />
+                  <StatCard label="ولايات مستضيفة (فرص)" value={`${sudanCities.filter((c) => c.displacement === 'host').length}`} Icon={Users} iconBg="#E3EEF7" accent="#3A6FB0" />
                   <StatCard
                     label="أعلى فرصة توسّع"
                     value={topCandidate ? topCandidate.name : '—'}
-                    hint={topCandidate ? `${fmt(topCandidate.population)} نسمة` : undefined}
+                    hint={topCandidate ? topCandidate.state : undefined}
                     Icon={TrendingUp}
                     iconBg="#FBF4DD"
                     accent="#A88528"
@@ -2212,26 +2241,21 @@ export default function AdminDashboard() {
                 </div>
 
                 <div className="card p-4">
-                  <p className="mb-1 font-bold">مدن السودان حسب الكثافة السكانية</p>
+                  <p className="mb-1 font-bold">مدن السودان حسب حالة النزوح</p>
                   <p className="mb-3 text-xs text-ink-muted">
-                    مرتّبة بعدد السكان (تقديري) — 🟢 نشطة · ⚪ مرشّحة للتوسّع. الأرقام قابلة
-                    للتعديل في ملف المدن.
+                    مرتّبة بفرصة التوسّع (الأعلى استضافةً للنازحين أولاً) — 🟢 نشطة · ⚪ مرشّحة.
                   </p>
-                  <div className="space-y-2">
-                    {ranked.map((c, i) => (
-                      <div key={c.id} className="flex items-center gap-3">
-                        <span className="w-5 shrink-0 text-center text-xs font-bold text-ink-muted">{i + 1}</span>
+                  <div className="space-y-1.5">
+                    {ranked.map((c) => (
+                      <div key={c.id} className="flex flex-wrap items-center gap-2 border-b border-hairline pb-1.5 last:border-0">
                         <span className="w-20 shrink-0 text-sm font-bold text-royal">{c.name}</span>
-                        <div className="h-3 flex-1 overflow-hidden rounded-full bg-hairline">
-                          <div
-                            className={`h-full rounded-full ${c.active ? 'bg-green' : 'bg-sand-ink/50'}`}
-                            style={{ width: `${Math.max(4, (c.population / maxPop) * 100)}%` }}
-                          />
-                        </div>
-                        <span className="w-16 shrink-0 text-left text-xs text-ink-soft">{fmt(c.population)}</span>
+                        <span className="w-24 shrink-0 text-xs text-ink-soft">{c.state}</span>
+                        <span className={`rounded-full px-2 py-0.5 text-[11px] font-bold ${CHIP[c.displacement]}`}>
+                          {DISPLACEMENT_LABEL[c.displacement]}
+                        </span>
                         <span
-                          className={`w-14 shrink-0 rounded-full px-2 py-0.5 text-center text-[11px] font-bold ${
-                            c.active ? 'bg-green-soft text-green' : 'bg-gold-soft text-gold-deep'
+                          className={`mr-auto rounded-full px-2 py-0.5 text-[11px] font-bold ${
+                            c.active ? 'bg-green-soft text-green' : 'bg-hairline text-ink-soft'
                           }`}
                         >
                           {c.active ? '🟢 نشطة' : '⚪ مرشّحة'}
@@ -2242,8 +2266,8 @@ export default function AdminDashboard() {
                 </div>
 
                 <p className="text-center text-[11px] text-ink-muted">
-                  ملاحظة: الأرقام تقديرات سكانية عامة للمقارنة والترتيب. بعد التدشين سأضيف
-                  «كثافة طلباتك الفعلية» بجانبها لتقرّر التوسّع ببياناتك أنت.
+                  المؤشّر على مستوى الولاية من IOM DTM (سبتمبر ٢٠٢٥) — تقريبيّ للسياق، ليس تعداد
+                  المدينة. القرار النهائي للتوسّع من <b>طلبك الفعلي</b> بعد التدشين، وسأضيفه هنا.
                 </p>
               </div>
             )
