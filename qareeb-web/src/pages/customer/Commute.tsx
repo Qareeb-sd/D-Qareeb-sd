@@ -73,19 +73,25 @@ export default function Commute() {
   const orgDaily = dailyFareAt(home)
   const orgMonthly = monthlyTotal(orgDaily, selected.length, weeks)
 
-  // منزل المنظّم = موقعه الحالي مبدئياً، ويمكن تعديله.
+  // منزل المنظّم = موقعه الحالي مبدئياً. خريطة الوجهة تبدأ عند موقعه أيضاً (لا
+  // نفترض الخرطوم) حتى يجدها العميل بجواره ويحدّدها بنفسه — بلا وجهة مفروضة.
   const located = useRef(false)
   useEffect(() => {
     if (located.current || !navigator.geolocation) return
     located.current = true
     navigator.geolocation.getCurrentPosition(
       (p) => {
-        setHome({ lat: p.coords.latitude, lng: p.coords.longitude })
+        const pos = { lat: p.coords.latitude, lng: p.coords.longitude }
+        setHome(pos)
         setHomeAddress((a) => a || 'موقعي الحالي')
+        // نُوسّط خريطة الوجهة عند العميل فقط طالما لم يحدّدها بعد (destChosen=false).
+        setDest((d) => (destChosen ? d : pos))
       },
       () => {},
       { timeout: 8000 },
     )
+    // يُنفَّذ مرّة واحدة عند التحميل قبل أي اختيار.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   const toggleDay = (d: string) =>
@@ -93,6 +99,7 @@ export default function Commute() {
 
   const create = async () => {
     if (selected.length === 0) return
+    if (!destChosen) return alert('حدّد مكان العمل (الوجهة) أولاً')
     if (!periodRate || orgDaily <= 0) return alert('يجري حساب السعر… أعد المحاولة بعد لحظة')
     setBusy(true)
     try {
@@ -354,8 +361,12 @@ export default function Commute() {
           </button>
         </div>
 
-        <button className="btn-primary w-full" onClick={create} disabled={busy}>
-          {busy ? '…' : 'إنشاء ترحيل ومشاركة الرابط'}
+        <button
+          className="btn-primary w-full"
+          onClick={create}
+          disabled={busy || !destChosen || selected.length === 0}
+        >
+          {busy ? '…' : !destChosen ? 'حدّد مكان العمل أولاً' : 'إنشاء ترحيل ومشاركة الرابط'}
         </button>
       </main>
 
