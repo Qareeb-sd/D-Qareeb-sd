@@ -2249,7 +2249,7 @@ export default function AdminDashboard() {
                   <div className="flex flex-wrap items-center justify-between gap-2">
                     <p className="font-bold text-royal">تعداد سكان السودان</p>
                     <span className="text-xs text-ink-muted">
-                      الإجمالي ~<b className="text-royal">٥١ مليون</b> · المصدر: الأمم المتحدة (OCHA HNRP 2025)
+                      الإجمالي ~<b className="text-royal">٥١ مليون</b> · المصدر: الأمم المتحدة (OCHA HNRP 2026)
                     </span>
                   </div>
                   <div className="grid grid-cols-2 gap-x-4 gap-y-1 md:grid-cols-3">
@@ -2313,10 +2313,8 @@ export default function AdminDashboard() {
                         zoom={12}
                         className="h-64 w-full rounded-2xl border border-hairline"
                       />
-                      <p className="mt-1.5 text-[11px] text-warning">
-                        ⚠️ تغطية قوقل لبيانات المرور في السودان محدودة جداً (قلّة مستخدميه + الحرب)،
-                        فقد تُظهر «انسيابي» دائماً حتى في مدن مزدحمة فعلاً — هذا نقص بيانات لا واقع
-                        الشارع. المصدر الأدقّ سيكون سرعة أسطول «قريب» نفسه بعد التدشين.
+                      <p className="mt-1.5 text-[11px] text-ink-muted">
+                        تغطية قوقل لبيانات المرور في السودان.
                       </p>
 
                       {/* مقياس + تقرير الازدحام خلال اليوم للمدينة المختارة */}
@@ -2424,8 +2422,7 @@ export default function AdminDashboard() {
                 </div>
 
                 <p className="text-center text-[11px] text-ink-muted">
-                  وسم النزوح على مستوى الولاية من IOM DTM — تقريبيّ للسياق، ليس تعداد المدينة.
-                  القرار النهائي للتوسّع من <b>طلبك الفعلي</b> بعد التدشين، وسأضيفه هنا.
+                  وسم النزوح على مستوى الولاية حسب IOM DTM فقط.
                 </p>
               </div>
             )
