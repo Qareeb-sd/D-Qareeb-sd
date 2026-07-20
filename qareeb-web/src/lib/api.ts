@@ -1267,6 +1267,25 @@ export async function updateSettings(
   return error ? { error: error.message } : {}
 }
 
+/** طلب حسب المدينة (لقسم التوسّع): عملاؤنا/سائقونا/طلباتنا في كل مدينة من
+ *  بياناتنا الفعلية. المفتاح '__outside__' = نقاط خارج كل المدن (فرص جديدة). */
+export async function getCityDemand(
+  cities: { id: string; lat: number; lng: number; radius: number }[],
+): Promise<Record<string, { customers: number; drivers: number; rides: number }>> {
+  if (!isSupabaseConfigured) return {}
+  const { data, error } = await supabase.rpc('city_demand', { p_cities: cities })
+  if (error || !data) return {}
+  const out: Record<string, { customers: number; drivers: number; rides: number }> = {}
+  for (const r of data as { city_id: string; customers: number; drivers: number; rides: number }[]) {
+    out[r.city_id] = {
+      customers: Number(r.customers),
+      drivers: Number(r.drivers),
+      rides: Number(r.rides),
+    }
+  }
+  return out
+}
+
 // ملاحظة: صرف اشتراكات الترحيل الشهرية يتمّ تلقائياً عبر مهمّة pg_cron مجدولة
 // (settle_due_commute_months) تُضيف المبلغ لمحفظة السائق نهاية الشهر — بلا إجراء يدوي.
 

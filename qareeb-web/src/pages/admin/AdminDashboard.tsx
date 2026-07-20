@@ -61,6 +61,7 @@ import {
   approveWithdrawal,
   rejectWithdrawal,
   updateSettings,
+  getCityDemand,
   getCommuteHeld,
   getProofUrl,
   listServicePricing,
@@ -411,6 +412,8 @@ export default function AdminDashboard() {
   // مؤشّر ازدحام المدن (Google) — يُقاس عند الطلب فقط توفيراً للتكلفة.
   const [traffic, setTraffic] = useState<Record<string, CityTraffic>>({})
   const [trafficBusy, setTrafficBusy] = useState(false)
+  // طلبنا الفعلي لكل مدينة (عملاء/سائقون) — من بياناتنا، يُحمَّل تلقائياً.
+  const [demand, setDemand] = useState<Record<string, { customers: number; drivers: number; rides: number }>>({})
   const [sos, setSos] = useState<SosAlert[]>([])
 
   // صلاحياتي (مالك أم موظف؟) + قائمة الموظفين (للمالك)
@@ -497,6 +500,15 @@ export default function AdminDashboard() {
       if (d) setDtm(d)
     })
     return () => ctrl.abort()
+  }, [])
+
+  // طلبنا الفعلي لكل مدينة (من قاعدتنا) — يُحمَّل مرّة عند فتح اللوحة.
+  useEffect(() => {
+    void getCityDemand(
+      sudanCities.map((c) => ({ id: c.id, lat: c.center.lat, lng: c.center.lng, radius: c.radiusKm })),
+    )
+      .then(setDemand)
+      .catch(() => {})
   }, [])
 
   useEffect(() => {
@@ -2294,28 +2306,47 @@ export default function AdminDashboard() {
                     {Object.keys(traffic).length > 0 && ' الازدحام حيّ من قوقل الآن.'}
                   </p>
                   <div className="space-y-1.5">
-                    {ranked.map((c) => (
-                      <div key={c.id} className="flex flex-wrap items-center gap-2 border-b border-hairline pb-1.5 last:border-0">
-                        <span className="w-20 shrink-0 text-sm font-bold text-royal">{c.name}</span>
-                        <span className="w-24 shrink-0 text-xs text-ink-soft">{c.state}</span>
-                        <span className={`rounded-full px-2 py-0.5 text-[11px] font-bold ${CHIP[c.displacement]}`}>
-                          {DISPLACEMENT_LABEL[c.displacement]}
-                        </span>
-                        {traffic[c.id] && (
-                          <span className="rounded-full bg-royal-soft px-2 py-0.5 text-[11px] font-bold text-royal">
-                            {TRAFFIC_LABEL[traffic[c.id].level]}
+                    {ranked.map((c) => {
+                      const d = demand[c.id]
+                      return (
+                        <div key={c.id} className="flex flex-wrap items-center gap-2 border-b border-hairline pb-1.5 last:border-0">
+                          <span className="w-20 shrink-0 text-sm font-bold text-royal">{c.name}</span>
+                          <span className="w-20 shrink-0 text-xs text-ink-soft">{c.state}</span>
+                          {/* أرقامنا الفعلية — المعلومة الأهم للقرار */}
+                          <span className="shrink-0 text-[11px] font-bold text-ink" title="عملاؤنا · سائقونا فيها">
+                            👥 {d?.customers ?? 0} · 🚗 {d?.drivers ?? 0}
                           </span>
-                        )}
-                        <span
-                          className={`mr-auto rounded-full px-2 py-0.5 text-[11px] font-bold ${
-                            c.active ? 'bg-green-soft text-green' : 'bg-hairline text-ink-soft'
-                          }`}
-                        >
-                          {c.active ? '🟢 نشطة' : '⚪ مرشّحة'}
-                        </span>
-                      </div>
-                    ))}
+                          <span className={`rounded-full px-2 py-0.5 text-[11px] font-bold ${CHIP[c.displacement]}`}>
+                            {DISPLACEMENT_LABEL[c.displacement]}
+                          </span>
+                          {traffic[c.id] && (
+                            <span className="rounded-full bg-royal-soft px-2 py-0.5 text-[11px] font-bold text-royal">
+                              {TRAFFIC_LABEL[traffic[c.id].level]}
+                            </span>
+                          )}
+                          <span
+                            className={`mr-auto rounded-full px-2 py-0.5 text-[11px] font-bold ${
+                              c.active ? 'bg-green-soft text-green' : 'bg-hairline text-ink-soft'
+                            }`}
+                          >
+                            {c.active ? 'نشطة' : 'مرشّحة'}
+                          </span>
+                        </div>
+                      )
+                    })}
                   </div>
+                  {/* طلبات خارج كل مدننا = فرص مدن جديدة */}
+                  {demand['__outside__'] && (demand['__outside__'].customers > 0 || demand['__outside__'].rides > 0) && (
+                    <div className="mt-3 rounded-2xl bg-gold-soft p-3 text-sm text-ink">
+                      <b>طلبات خارج كل مدننا:</b> 👥 {demand['__outside__'].customers} عميل · {demand['__outside__'].rides} طلب —
+                      إشارة توسّع: ناس يطلبون «قريب» في أماكن لا نخدمها بعد.
+                    </div>
+                  )}
+                  {Object.keys(demand).length === 0 && (
+                    <p className="mt-3 text-center text-[11px] text-ink-muted">
+                      👥/🚗 من طلباتك الفعلية — تظهر الأرقام بعد بدء التشغيل.
+                    </p>
+                  )}
                 </div>
 
                 <p className="text-center text-[11px] text-ink-muted">
