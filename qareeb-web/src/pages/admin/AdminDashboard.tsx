@@ -151,7 +151,7 @@ import { subscribeToSos, subscribeToTopups, subscribeToDriverApplications } from
 import { isSupabaseConfigured } from '@/lib/supabase'
 import { PERIOD_LABEL, currentPeriod, haversineKm } from '@/lib/pricing'
 import { exportCsv } from '@/lib/csv'
-import { getService } from '@/data/services'
+import { getService, visibleServices } from '@/data/services'
 import type {
   Settings,
   Topup,
@@ -2130,9 +2130,14 @@ export default function AdminDashboard() {
 
         {tab === 'map' &&
           (() => {
+            // المدن النشطة كما يحدّدها الأدمن (settings.active_cities) وإلا الافتراضي.
+            const activeSet = new Set(
+              settings?.active_cities ?? sudanCities.filter((c) => c.active).map((c) => c.id),
+            )
+            const activeCityObjs = sudanCities.filter((c) => activeSet.has(c.id))
             // المدينة المختارة (أو كل السودان). نصفّي السائقين/الرحلات حول مركزها.
-            const city = cities.find((c) => c.id === mapCity) ?? null
-            const near = (lat: number, lng: number, c: (typeof cities)[number]) =>
+            const city = activeCityObjs.find((c) => c.id === mapCity) ?? null
+            const near = (lat: number, lng: number, c: (typeof sudanCities)[number]) =>
               haversineKm({ lat, lng }, c.center) <= c.radiusKm
             const cityRides = city
               ? activeRides.filter((r) => near(r.pickup_lat, r.pickup_lng, city))
@@ -2152,7 +2157,7 @@ export default function AdminDashboard() {
                   >
                     🇸🇩 كل السودان
                   </button>
-                  {cities.map((c) => {
+                  {activeCityObjs.map((c) => {
                     const n = onlineDrivers.filter((d) => near(d.lat, d.lng, c)).length
                     return (
                       <button
@@ -2234,11 +2239,32 @@ export default function AdminDashboard() {
               returning: 'bg-green-soft text-green',
               stable: 'bg-hairline text-ink-soft',
             }
+            // المدن النشطة كما يحدّدها الأدمن (settings.active_cities) وإلا الافتراضي.
+            const activeIds = settings?.active_cities ?? sudanCities.filter((c) => c.active).map((c) => c.id)
+            const activeSet = new Set(activeIds)
+            const isActive = (id: string) => activeSet.has(id)
+            const cityVehicles = settings?.city_vehicles ?? {}
+            // أنواع المركبات المشتركة (لتحديد المتاح في كل مدينة).
+            const vehicleTypes = visibleServices().filter((s) => s.sharable && s.id !== 'open')
+            const saveCities = (patch: Partial<Settings>) => {
+              setSettings((s) => (s ? { ...s, ...patch } : s))
+              void updateSettings(patch)
+            }
+            const toggleActive = (id: string) =>
+              saveCities({ active_cities: isActive(id) ? activeIds.filter((x) => x !== id) : [...activeIds, id] })
+            const cityVehIds = (id: string): string[] => cityVehicles[id] ?? vehicleTypes.map((s) => s.id)
+            const toggleCityVehicle = (id: string, vt: string) => {
+              const cur = cityVehIds(id)
+              const next = cur.includes(vt) ? cur.filter((x) => x !== vt) : [...cur, vt]
+              saveCities({ city_vehicles: { ...cityVehicles, [id]: next } })
+            }
             const ranked = [...sudanCities].sort(
-              (a, b) => PRIO[a.displacement] - PRIO[b.displacement] || Number(b.active) - Number(a.active),
+              (a, b) =>
+                PRIO[a.displacement] - PRIO[b.displacement] ||
+                Number(isActive(b.id)) - Number(isActive(a.id)),
             )
-            const activeCount = ranked.filter((c) => c.active).length
-            const topCandidate = ranked.find((c) => !c.active && c.displacement === 'host')
+            const activeCount = activeIds.length
+            const topCandidate = ranked.find((c) => !isActive(c.id) && c.displacement === 'host')
             return (
               <div className="flex flex-col gap-4">
                 {/* لقطة بيانات النزوح — تُحدَّث تلقائياً من IOM DTM (وإلا لقطة ثابتة) */}
@@ -2404,20 +2430,23 @@ export default function AdminDashboard() {
                 </div>
 
                 <div className="card p-4">
-                  <p className="font-bold">مدن السودان حسب حالة النزوح</p>
+                  <p className="font-bold">مدن السودان — تحكّم بالتفعيل والمركبات</p>
                   <p className="mb-3 text-xs text-ink-muted">
-                    مرتّبة بفرصة التوسّع (الأعلى استضافةً للنازحين أولاً) — 🟢 نشطة · ⚪ مرشّحة.
+                    أنت من يحدّد مدنك: اضغط «تفعيل المدينة» لتشغيلها (تظهر في الخريطة والتطبيق)،
+                    وفعّل/عطّل أنواع المركبات المتاحة في كلٍّ. يُحفظ فوراً.
                   </p>
                   <div className="space-y-2">
                     {ranked.map((c) => {
                       const d = demand[c.id]
                       const pop = STATE_POP[c.state]
-                      const types = d
-                        ? Object.entries(d.byType).filter(([, v]) => v.drivers > 0 || v.rides > 0)
-                        : []
+                      const on = isActive(c.id)
+                      const enabled = new Set(cityVehIds(c.id))
                       return (
-                        <div key={c.id} className="rounded-xl border border-hairline p-2.5">
-                          {/* السطر الأول: الاسم + الولاية/السكان + الحالة */}
+                        <div
+                          key={c.id}
+                          className={`rounded-xl border p-2.5 ${on ? 'border-royal/40 bg-royal-soft/30' : 'border-hairline'}`}
+                        >
+                          {/* السطر الأول: الاسم + الولاية/السكان + حالة النزوح + مفتاح التفعيل */}
                           <div className="flex flex-wrap items-center gap-2">
                             <span className="text-sm font-bold text-royal">{c.name}</span>
                             <span className="text-[11px] text-ink-muted">
@@ -2427,27 +2456,41 @@ export default function AdminDashboard() {
                             <span className={`rounded-full px-2 py-0.5 text-[11px] font-bold ${CHIP[c.displacement]}`}>
                               {DISPLACEMENT_LABEL[c.displacement]}
                             </span>
-                            <span
-                              className={`mr-auto rounded-full px-2 py-0.5 text-[11px] font-bold ${
-                                c.active ? 'bg-green-soft text-green' : 'bg-hairline text-ink-soft'
+                            <button
+                              onClick={() => toggleActive(c.id)}
+                              className={`mr-auto rounded-full px-3 py-0.5 text-[11px] font-bold transition ${
+                                on ? 'bg-green text-white' : 'border border-hairline bg-white text-ink-soft'
                               }`}
                             >
-                              {c.active ? 'نشطة' : 'مرشّحة'}
-                            </span>
+                              {on ? '🟢 نشطة — إلغاء' : '⚪ تفعيل المدينة'}
+                            </button>
                           </div>
-                          {/* السطر الثاني: أرقامنا + تفصيل المركبات + الازدحام بالوقت */}
-                          <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px]">
-                            <span className="font-bold text-ink">
-                              👥 {d?.customers ?? 0} · 🚗 {d?.drivers ?? 0}
-                            </span>
-                            {types.length > 0 && (
-                              <span className="text-ink-soft">
-                                {types
-                                  .map(([vt, v]) => `${getService(vt)?.name ?? vt}: ${v.drivers}`)
-                                  .join(' · ')}
-                              </span>
-                            )}
+                          {/* أرقامنا الفعلية */}
+                          <div className="mt-1 text-[11px] font-bold text-ink">
+                            👥 {d?.customers ?? 0} عميل · 🚗 {d?.drivers ?? 0} سائق
                           </div>
+                          {/* أنواع المركبات المتاحة في المدينة (قابلة للتفعيل عند تنشيط المدينة) */}
+                          {on && (
+                            <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+                              <span className="text-[10px] text-ink-muted">المركبات:</span>
+                              {vehicleTypes.map((s) => {
+                                const active = enabled.has(s.id)
+                                const cnt = d?.byType[s.id]?.drivers ?? 0
+                                return (
+                                  <button
+                                    key={s.id}
+                                    onClick={() => toggleCityVehicle(c.id, s.id)}
+                                    className={`rounded-full border px-2 py-0.5 text-[10px] font-bold transition ${
+                                      active ? 'border-royal bg-royal text-white' : 'border-hairline bg-white text-ink-muted line-through'
+                                    }`}
+                                  >
+                                    {s.name}
+                                    {cnt > 0 ? ` (${cnt})` : ''}
+                                  </button>
+                                )
+                              })}
+                            </div>
+                          )}
                         </div>
                       )
                     })}

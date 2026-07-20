@@ -154,6 +154,8 @@ export interface Settings {
   commute_commission_rate?: number | null // عمولة المنصّة على الترحيل (0..1)؛ null = عمولة الرحلات
   commute_discount?: number // خصم على سعر الترحيل (0..1)
   commute_monthly_discount?: number // خصم إضافي على الاشتراك الشهري لتشجيعه (0..1)
+  active_cities?: string[] | null // معرّفات المدن النشطة (يحدّدها الأدمن)؛ null=الافتراضي
+  city_vehicles?: Record<string, string[]> | null // أنواع المركبات المتاحة لكل مدينة
   commute_weeks_per_month?: number // أسابيع الشهر لحساب الاشتراك الشهري
   updated_at: string
 }
