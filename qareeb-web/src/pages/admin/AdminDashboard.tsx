@@ -230,7 +230,7 @@ const tabs: {
 }[] = [
   { id: 'overview', label: 'نظرة عامة', perm: null, group: 'main', Icon: LayoutDashboard },
   { id: 'map', label: 'الخريطة المباشرة', perm: null, group: 'main', Icon: MapPinned },
-  { id: 'expansion', label: 'التوسّع', perm: null, group: 'main', Icon: TrendingUp },
+  { id: 'expansion', label: 'المدن', perm: null, group: 'main', Icon: TrendingUp },
 
   { id: 'requests', label: 'الطلبات', perm: 'requests', group: 'ops', Icon: Inbox },
   { id: 'rides', label: 'الرحلات', perm: 'rides', group: 'ops', Icon: Route },
@@ -421,6 +421,8 @@ export default function AdminDashboard() {
   const [trafficBusy, setTrafficBusy] = useState(false)
   // طلبنا الفعلي لكل مدينة (عملاء/سائقون + تفصيل المركبات) — من بياناتنا.
   const [demand, setDemand] = useState<Record<string, CityDemand>>({})
+  // المدينة المعروضة على خريطة الازدحام الحيّة (TrafficLayer).
+  const [trafficCity, setTrafficCity] = useState<string>(cities[0]?.id ?? 'khartoum')
   const [sos, setSos] = useState<SosAlert[]>([])
 
   // صلاحياتي (مالك أم موظف؟) + قائمة الموظفين (للمالك)
@@ -2296,6 +2298,54 @@ export default function AdminDashboard() {
                   />
                 </div>
 
+                {/* خريطة الازدحام الحيّة (ألوان الطرق) لمدينة مختارة */}
+                <div className="card p-4">
+                  <p className="mb-2 font-bold">🗺️ خريطة الازدحام الحيّة</p>
+                  <div className="mb-2 flex flex-wrap gap-2">
+                    {cities.map((c) => (
+                      <button
+                        key={c.id}
+                        onClick={() => setTrafficCity(c.id)}
+                        className={`chip border px-3 py-1 text-xs ${
+                          trafficCity === c.id ? 'border-royal bg-royal text-white' : 'border-hairline bg-white text-ink-soft'
+                        }`}
+                      >
+                        {c.name}
+                      </button>
+                    ))}
+                  </div>
+                  <MapView
+                    key={`traffic-${trafficCity}`}
+                    traffic
+                    center={(cities.find((c) => c.id === trafficCity) ?? cities[0])?.center ?? SUDAN_CENTER}
+                    zoom={12}
+                    className="h-72 w-full rounded-2xl border border-hairline"
+                  />
+                  <p className="mt-1.5 text-[11px] text-ink-muted">
+                    ألوان الطرق حيّة من قوقل: 🟢 انسيابي · 🟠 متوسّط · 🔴 مزدحم · 🔴🔴 متوقّف. يعمل
+                    فوراً بلا تكلفة إضافية (طبقة الخريطة). إن ظهرت الخريطة بلا ألوان فالطرق انسيابية الآن.
+                  </p>
+                </div>
+
+                {/* سكان الولايات (تقدير UN/OCHA) */}
+                <div className="card p-4">
+                  <p className="mb-2 font-bold">سكان الولايات — تقدير الأمم المتحدة (أساس)</p>
+                  <div className="grid grid-cols-2 gap-x-4 gap-y-1 md:grid-cols-3">
+                    {Object.entries(STATE_POP)
+                      .sort((a, b) => b[1] - a[1])
+                      .map(([state, pop]) => (
+                        <div key={state} className="flex items-center justify-between border-b border-hairline py-1 text-xs">
+                          <span className="text-ink-soft">{state}</span>
+                          <span className="font-bold text-royal">{num(pop)}</span>
+                        </div>
+                      ))}
+                  </div>
+                  <p className="mt-1.5 text-[11px] text-ink-muted">
+                    إجمالي السودان ~٥١ مليون نسمة (OCHA HNRP ٢٠٢٥). الأرقام أساس ما قبل الحرب —
+                    غيّرها النزوح، فقارنها بحالة النزوح وأرقامك الفعلية.
+                  </p>
+                </div>
+
                 <div className="card p-4">
                   <div className="mb-1 flex flex-wrap items-center gap-2">
                     <p className="font-bold">مدن السودان حسب حالة النزوح</p>
@@ -2309,7 +2359,7 @@ export default function AdminDashboard() {
                       disabled={trafficBusy}
                       className="mr-auto rounded-full border border-hairline bg-white px-3 py-1 text-xs font-bold text-royal hover:bg-royal-soft disabled:opacity-50"
                     >
-                      {trafficBusy ? 'يقيس الازدحام…' : '🚦 قِس ازدحام المدن النشطة (قوقل)'}
+                      {trafficBusy ? 'يقيس الازدحام…' : '🚦 مؤشّر ازدحام بالوقت (ص/ظ/م)'}
                     </button>
                   </div>
                   <p className="mb-3 text-xs text-ink-muted">

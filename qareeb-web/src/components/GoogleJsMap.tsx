@@ -17,6 +17,8 @@ interface MapViewProps {
   /** طبقة كثافة الطلب — نقاط تُرسم كدوائر شفّافة متراكبة. */
   heat?: google.maps.LatLngLiteral[]
   route?: google.maps.LatLngLiteral[]
+  /** طبقة حركة المرور الحيّة (ألوان الازدحام على الطرق). */
+  traffic?: boolean
   zoom?: number
   onCenterChanged?: (pos: google.maps.LatLngLiteral) => void
   onUserDrag?: () => void
@@ -130,6 +132,7 @@ export default function GoogleJsMap({
   driverMarkers,
   heat,
   route,
+  traffic,
   zoom = 14,
   onCenterChanged,
   onUserDrag,
@@ -172,6 +175,9 @@ export default function GoogleJsMap({
         })
         mapRef.current = map
         lastCam.current = center
+
+        // طبقة حركة المرور الحيّة (ألوان الازدحام) — لخريطة ازدحام المدن.
+        if (traffic) new maps.TrafficLayer().setMap(map)
 
         map.addListener('idle', () => {
           const c = map.getCenter()

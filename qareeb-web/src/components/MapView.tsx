@@ -30,6 +30,8 @@ interface MapViewProps {
   heat?: google.maps.LatLngLiteral[]
   /** خطّ مسار القيادة (للملاحة الحيّة أثناء الرحلة). */
   route?: google.maps.LatLngLiteral[]
+  /** طبقة حركة المرور الحيّة (ألوان الازدحام على الطرق) — Google JS فقط. */
+  traffic?: boolean
   zoom?: number
   onCenterChanged?: (pos: google.maps.LatLngLiteral) => void
   /** يُستدعى عند سحب المستخدم للخريطة فعلياً (تفاعل حقيقي). */
