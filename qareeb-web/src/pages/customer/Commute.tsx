@@ -218,24 +218,14 @@ export default function Commute() {
               </div>
             )}
 
-            {/* ملخّص سعرك — لا يظهر إلا بعد تحديد الوجهة فعلاً */}
-            {destChosen && periodRate && orgDaily > 0 ? (
+            {/* المنظّم لا يُعرض له «أجرة يومية» — كلّ راكب يدفع أجرته من منزله عند
+                ركوبه. نعرض مبلغ الاشتراك الشهري فقط لأنه يُخصم مقدّماً عند الإنشاء. */}
+            {plan === 'monthly' && destChosen && periodRate && orgMonthly > 0 ? (
               <div className="rounded-2xl bg-gold-soft p-3 text-sm text-ink">
-                {plan === 'daily' ? (
-                  <p>
-                    أجرتك اليومية <span className="font-bold text-sand-ink">{money(orgDaily)}</span>
-                    {roundTrip ? ' (ذهاباً وإياباً)' : ' (ذهاب فقط)'}
-                  </p>
-                ) : (
-                  <>
-                    <p>
-                      اشتراكك الشهري <span className="font-bold text-sand-ink">{money(orgMonthly)}</span>
-                    </p>
-                    <p className="mt-0.5 text-[11px] text-ink-muted">
-                      = {money(orgDaily)} × {selected.length} يوم/أسبوع × {weeks} أسابيع — يُخصم مقدّماً من محفظتك.
-                    </p>
-                  </>
-                )}
+                <p>
+                  اشتراكك الشهري <span className="font-bold text-sand-ink">{money(orgMonthly)}</span>
+                </p>
+                <p className="mt-0.5 text-[11px] text-ink-muted">يُخصم مقدّماً من محفظتك عند الإنشاء.</p>
                 {discount > 0 && (
                   <p className="mt-0.5 text-[11px] text-green">شامل خصم الترحيل {Math.round(discount * 100)}%</p>
                 )}
@@ -245,7 +235,7 @@ export default function Commute() {
                 <p className="font-bold text-royal">اجعل مشوارك اليومي أوفر 🚗</p>
                 <p className="mt-1 text-[12px] leading-relaxed text-ink-soft">
                   أنشئ ترحيلاً وشاركه مع أصدقائك وزملائك — كلٌّ ينطلق من منزله إلى نفس المكان
-                  ويعود، بأجرةٍ مقسّمة وخصمٍ خاصٍّ للترحيل. حدّد وجهتك أدناه لتظهر أجرتك.
+                  ويعود، بأجرةٍ مقسّمة وخصمٍ خاصٍّ للترحيل.
                 </p>
               </div>
             )}
