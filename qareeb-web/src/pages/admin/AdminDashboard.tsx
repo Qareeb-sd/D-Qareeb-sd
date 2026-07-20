@@ -40,6 +40,7 @@ import {
 import Logo from '@/components/Logo'
 import MapView from '@/components/MapView'
 import { cities, sudanCities, DISPLACEMENT_LABEL, SUDAN_CENTER, SUDAN_ZOOM } from '@/data/cities'
+import { fetchDtmSudan, DTM_FALLBACK, type DtmSnapshot } from '@/lib/iomDtm'
 import { StatCard, ChartCard, StatusBadge, BarChart, DonutChart } from '@/components/admin/AdminUI'
 import IncentivesManager from '@/components/admin/IncentivesManager'
 import DriverPerformance from '@/components/admin/DriverPerformance'
@@ -404,6 +405,8 @@ export default function AdminDashboard() {
   const [onlineDrivers, setOnlineDrivers] = useState<AdminOnlineDriver[]>([])
   // تبويب مدينة الخريطة المباشرة ('all' = كل السودان، أو معرّف مدينة).
   const [mapCity, setMapCity] = useState<string>('all')
+  // لقطة النزوح (IOM DTM) — تُحدَّث تلقائياً عند فتح اللوحة، وإلا اللقطة الثابتة.
+  const [dtm, setDtm] = useState<DtmSnapshot>(DTM_FALLBACK)
   const [sos, setSos] = useState<SosAlert[]>([])
 
   // صلاحياتي (مالك أم موظف؟) + قائمة الموظفين (للمالك)
@@ -482,6 +485,15 @@ export default function AdminDashboard() {
     female_driver: false,
     sharable: true,
   })
+
+  // تحديث لقطة النزوح تلقائياً من IOM DTM (مرّة عند الفتح) — يفشل بصمت للّقطة الثابتة.
+  useEffect(() => {
+    const ctrl = new AbortController()
+    void fetchDtmSudan(ctrl.signal).then((d) => {
+      if (d) setDtm(d)
+    })
+    return () => ctrl.abort()
+  }, [])
 
   useEffect(() => {
     let alive = true
@@ -2205,12 +2217,30 @@ export default function AdminDashboard() {
             const topCandidate = ranked.find((c) => !c.active && c.displacement === 'host')
             return (
               <div className="flex flex-col gap-4">
-                {/* لقطة بيانات النزوح الحقيقية — IOM DTM */}
+                {/* لقطة بيانات النزوح — تُحدَّث تلقائياً من IOM DTM (وإلا لقطة ثابتة) */}
                 <div className="card space-y-1.5 p-4">
-                  <p className="font-bold text-royal">بيانات النزوح — IOM DTM (مايو ٢٠٢٦، الجولة ٣٦)</p>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <p className="font-bold text-royal">
+                      بيانات النزوح — IOM DTM
+                      {dtm.round ? ` (الجولة ${dtm.round}${dtm.date ? `، ${dtm.date}` : ''})` : ''}
+                    </p>
+                    <span
+                      className={`rounded-full px-2 py-0.5 text-[11px] font-bold ${
+                        dtm.live ? 'bg-green-soft text-green' : 'bg-gold-soft text-gold-deep'
+                      }`}
+                    >
+                      {dtm.live ? '⟳ محدّث تلقائياً' : 'لقطة'}
+                    </span>
+                  </div>
                   <p className="text-xs text-ink-soft">
-                    ٨,٨٠٥,٥٠٦ نازحاً داخل السودان، و٤,٤٤١,٥٧٠ عادوا لمناطقهم (انخفاض عن ذروة ~١١.٦
-                    مليون في يناير ٢٠٢٥). أعلى الولايات استضافةً في دارفور ونهر النيل والقضارف.
+                    <b>{num(dtm.idps)}</b> نازح داخل السودان
+                    {dtm.returnees ? (
+                      <>
+                        {' '}
+                        و<b>{num(dtm.returnees)}</b> عادوا لمناطقهم
+                      </>
+                    ) : null}
+                    . أعلى الولايات استضافةً في دارفور ونهر النيل والقضارف.
                   </p>
                   <p className="text-[11px] text-ink-muted">
                     المؤشّر أدناه على مستوى <b>الولاية</b> (لا المدينة) — دلالة على أين يتركّز
@@ -2265,8 +2295,8 @@ export default function AdminDashboard() {
                 </div>
 
                 <p className="text-center text-[11px] text-ink-muted">
-                  المؤشّر على مستوى الولاية من IOM DTM (مايو ٢٠٢٦) — تقريبيّ للسياق، ليس تعداد
-                  المدينة. القرار النهائي للتوسّع من <b>طلبك الفعلي</b> بعد التدشين، وسأضيفه هنا.
+                  وسم النزوح على مستوى الولاية من IOM DTM — تقريبيّ للسياق، ليس تعداد المدينة.
+                  القرار النهائي للتوسّع من <b>طلبك الفعلي</b> بعد التدشين، وسأضيفه هنا.
                 </p>
               </div>
             )
