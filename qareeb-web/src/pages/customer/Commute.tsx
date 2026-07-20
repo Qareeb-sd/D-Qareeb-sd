@@ -10,6 +10,7 @@ import { getServicePricing, listServicePeriods, getSettings } from '@/lib/api'
 import { memberDailyFare, periodFromTime, monthlyTotal } from '@/lib/commutePricing'
 import { type PeriodRate } from '@/lib/pricing'
 import { money } from '@/lib/format'
+import { visibleServices } from '@/data/services'
 import type { Settings } from '@/lib/types'
 import { KHARTOUM } from '@/theme'
 
@@ -23,8 +24,11 @@ export default function Commute() {
   const navigate = useNavigate()
   const { profile } = useAuth()
 
-  // الترحيل دائماً بالمركبة العادية «قريب عادي» — بلا اختيار مركبة.
-  const serviceId = 'standard'
+  // المركبة المطلوبة للترحيل — تحدّد عدد المقاعد (كم راكباً يمكنه الانضمام)
+  // وتسعير الفترة. المركبات المدعومة للترحيل هي المشتركة (sharable) عدا «المشوار
+  // المفتوح» (إيجار بلا وجهة ثابتة).
+  const vehicles = visibleServices().filter((s) => s.sharable && s.id !== 'open')
+  const [serviceId, setServiceId] = useState('standard')
   const [dest, setDest] = useState<google.maps.LatLngLiteral>(KHARTOUM)
   const [destAddress, setDestAddress] = useState('')
   // لا نعرض أي سعر قبل أن يحدّد المنظّم الوجهة فعلاً — وإلا حُسِب على إحداثيات
@@ -182,9 +186,29 @@ export default function Commute() {
           </div>
         )}
 
-        {/* ① منزلك — يُحدَّد تلقائياً من الموقع، قابل للتعديل */}
+        {/* ① المركبة — تحدّد سعة الركّاب والتسعير */}
         <div className="card p-4">
-          <p className="font-bold text-royal">① منزلك</p>
+          <p className="font-bold text-royal">① المركبة</p>
+          <p className="mb-3 text-xs text-ink-soft">اختر النوع حسب عدد الركّاب المتوقّع.</p>
+          <div className="grid grid-cols-2 gap-2">
+            {vehicles.map((s) => (
+              <button
+                key={s.id}
+                onClick={() => setServiceId(s.id)}
+                className={`rounded-2xl border p-3 text-right transition ${
+                  serviceId === s.id ? 'border-royal bg-royal-soft' : 'border-hairline bg-white'
+                }`}
+              >
+                <p className="text-sm font-bold text-royal">{s.name}</p>
+                <p className="mt-0.5 text-[11px] text-ink-muted">{s.seats} مقاعد</p>
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* ② منزلك — يُحدَّد تلقائياً من الموقع، قابل للتعديل */}
+        <div className="card p-4">
+          <p className="font-bold text-royal">② منزلك</p>
           <p className="mb-3 text-xs text-ink-soft">حُدِّد تلقائياً من موقعك — عدّله إن لزم.</p>
           <PlaceSearch
             value={homeAddress}
@@ -201,7 +225,7 @@ export default function Commute() {
 
         {/* ② مكان العمل — الوجهة المشتركة (الخطوة الأساسية) */}
         <div className="card p-4">
-          <p className="font-bold text-royal">② مكان العمل</p>
+          <p className="font-bold text-royal">③ مكان العمل</p>
           <p className="mb-3 text-xs text-ink-soft">وجهتكم المشتركة — اكتب اسمها أو حرّك الخريطة لتحديدها.</p>
           <PlaceSearch
             value={destAddress}
@@ -226,7 +250,7 @@ export default function Commute() {
 
         {/* ③ المواعيد والأيام — بطاقة واحدة */}
         <div className="card space-y-4 p-4">
-          <p className="font-bold text-royal">③ المواعيد والأيام</p>
+          <p className="font-bold text-royal">④ المواعيد والأيام</p>
 
           {/* ذهاب وإياب */}
           <div className="flex items-center justify-between">
@@ -298,7 +322,7 @@ export default function Commute() {
         {/* ④ الدفع — في النهاية، بعد تحديد الوجهة والمواعيد */}
         {commuteEnabled && (
           <div className="card space-y-3 p-4">
-            <p className="font-bold text-royal">④ الدفع</p>
+            <p className="font-bold text-royal">⑤ الدفع</p>
             <div className="grid grid-cols-2 gap-2">
               {(
                 [
