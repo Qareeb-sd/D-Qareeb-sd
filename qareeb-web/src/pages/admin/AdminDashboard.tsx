@@ -52,6 +52,7 @@ import DriverPerformance from '@/components/admin/DriverPerformance'
 import { services } from '@/data/services'
 import { money, num, memberCode } from '@/lib/format'
 import { useAuth } from '@/store/AuthContext'
+import NotificationToggle from '@/components/NotificationToggle'
 import {
   getAdminStats,
   getSettings,
@@ -357,7 +358,7 @@ function rideDuration(r: AdminRideRow): string | null {
  * + السائقون + الرحلات + الإعدادات والتسعير. الأمان مفروض عبر RLS ودوال Postgres.
  */
 export default function AdminDashboard() {
-  const { signOut } = useAuth()
+  const { signOut, profile } = useAuth()
   const [tab, setTab] = useState<Tab>('overview')
   const [navOpen, setNavOpen] = useState(false) // درج التنقّل على الجوال
 
@@ -1955,6 +1956,10 @@ export default function AdminDashboard() {
 
         {tab === 'overview' && (
           <>
+            {/* تفعيل إشعارات الإدارة (Web Push) — تصلك التعبئات وطلبات VIP والطوارئ
+                حتى واللوحة مغلقة. تظهر البطاقة فقط بعد ضبط مفتاح VAPID العام. */}
+            {profile?.id && <NotificationToggle userId={profile.id} />}
+
             {/* بطاقات المؤشّرات (KPI) — بيانات حقيقية */}
             <div className="grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-6">
               <StatCard label="طلبات نشطة" value={num(activeRides.length)} Icon={Zap} iconBg="#E8F1EC" accent="#1B6B3F" />
