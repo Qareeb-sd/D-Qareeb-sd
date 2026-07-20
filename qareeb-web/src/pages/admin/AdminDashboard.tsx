@@ -4,6 +4,7 @@ import {
   Send,
   LayoutDashboard,
   MapPinned,
+  TrendingUp,
   Inbox,
   Car,
   Users,
@@ -38,7 +39,7 @@ import {
 } from 'lucide-react'
 import Logo from '@/components/Logo'
 import MapView from '@/components/MapView'
-import { cities, SUDAN_CENTER, SUDAN_ZOOM } from '@/data/cities'
+import { cities, sudanCities, SUDAN_CENTER, SUDAN_ZOOM } from '@/data/cities'
 import { StatCard, ChartCard, StatusBadge, BarChart, DonutChart } from '@/components/admin/AdminUI'
 import IncentivesManager from '@/components/admin/IncentivesManager'
 import DriverPerformance from '@/components/admin/DriverPerformance'
@@ -175,6 +176,7 @@ import type {
 type Tab =
   | 'overview'
   | 'map'
+  | 'expansion'
   | 'requests'
   | 'drivers'
   | 'customers'
@@ -218,6 +220,7 @@ const tabs: {
 }[] = [
   { id: 'overview', label: 'نظرة عامة', perm: null, group: 'main', Icon: LayoutDashboard },
   { id: 'map', label: 'الخريطة المباشرة', perm: null, group: 'main', Icon: MapPinned },
+  { id: 'expansion', label: 'التوسّع', perm: null, group: 'main', Icon: TrendingUp },
 
   { id: 'requests', label: 'الطلبات', perm: 'requests', group: 'ops', Icon: Inbox },
   { id: 'rides', label: 'الرحلات', perm: 'rides', group: 'ops', Icon: Route },
@@ -2179,6 +2182,68 @@ export default function AdminDashboard() {
                       : 'لا توجد رحلات نشطة ولا سائقون متصلون حالياً — ستظهر تلقائياً على الخريطة.'}
                   </p>
                 )}
+              </div>
+            )
+          })()}
+
+        {tab === 'expansion' &&
+          (() => {
+            const ranked = [...sudanCities].sort((a, b) => b.population - a.population)
+            const activeCount = ranked.filter((c) => c.active).length
+            const coveredPop = ranked.filter((c) => c.active).reduce((s, c) => s + c.population, 0)
+            const topCandidate = ranked.find((c) => !c.active)
+            const maxPop = ranked[0]?.population || 1
+            const fmt = (n: number) => (n >= 1000 ? `${(n / 1000).toFixed(n >= 100000 ? 0 : 1)} ألف` : `${n}`)
+            return (
+              <div className="flex flex-col gap-4">
+                {/* بطاقات ملخّص */}
+                <div className="grid grid-cols-2 gap-3 md:grid-cols-3">
+                  <StatCard label="مدن نشطة" value={`${activeCount} / ${ranked.length}`} Icon={MapPinned} iconBg="#E8F1EC" accent="#1B6B3F" />
+                  <StatCard label="سكان مغطّون (تقديري)" value={fmt(coveredPop)} Icon={Users} iconBg="#E3EEF7" accent="#3A6FB0" />
+                  <StatCard
+                    label="أعلى فرصة توسّع"
+                    value={topCandidate ? topCandidate.name : '—'}
+                    hint={topCandidate ? `${fmt(topCandidate.population)} نسمة` : undefined}
+                    Icon={TrendingUp}
+                    iconBg="#FBF4DD"
+                    accent="#A88528"
+                  />
+                </div>
+
+                <div className="card p-4">
+                  <p className="mb-1 font-bold">مدن السودان حسب الكثافة السكانية</p>
+                  <p className="mb-3 text-xs text-ink-muted">
+                    مرتّبة بعدد السكان (تقديري) — 🟢 نشطة · ⚪ مرشّحة للتوسّع. الأرقام قابلة
+                    للتعديل في ملف المدن.
+                  </p>
+                  <div className="space-y-2">
+                    {ranked.map((c, i) => (
+                      <div key={c.id} className="flex items-center gap-3">
+                        <span className="w-5 shrink-0 text-center text-xs font-bold text-ink-muted">{i + 1}</span>
+                        <span className="w-20 shrink-0 text-sm font-bold text-royal">{c.name}</span>
+                        <div className="h-3 flex-1 overflow-hidden rounded-full bg-hairline">
+                          <div
+                            className={`h-full rounded-full ${c.active ? 'bg-green' : 'bg-sand-ink/50'}`}
+                            style={{ width: `${Math.max(4, (c.population / maxPop) * 100)}%` }}
+                          />
+                        </div>
+                        <span className="w-16 shrink-0 text-left text-xs text-ink-soft">{fmt(c.population)}</span>
+                        <span
+                          className={`w-14 shrink-0 rounded-full px-2 py-0.5 text-center text-[11px] font-bold ${
+                            c.active ? 'bg-green-soft text-green' : 'bg-gold-soft text-gold-deep'
+                          }`}
+                        >
+                          {c.active ? '🟢 نشطة' : '⚪ مرشّحة'}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                <p className="text-center text-[11px] text-ink-muted">
+                  ملاحظة: الأرقام تقديرات سكانية عامة للمقارنة والترتيب. بعد التدشين سأضيف
+                  «كثافة طلباتك الفعلية» بجانبها لتقرّر التوسّع ببياناتك أنت.
+                </p>
               </div>
             )
           })()}
