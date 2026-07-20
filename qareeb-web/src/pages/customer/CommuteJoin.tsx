@@ -3,6 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom'
 import { Building2, Clock, Calendar, Users } from 'lucide-react'
 import Screen from '@/components/Screen'
 import LocationPicker from '@/components/LocationPicker'
+import PlaceSearch from '@/components/PlaceSearch'
 import { getService } from '@/data/services'
 import { getCommuteOrderByCode, joinCommuteOrder, commuteMemberCount } from '@/lib/commute'
 import { getServicePricing, listServicePeriods, getSettings } from '@/lib/api'
@@ -157,13 +158,17 @@ export default function CommuteJoin() {
           />
 
           <p className="label mt-3">حدّد منزلك (نقطة انطلاقك)</p>
-          <LocationPicker center={home} onChange={setHome} />
-          <input
-            className="field mt-2"
+          <PlaceSearch
             value={homeAddress}
-            onChange={(e) => setHomeAddress(e.target.value)}
-            placeholder="اسم الحي/المكان (اختياري)"
+            onChange={setHomeAddress}
+            onPick={({ pos, address }) => {
+              setHome(pos)
+              setHomeAddress(address)
+            }}
+            placeholder="اكتب اسم الحي/المكان أو حدّده بالخريطة"
+            className="field mb-2"
           />
+          <LocationPicker center={home} onChange={setHome} />
 
           {/* السعر + طريقة الدفع */}
           {periodRate && (

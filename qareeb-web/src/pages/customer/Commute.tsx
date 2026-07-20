@@ -429,16 +429,20 @@ export default function Commute() {
           />
         </div>
 
-        {/* مكان العمل (الوجهة) */}
+        {/* مكان العمل (الوجهة) — بحث بالاسم أو تحديد بالخريطة */}
         <div>
           <p className="label">مكان العمل (الوجهة المشتركة)</p>
-          <LocationPicker center={dest} onChange={setDest} />
-          <input
-            className="field mt-2"
+          <PlaceSearch
             value={destAddress}
-            onChange={(e) => setDestAddress(e.target.value)}
-            placeholder="اسم المكان (اختياري)"
+            onChange={setDestAddress}
+            onPick={({ pos, address }) => {
+              setDest(pos)
+              setDestAddress(address)
+            }}
+            placeholder="اكتب اسم مكان العمل أو حدّده بالخريطة"
+            className="field mb-2"
           />
+          <LocationPicker center={dest} onChange={setDest} />
         </div>
 
         {/* أوقات الذهاب والإياب */}
