@@ -1267,20 +1267,41 @@ export async function updateSettings(
   return error ? { error: error.message } : {}
 }
 
-/** طلب حسب المدينة (لقسم التوسّع): عملاؤنا/سائقونا/طلباتنا في كل مدينة من
- *  بياناتنا الفعلية. المفتاح '__outside__' = نقاط خارج كل المدن (فرص جديدة). */
+export interface CityDemand {
+  customers: number
+  drivers: number
+  rides: number
+  /** تفصيل حسب نوع المركبة: { standard: {drivers, rides}, hiace: {...}, ... } */
+  byType: Record<string, { drivers: number; rides: number; customers: number }>
+}
+
+/** طلب حسب المدينة (لقسم التوسّع): عملاؤنا/سائقونا/طلباتنا في كل مدينة مفصّلة
+ *  حسب نوع المركبة، من بياناتنا الفعلية. '__outside__' = خارج كل المدن (فرص). */
 export async function getCityDemand(
   cities: { id: string; lat: number; lng: number; radius: number }[],
-): Promise<Record<string, { customers: number; drivers: number; rides: number }>> {
+): Promise<Record<string, CityDemand>> {
   if (!isSupabaseConfigured) return {}
   const { data, error } = await supabase.rpc('city_demand', { p_cities: cities })
   if (error || !data) return {}
-  const out: Record<string, { customers: number; drivers: number; rides: number }> = {}
-  for (const r of data as { city_id: string; customers: number; drivers: number; rides: number }[]) {
-    out[r.city_id] = {
-      customers: Number(r.customers),
-      drivers: Number(r.drivers),
-      rides: Number(r.rides),
+  const out: Record<string, CityDemand> = {}
+  for (const r of data as {
+    city_id: string
+    vehicle_type: string
+    customers: number
+    drivers: number
+    rides: number
+  }[]) {
+    const city = (out[r.city_id] ??= { customers: 0, drivers: 0, rides: 0, byType: {} })
+    if (r.vehicle_type === '__all__') {
+      city.customers = Number(r.customers)
+      city.drivers = Number(r.drivers)
+      city.rides = Number(r.rides)
+    } else {
+      city.byType[r.vehicle_type] = {
+        drivers: Number(r.drivers),
+        rides: Number(r.rides),
+        customers: Number(r.customers),
+      }
     }
   }
   return out

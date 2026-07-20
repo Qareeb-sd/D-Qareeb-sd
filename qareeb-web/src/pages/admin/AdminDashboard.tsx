@@ -39,9 +39,15 @@ import {
 } from 'lucide-react'
 import Logo from '@/components/Logo'
 import MapView from '@/components/MapView'
-import { cities, sudanCities, DISPLACEMENT_LABEL, SUDAN_CENTER, SUDAN_ZOOM } from '@/data/cities'
+import { cities, sudanCities, DISPLACEMENT_LABEL, STATE_POP, SUDAN_CENTER, SUDAN_ZOOM } from '@/data/cities'
 import { fetchDtmSudan, DTM_FALLBACK, type DtmSnapshot } from '@/lib/iomDtm'
-import { fetchCityTraffic, TRAFFIC_LABEL, type CityTraffic } from '@/lib/cityTraffic'
+import {
+  fetchCityTraffic,
+  PERIODS,
+  PERIOD_LABEL as TRAFFIC_PERIOD_LABEL,
+  LEVEL_DOT,
+  type CityTraffic,
+} from '@/lib/cityTraffic'
 import { StatCard, ChartCard, StatusBadge, BarChart, DonutChart } from '@/components/admin/AdminUI'
 import IncentivesManager from '@/components/admin/IncentivesManager'
 import DriverPerformance from '@/components/admin/DriverPerformance'
@@ -62,6 +68,7 @@ import {
   rejectWithdrawal,
   updateSettings,
   getCityDemand,
+  type CityDemand,
   getCommuteHeld,
   getProofUrl,
   listServicePricing,
@@ -412,8 +419,8 @@ export default function AdminDashboard() {
   // مؤشّر ازدحام المدن (Google) — يُقاس عند الطلب فقط توفيراً للتكلفة.
   const [traffic, setTraffic] = useState<Record<string, CityTraffic>>({})
   const [trafficBusy, setTrafficBusy] = useState(false)
-  // طلبنا الفعلي لكل مدينة (عملاء/سائقون) — من بياناتنا، يُحمَّل تلقائياً.
-  const [demand, setDemand] = useState<Record<string, { customers: number; drivers: number; rides: number }>>({})
+  // طلبنا الفعلي لكل مدينة (عملاء/سائقون + تفصيل المركبات) — من بياناتنا.
+  const [demand, setDemand] = useState<Record<string, CityDemand>>({})
   const [sos, setSos] = useState<SosAlert[]>([])
 
   // صلاحياتي (مالك أم موظف؟) + قائمة الموظفين (للمالك)
@@ -2259,6 +2266,10 @@ export default function AdminDashboard() {
                     . أعلى الولايات استضافةً في دارفور ونهر النيل والقضارف.
                   </p>
                   <p className="text-[11px] text-ink-muted">
+                    السكان: ~٥١ مليون نسمة، منهم <b>٣٠.٤ مليون</b> بحاجة للمساعدة (نصف السكان) —
+                    OCHA HNRP ٢٠٢٥. تقدير سكان كل ولاية يظهر بجانب مدنها أدناه.
+                  </p>
+                  <p className="text-[11px] text-ink-muted">
                     المؤشّر أدناه على مستوى <b>الولاية</b> (لا المدينة) — دلالة على أين يتركّز
                     الناس اليوم بدل تعداد قديم.{' '}
                     <a
@@ -2303,34 +2314,55 @@ export default function AdminDashboard() {
                   </div>
                   <p className="mb-3 text-xs text-ink-muted">
                     مرتّبة بفرصة التوسّع (الأعلى استضافةً للنازحين أولاً) — 🟢 نشطة · ⚪ مرشّحة.
-                    {Object.keys(traffic).length > 0 && ' الازدحام حيّ من قوقل الآن.'}
+                    {Object.keys(traffic).length > 0 && ' 🚦 الازدحام المتوقّع صباح(ص)/ظهر(ظ)/مساء(م) من قوقل.'}
                   </p>
-                  <div className="space-y-1.5">
+                  <div className="space-y-2">
                     {ranked.map((c) => {
                       const d = demand[c.id]
+                      const t = traffic[c.id]
+                      const pop = STATE_POP[c.state]
+                      const types = d
+                        ? Object.entries(d.byType).filter(([, v]) => v.drivers > 0 || v.rides > 0)
+                        : []
                       return (
-                        <div key={c.id} className="flex flex-wrap items-center gap-2 border-b border-hairline pb-1.5 last:border-0">
-                          <span className="w-20 shrink-0 text-sm font-bold text-royal">{c.name}</span>
-                          <span className="w-20 shrink-0 text-xs text-ink-soft">{c.state}</span>
-                          {/* أرقامنا الفعلية — المعلومة الأهم للقرار */}
-                          <span className="shrink-0 text-[11px] font-bold text-ink" title="عملاؤنا · سائقونا فيها">
-                            👥 {d?.customers ?? 0} · 🚗 {d?.drivers ?? 0}
-                          </span>
-                          <span className={`rounded-full px-2 py-0.5 text-[11px] font-bold ${CHIP[c.displacement]}`}>
-                            {DISPLACEMENT_LABEL[c.displacement]}
-                          </span>
-                          {traffic[c.id] && (
-                            <span className="rounded-full bg-royal-soft px-2 py-0.5 text-[11px] font-bold text-royal">
-                              {TRAFFIC_LABEL[traffic[c.id].level]}
+                        <div key={c.id} className="rounded-xl border border-hairline p-2.5">
+                          {/* السطر الأول: الاسم + الولاية/السكان + الحالة */}
+                          <div className="flex flex-wrap items-center gap-2">
+                            <span className="text-sm font-bold text-royal">{c.name}</span>
+                            <span className="text-[11px] text-ink-muted">
+                              {c.state}
+                              {pop ? ` · ~${(pop / 1_000_000).toFixed(1)}م نسمة` : ''}
                             </span>
-                          )}
-                          <span
-                            className={`mr-auto rounded-full px-2 py-0.5 text-[11px] font-bold ${
-                              c.active ? 'bg-green-soft text-green' : 'bg-hairline text-ink-soft'
-                            }`}
-                          >
-                            {c.active ? 'نشطة' : 'مرشّحة'}
-                          </span>
+                            <span className={`rounded-full px-2 py-0.5 text-[11px] font-bold ${CHIP[c.displacement]}`}>
+                              {DISPLACEMENT_LABEL[c.displacement]}
+                            </span>
+                            <span
+                              className={`mr-auto rounded-full px-2 py-0.5 text-[11px] font-bold ${
+                                c.active ? 'bg-green-soft text-green' : 'bg-hairline text-ink-soft'
+                              }`}
+                            >
+                              {c.active ? 'نشطة' : 'مرشّحة'}
+                            </span>
+                          </div>
+                          {/* السطر الثاني: أرقامنا + تفصيل المركبات + الازدحام بالوقت */}
+                          <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px]">
+                            <span className="font-bold text-ink">
+                              👥 {d?.customers ?? 0} · 🚗 {d?.drivers ?? 0}
+                            </span>
+                            {types.length > 0 && (
+                              <span className="text-ink-soft">
+                                {types
+                                  .map(([vt, v]) => `${getService(vt)?.name ?? vt}: ${v.drivers}`)
+                                  .join(' · ')}
+                              </span>
+                            )}
+                            {t && (
+                              <span className="text-ink-soft" title="الازدحام المتوقّع صباح/ظهر/مساء">
+                                🚦{' '}
+                                {PERIODS.filter((p) => t[p]).map((p) => `${TRAFFIC_PERIOD_LABEL[p]}${LEVEL_DOT[t[p]!]}`).join(' ')}
+                              </span>
+                            )}
+                          </div>
                         </div>
                       )
                     })}

@@ -1,14 +1,16 @@
 -- ============================================================
 --  طلب حسب المدينة (city_demand) — لقسم «التوسّع» في لوحة الأدمن.
---  يصنّف كل نقطة طلب فعلية (rides.pickup) وكل سائق (drivers.last_*) لأقرب
---  مدينة ضمن نطاقها، ويعيد لكل مدينة: عدد عملائنا، عدد سائقينا، عدد الطلبات.
---  النقاط خارج كل المدن تُجمَّع تحت المعرّف '__outside__' (فرص مدن جديدة:
---  عملاء سجّلوا وطلبوا في مكان لا نخدمه). آمن للأدمن فقط.
---  المدن تُمرَّر كـ JSONB: [{id, lat, lng, radius}] فتبقى المصدر في التطبيق.
---  شغّل هذا المقطع مرّة واحدة.
+--  يصنّف كل طلب فعلي (rides.pickup) وكل سائق (drivers.last_*) لأقرب مدينة،
+--  ويفصّل حسب نوع المركبة (service_id / vehicle_type: قريب/هايس/أمجاد/ركشة/سحاب…).
+--  لكل مدينة صفّ إجمالي (vehicle_type='__all__') + صفّ لكل نوع مركبة.
+--  النقاط خارج كل المدن تحت المعرّف '__outside__' (فرص مدن جديدة).
+--  آمنة للأدمن فقط. المدن تُمرَّر JSONB: [{id, lat, lng, radius}].
+--  شغّل هذا المقطع مرّة واحدة (يستبدل النسخة السابقة — تغيّر شكل الإرجاع).
 -- ============================================================
+drop function if exists public.city_demand(jsonb);
+
 create or replace function public.city_demand(p_cities jsonb)
-returns table (city_id text, customers bigint, drivers bigint, rides bigint)
+returns table (city_id text, vehicle_type text, customers bigint, drivers bigint, rides bigint)
 language plpgsql
 stable
 security definer
@@ -27,9 +29,8 @@ begin
            coalesce((c->>'radius')::float8, 30) as radius_km
     from jsonb_array_elements(p_cities) c
   ),
-  -- كل طلب → أقرب مدينة ضمن نطاقها (bbox أولاً للسرعة) أو __outside__.
   ride_city as (
-    select r.id as ride_id, r.customer_id, coalesce(nc.id, '__outside__') as city_id
+    select r.customer_id, r.service_id as vt, coalesce(nc.id, '__outside__') as city_id
     from public.rides r
     left join lateral (
       select ct.id
@@ -48,7 +49,7 @@ begin
     where r.pickup_lat is not null and r.pickup_lng is not null
   ),
   driver_city as (
-    select d.user_id, coalesce(nc.id, '__outside__') as city_id
+    select d.user_id, d.vehicle_type as vt, coalesce(nc.id, '__outside__') as city_id
     from public.drivers d
     left join lateral (
       select ct.id
@@ -66,20 +67,22 @@ begin
     ) nc on true
     where d.last_lat is not null and d.last_lng is not null
   ),
-  r_agg as (
-    select city_id, count(distinct customer_id) as customers, count(*) as rides
-    from ride_city group by city_id
-  ),
-  d_agg as (
-    select city_id, count(distinct user_id) as drivers
-    from driver_city group by city_id
+  -- إجماليّ المدينة (تمييز العملاء/السائقين الفريدين بدقّة)
+  r_all as (select rc.city_id, '__all__'::text as vt, count(distinct rc.customer_id) as customers, count(*) as rides from ride_city rc group by rc.city_id),
+  d_all as (select dc.city_id, '__all__'::text as vt, count(distinct dc.user_id) as drivers from driver_city dc group by dc.city_id),
+  -- تفصيل حسب نوع المركبة
+  r_typ as (select rc.city_id, rc.vt, count(distinct rc.customer_id) as customers, count(*) as rides from ride_city rc group by rc.city_id, rc.vt),
+  d_typ as (select dc.city_id, dc.vt, count(distinct dc.user_id) as drivers from driver_city dc group by dc.city_id, dc.vt),
+  merged as (
+    select coalesce(r.city_id, d.city_id) as city_id, coalesce(r.vt, d.vt) as vt,
+           coalesce(r.customers, 0) as customers, coalesce(d.drivers, 0) as drivers, coalesce(r.rides, 0) as rides
+    from r_all r full outer join d_all d on r.city_id = d.city_id
+    union all
+    select coalesce(r.city_id, d.city_id) as city_id, coalesce(r.vt, d.vt) as vt,
+           coalesce(r.customers, 0) as customers, coalesce(d.drivers, 0) as drivers, coalesce(r.rides, 0) as rides
+    from r_typ r full outer join d_typ d on r.city_id = d.city_id and r.vt = d.vt
   )
-  select coalesce(r.city_id, d.city_id) as city_id,
-         coalesce(r.customers, 0) as customers,
-         coalesce(d.drivers, 0) as drivers,
-         coalesce(r.rides, 0) as rides
-  from r_agg r
-  full outer join d_agg d on r.city_id = d.city_id;
+  select m.city_id, m.vt as vehicle_type, m.customers, m.drivers, m.rides from merged m;
 end;
 $$;
 
