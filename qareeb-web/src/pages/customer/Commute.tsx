@@ -27,6 +27,9 @@ export default function Commute() {
   const serviceId = 'standard'
   const [dest, setDest] = useState<google.maps.LatLngLiteral>(KHARTOUM)
   const [destAddress, setDestAddress] = useState('')
+  // لا نعرض أي سعر قبل أن يحدّد المنظّم الوجهة فعلاً — وإلا حُسِب على إحداثيات
+  // افتراضية (موقعه الحالي → الخرطوم) فأظهر أرقاماً خيالية.
+  const [destChosen, setDestChosen] = useState(false)
 
   // منزل المنظّم فقط. بقية الركّاب ينضمّون كلٌّ بمنزله عبر رابط الدعوة.
   const [home, setHome] = useState<google.maps.LatLngLiteral>(KHARTOUM)
@@ -215,8 +218,8 @@ export default function Commute() {
               </div>
             )}
 
-            {/* ملخّص سعرك */}
-            {periodRate ? (
+            {/* ملخّص سعرك — لا يظهر إلا بعد تحديد الوجهة فعلاً */}
+            {destChosen && periodRate && orgDaily > 0 ? (
               <div className="rounded-2xl bg-gold-soft p-3 text-sm text-ink">
                 {plan === 'daily' ? (
                   <p>
@@ -238,7 +241,13 @@ export default function Commute() {
                 )}
               </div>
             ) : (
-              <p className="text-[11px] text-ink-muted">حدّد منزلك والوجهة لعرض السعر.</p>
+              <div className="rounded-2xl bg-royal-soft p-3 text-sm text-ink">
+                <p className="font-bold text-royal">اجعل مشوارك اليومي أوفر 🚗</p>
+                <p className="mt-1 text-[12px] leading-relaxed text-ink-soft">
+                  أنشئ ترحيلاً وشاركه مع أصدقائك وزملائك — كلٌّ ينطلق من منزله إلى نفس المكان
+                  ويعود، بأجرةٍ مقسّمة وخصمٍ خاصٍّ للترحيل. حدّد وجهتك أدناه لتظهر أجرتك.
+                </p>
+              </div>
             )}
           </div>
         )}
@@ -271,11 +280,18 @@ export default function Commute() {
             onPick={({ pos, address }) => {
               setDest(pos)
               setDestAddress(address)
+              setDestChosen(true)
             }}
             placeholder="اكتب اسم مكان العمل أو حدّده بالخريطة"
             className="field mb-2"
           />
-          <LocationPicker center={dest} onChange={setDest} />
+          <LocationPicker
+            center={dest}
+            onChange={(p) => {
+              setDest(p)
+              setDestChosen(true)
+            }}
+          />
         </div>
 
         {/* أوقات الذهاب والإياب */}

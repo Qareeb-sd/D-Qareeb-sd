@@ -27,6 +27,8 @@ export default function CommuteJoin() {
   const [periodRate, setPeriodRate] = useState<PeriodRate | null>(null)
   const [settings, setSettings] = useState<Settings | null>(null)
   const [payMethod, setPayMethod] = useState<'cash' | 'wallet'>('cash')
+  // لا نعرض أجرة الراكب قبل أن يحدّد منزله فعلاً (وإلا حُسِبت على موقعٍ افتراضي).
+  const [homeChosen, setHomeChosen] = useState(false)
   const located = useRef(false)
 
   useEffect(() => {
@@ -164,14 +166,21 @@ export default function CommuteJoin() {
             onPick={({ pos, address }) => {
               setHome(pos)
               setHomeAddress(address)
+              setHomeChosen(true)
             }}
             placeholder="اكتب اسم الحي/المكان أو حدّده بالخريطة"
             className="field mb-2"
           />
-          <LocationPicker center={home} onChange={setHome} />
+          <LocationPicker
+            center={home}
+            onChange={(p) => {
+              setHome(p)
+              setHomeChosen(true)
+            }}
+          />
 
-          {/* السعر + طريقة الدفع */}
-          {periodRate && (
+          {/* السعر + طريقة الدفع — بعد تحديد المنزل فقط */}
+          {homeChosen && periodRate && daily > 0 ? (
             <div className="mt-3 space-y-2 rounded-2xl bg-gold-soft p-3 text-sm text-ink">
               {plan === 'daily' ? (
                 <>
@@ -217,10 +226,20 @@ export default function CommuteJoin() {
                 <p className="text-[11px] text-green">شامل خصم الترحيل {Math.round(discount * 100)}%</p>
               )}
             </div>
+          ) : (
+            <p className="mt-3 rounded-2xl bg-royal-soft p-3 text-[12px] leading-relaxed text-ink-soft">
+              حدّد منزلك أعلاه لتظهر لك أجرتك في هذا الترحيل.
+            </p>
           )}
 
           <button className="btn-primary mt-4 w-full" onClick={join} disabled={busy}>
-            {busy ? '…' : plan === 'monthly' ? `اشترك ادفع ${money(monthly)}` : 'انضمام للترحيل'}
+            {busy
+              ? '…'
+              : plan === 'monthly'
+                ? homeChosen && monthly > 0
+                  ? `اشترك ادفع ${money(monthly)}`
+                  : 'اشترك في الترحيل'
+                : 'انضمام للترحيل'}
           </button>
         </>
       )}
