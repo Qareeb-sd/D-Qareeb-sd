@@ -38,6 +38,7 @@ import {
 } from 'lucide-react'
 import Logo from '@/components/Logo'
 import MapView from '@/components/MapView'
+import { cities, SUDAN_CENTER, SUDAN_ZOOM } from '@/data/cities'
 import { StatCard, ChartCard, StatusBadge, BarChart, DonutChart } from '@/components/admin/AdminUI'
 import IncentivesManager from '@/components/admin/IncentivesManager'
 import DriverPerformance from '@/components/admin/DriverPerformance'
@@ -138,7 +139,7 @@ import {
 } from '@/lib/api'
 import { subscribeToSos, subscribeToTopups, subscribeToDriverApplications } from '@/lib/realtime'
 import { isSupabaseConfigured } from '@/lib/supabase'
-import { PERIOD_LABEL, currentPeriod } from '@/lib/pricing'
+import { PERIOD_LABEL, currentPeriod, haversineKm } from '@/lib/pricing'
 import { exportCsv } from '@/lib/csv'
 import { getService } from '@/data/services'
 import type {
@@ -398,6 +399,8 @@ export default function AdminDashboard() {
   const [deepAnalytics, setDeepAnalytics] = useState<AdminDeepAnalytics | null>(null)
   const [activeRides, setActiveRides] = useState<Ride[]>([])
   const [onlineDrivers, setOnlineDrivers] = useState<AdminOnlineDriver[]>([])
+  // تبويب مدينة الخريطة المباشرة ('all' = كل السودان، أو معرّف مدينة).
+  const [mapCity, setMapCity] = useState<string>('all')
   const [sos, setSos] = useState<SosAlert[]>([])
 
   // صلاحياتي (مالك أم موظف؟) + قائمة الموظفين (للمالك)
@@ -2085,55 +2088,100 @@ export default function AdminDashboard() {
           </>
         )}
 
-        {tab === 'map' && (
-          <div className="flex flex-col gap-3">
-            {/* شريط معلومات */}
-            <div className="flex flex-wrap items-center gap-3">
-              <span className="flex items-center gap-2 rounded-full bg-green-soft px-3 py-1.5 text-sm font-bold text-green">
-                <span className="h-2.5 w-2.5 animate-pulse rounded-full bg-green" />
-                {activeRides.length} رحلة نشطة الآن
-              </span>
-              <span className="flex items-center gap-2 rounded-full bg-royal-soft px-3 py-1.5 text-sm font-bold text-royal">
-                🚗 {onlineDrivers.length} سائق متصل
-              </span>
-              <span className="flex items-center gap-1.5 text-xs text-ink-muted">
-                <span className="inline-block h-3 w-3 rounded-full bg-danger" /> نقطة انطلاق الرحلة
-              </span>
-              <button
-                onClick={() => {
-                  void listActiveRides().then(setActiveRides)
-                  void listAdminOnlineDrivers().then(setOnlineDrivers).catch(() => {})
-                }}
-                className="mr-auto rounded-full border border-hairline bg-white px-3 py-1.5 text-sm font-bold text-green hover:bg-green-soft"
-              >
-                تحديث
-              </button>
-            </div>
+        {tab === 'map' &&
+          (() => {
+            // المدينة المختارة (أو كل السودان). نصفّي السائقين/الرحلات حول مركزها.
+            const city = cities.find((c) => c.id === mapCity) ?? null
+            const near = (lat: number, lng: number, c: (typeof cities)[number]) =>
+              haversineKm({ lat, lng }, c.center) <= c.radiusKm
+            const cityRides = city
+              ? activeRides.filter((r) => near(r.pickup_lat, r.pickup_lng, city))
+              : activeRides
+            const cityDrivers = city
+              ? onlineDrivers.filter((d) => near(d.lat, d.lng, city))
+              : onlineDrivers
+            return (
+              <div className="flex flex-col gap-3">
+                {/* تبويبات المدن + كل السودان */}
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    onClick={() => setMapCity('all')}
+                    className={`chip border px-3 py-1.5 ${
+                      mapCity === 'all' ? 'border-royal bg-royal text-white' : 'border-hairline bg-white text-ink-soft'
+                    }`}
+                  >
+                    🇸🇩 كل السودان
+                  </button>
+                  {cities.map((c) => {
+                    const n = onlineDrivers.filter((d) => near(d.lat, d.lng, c)).length
+                    return (
+                      <button
+                        key={c.id}
+                        onClick={() => setMapCity(c.id)}
+                        className={`chip border px-3 py-1.5 ${
+                          mapCity === c.id ? 'border-royal bg-royal text-white' : 'border-hairline bg-white text-ink-soft'
+                        }`}
+                      >
+                        {c.name}
+                        {n > 0 ? ` · ${n}` : ''}
+                      </button>
+                    )
+                  })}
+                </div>
 
-            {/* خريطة كبيرة تملأ الصفحة */}
-            <MapView
-              zoom={activeRides.length ? 11 : 6}
-              center={
-                activeRides[0]
-                  ? { lat: activeRides[0].pickup_lat, lng: activeRides[0].pickup_lng }
-                  : undefined
-              }
-              markers={activeRides.map((r) => ({ lat: r.pickup_lat, lng: r.pickup_lng }))}
-              driverMarkers={onlineDrivers.map((d) => ({
-                lat: d.lat,
-                lng: d.lng,
-                icon: getService(d.vehicle_type ?? '')?.image,
-              }))}
-              className="h-[calc(100vh-190px)] min-h-[420px] w-full rounded-2xl border border-hairline"
-            />
+                {/* شريط معلومات */}
+                <div className="flex flex-wrap items-center gap-3">
+                  <span className="flex items-center gap-2 rounded-full bg-green-soft px-3 py-1.5 text-sm font-bold text-green">
+                    <span className="h-2.5 w-2.5 animate-pulse rounded-full bg-green" />
+                    {cityRides.length} رحلة نشطة{city ? ` — ${city.name}` : ''}
+                  </span>
+                  <span className="flex items-center gap-2 rounded-full bg-royal-soft px-3 py-1.5 text-sm font-bold text-royal">
+                    🚗 {cityDrivers.length} سائق متصل
+                  </span>
+                  <span className="flex items-center gap-1.5 text-xs text-ink-muted">
+                    <span className="inline-block h-3 w-3 rounded-full bg-danger" /> نقطة انطلاق الرحلة
+                  </span>
+                  <button
+                    onClick={() => {
+                      void listActiveRides().then(setActiveRides)
+                      void listAdminOnlineDrivers().then(setOnlineDrivers).catch(() => {})
+                    }}
+                    className="mr-auto rounded-full border border-hairline bg-white px-3 py-1.5 text-sm font-bold text-green hover:bg-green-soft"
+                  >
+                    تحديث
+                  </button>
+                </div>
 
-            {activeRides.length === 0 && onlineDrivers.length === 0 && (
-              <p className="text-center text-sm text-ink-muted">
-                لا توجد رحلات نشطة ولا سائقون متصلون حالياً — ستظهر تلقائياً على الخريطة.
-              </p>
-            )}
-          </div>
-        )}
+                {/* الخريطة — key=mapCity لإعادة التوسيط/التقريب عند تبديل المدينة */}
+                <MapView
+                  key={mapCity}
+                  zoom={city ? city.zoom : cityRides.length ? 11 : SUDAN_ZOOM}
+                  center={
+                    city
+                      ? city.center
+                      : cityRides[0]
+                        ? { lat: cityRides[0].pickup_lat, lng: cityRides[0].pickup_lng }
+                        : SUDAN_CENTER
+                  }
+                  markers={cityRides.map((r) => ({ lat: r.pickup_lat, lng: r.pickup_lng }))}
+                  driverMarkers={cityDrivers.map((d) => ({
+                    lat: d.lat,
+                    lng: d.lng,
+                    icon: getService(d.vehicle_type ?? '')?.image,
+                  }))}
+                  className="h-[calc(100vh-230px)] min-h-[420px] w-full rounded-2xl border border-hairline"
+                />
+
+                {cityRides.length === 0 && cityDrivers.length === 0 && (
+                  <p className="text-center text-sm text-ink-muted">
+                    {city
+                      ? `لا رحلات نشطة ولا سائقين متصلين في ${city.name} حالياً.`
+                      : 'لا توجد رحلات نشطة ولا سائقون متصلون حالياً — ستظهر تلقائياً على الخريطة.'}
+                  </p>
+                )}
+              </div>
+            )
+          })()}
 
         {tab === 'requests' && (
           <>
