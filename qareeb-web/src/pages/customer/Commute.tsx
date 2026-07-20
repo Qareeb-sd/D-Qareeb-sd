@@ -1,14 +1,11 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Map as MapIcon, Plus, Check } from 'lucide-react'
 import BottomNav from '@/components/BottomNav'
 import Logo from '@/components/Logo'
 import LocationPicker from '@/components/LocationPicker'
 import PlaceSearch from '@/components/PlaceSearch'
-import VehicleImage from '@/components/VehicleImage'
-import { services } from '@/data/services'
 import { useAuth } from '@/store/AuthContext'
-import { createCommuteOrder, joinCommuteOrder } from '@/lib/commute'
+import { createCommuteOrder } from '@/lib/commute'
 import { getServicePricing, listServicePeriods, getSettings } from '@/lib/api'
 import { memberDailyFare, periodFromTime, monthlyTotal } from '@/lib/commutePricing'
 import { type PeriodRate } from '@/lib/pricing'
@@ -17,15 +14,6 @@ import type { Settings } from '@/lib/types'
 import { KHARTOUM } from '@/theme'
 
 const days = ['السبت', 'الأحد', 'الاثنين', 'الثلاثاء', 'الأربعاء', 'الخميس', 'الجمعة']
-const shareable = services.filter((s) => s.sharable)
-
-/** نقطة انطلاق راكب واحد في الترحيل. */
-interface PickPoint {
-  name: string
-  addr: string
-  pos: google.maps.LatLngLiteral
-  placed: boolean // حُدّدت فعلاً (خريطة/اقتراح/GPS)
-}
 
 /**
  * ترحيل — إنشاء طلب مشترك: مركبة + مكان العمل (وجهة) + وقت + أيام.
@@ -35,15 +23,14 @@ export default function Commute() {
   const navigate = useNavigate()
   const { profile } = useAuth()
 
-  const [serviceId, setServiceId] = useState(shareable[0].id)
+  // الترحيل دائماً بالمركبة العادية «قريب عادي» — بلا اختيار مركبة.
+  const serviceId = 'standard'
   const [dest, setDest] = useState<google.maps.LatLngLiteral>(KHARTOUM)
   const [destAddress, setDestAddress] = useState('')
 
-  // نقاط الانطلاق (منازل الركاب) — الأولى للمنظّم، والبقية يضيفها حتى سعة المركبة.
-  const [points, setPoints] = useState<PickPoint[]>([
-    { name: '', addr: '', pos: KHARTOUM, placed: false },
-  ])
-  const [activeIdx, setActiveIdx] = useState(0)
+  // منزل المنظّم فقط. بقية الركّاب ينضمّون كلٌّ بمنزله عبر رابط الدعوة.
+  const [home, setHome] = useState<google.maps.LatLngLiteral>(KHARTOUM)
+  const [homeAddress, setHomeAddress] = useState('')
   const [time, setTime] = useState('07:30')
   const [returnTime, setReturnTime] = useState('15:30')
   const [selected, setSelected] = useState<string[]>([
@@ -58,10 +45,7 @@ export default function Commute() {
   const [periodRate, setPeriodRate] = useState<PeriodRate | null>(null)
   const [settings, setSettings] = useState<Settings | null>(null)
 
-  // سعة المركبة = عدد نقاط الانطلاق (المنازل) الممكنة للذهاب/الإياب.
-  const seats = services.find((s) => s.id === serviceId)?.seats ?? 4
-
-  // تسعير فترة المركبة حسب وقت الذهاب (يُعاد حسابه عند تغيّر المركبة/الوقت).
+  // تسعير فترة المركبة حسب وقت الذهاب (يُعاد حسابه عند تغيّر الوقت).
   useEffect(() => {
     void Promise.all([getServicePricing(serviceId), listServicePeriods(), getSettings()]).then(
       ([, periods, s]) => {
@@ -83,44 +67,23 @@ export default function Commute() {
   // أجرة نقطة (منزل → الوجهة، ذهاب/إياب، بعد الخصم) — 0 إن لم يتوفّر التسعير.
   const dailyFareAt = (pos: google.maps.LatLngLiteral) =>
     periodRate ? memberDailyFare(pos, dest, periodRate, roundTrip, discount) : 0
-  const orgDaily = dailyFareAt(points[0]?.pos ?? KHARTOUM)
+  const orgDaily = dailyFareAt(home)
   const orgMonthly = monthlyTotal(orgDaily, selected.length, weeks)
 
-  // عند اختيار مركبة أصغر: لا تتجاوز النقاط سعتها.
+  // منزل المنظّم = موقعه الحالي مبدئياً، ويمكن تعديله.
+  const located = useRef(false)
   useEffect(() => {
-    setPoints((cur) => (cur.length > seats ? cur.slice(0, seats) : cur))
-    setActiveIdx(0)
-  }, [seats])
-
-  // نقطة انطلاق المنظّم = موقعه الحالي مبدئياً، ويمكن تعديلها.
-  useEffect(() => {
-    if (!navigator.geolocation) return
+    if (located.current || !navigator.geolocation) return
+    located.current = true
     navigator.geolocation.getCurrentPosition(
-      (p) =>
-        setPoints((cur) =>
-          cur.map((pt, i) =>
-            i === 0 && !pt.placed
-              ? { ...pt, pos: { lat: p.coords.latitude, lng: p.coords.longitude }, placed: true, addr: pt.addr || 'موقعي الحالي' }
-              : pt,
-          ),
-        ),
+      (p) => {
+        setHome({ lat: p.coords.latitude, lng: p.coords.longitude })
+        setHomeAddress((a) => a || 'موقعي الحالي')
+      },
       () => {},
       { timeout: 8000 },
     )
   }, [])
-
-  const setPoint = (i: number, patch: Partial<PickPoint>) =>
-    setPoints((cur) => cur.map((p, x) => (x === i ? { ...p, ...patch } : p)))
-
-  const addPoint = () => {
-    setPoints((cur) => [...cur, { name: '', addr: '', pos: cur[0].pos, placed: false }])
-    setActiveIdx(points.length)
-  }
-
-  const removePoint = (i: number) => {
-    setPoints((cur) => cur.filter((_, x) => x !== i))
-    setActiveIdx(0)
-  }
 
   const toggleDay = (d: string) =>
     setSelected((cur) => (cur.includes(d) ? cur.filter((x) => x !== d) : [...cur, d]))
@@ -141,39 +104,15 @@ export default function Commute() {
           plan,
           organizer: {
             name: profile?.full_name?.trim() || 'المنظّم',
-            home: { ...points[0].pos, address: points[0].addr || 'منزل المنظّم' },
+            home: { ...home, address: homeAddress || 'منزل المنظّم' },
             fare: orgDaily,
             pay_method: plan === 'monthly' ? 'wallet' : payMethod,
           },
         },
         profile?.id ?? null,
       )
-      // في اليومي: بقية النقاط تُسجَّل كأعضاء (دفع كاش للسائق افتراضياً). في الشهري
-      // ينضمّ كل راكب برمز الدعوة ويدفع اشتراكه من محفظته (لا تُضاف نقاط الآخرين هنا).
-      let joinFails = 0
-      if (plan === 'daily') {
-        for (let i = 1; i < points.length; i++) {
-          const p = points[i]
-          try {
-            await joinCommuteOrder(
-              order.id,
-              {
-                name: p.name.trim() || `راكب ${i + 1}`,
-                home: { ...p.pos, address: p.addr || `نقطة انطلاق ${i + 1}` },
-                fare: dailyFareAt(p.pos),
-                pay_method: 'cash',
-              },
-              'daily',
-            )
-          } catch {
-            joinFails++
-          }
-        }
-      }
+      // بقية الركّاب ينضمّون كلٌّ بمنزله عبر رابط الدعوة (لا تُضاف نقاط الآخرين هنا).
       setBusy(false)
-      if (joinFails > 0) {
-        alert(`تم إنشاء الترحيل، لكن تعذّر إضافة ${joinFails} راكب — يمكنهم الانضمام لاحقاً برمز الدعوة.`)
-      }
       navigate(`/commute/${order.id}`)
     } catch (e) {
       setBusy(false)
@@ -220,33 +159,6 @@ export default function Commute() {
           <span className="h-px flex-1 bg-hairline" />
           <span className="text-xs font-bold text-ink-muted">أو أنشئ ترحيلاً جديداً</span>
           <span className="h-px flex-1 bg-hairline" />
-        </div>
-
-        {/* المركبة */}
-        <div>
-          <p className="label">نوع المركبة</p>
-          <div className="flex gap-2 overflow-x-auto pb-1">
-            {shareable.map((s) => (
-              <button
-                key={s.id}
-                onClick={() => setServiceId(s.id)}
-                className={`shrink-0 rounded-2xl border p-2 text-center transition ${
-                  serviceId === s.id
-                    ? 'border-royal bg-royal-soft'
-                    : 'border-hairline bg-white'
-                }`}
-                style={{ width: 96 }}
-              >
-                <VehicleImage service={s} className="h-10 w-full" />
-                <p className="mt-1 text-xs font-bold">{s.name}</p>
-                <p className="text-[10px] text-ink-muted">{s.seats} مقاعد</p>
-              </button>
-            ))}
-          </div>
-          <p className="mt-1 text-xs text-ink-soft">
-            تتّسع لـ <span className="font-bold text-royal">{seats}</span> نقاط انطلاق —
-            كل راكب من منزله إلى مكان العمل، والعودة بالعكس.
-          </p>
         </div>
 
         {/* خطّة الدفع + التسعير */}
@@ -331,102 +243,23 @@ export default function Commute() {
           </div>
         )}
 
-        {/* نقاط الانطلاق (منازل الركاب) — حتى سعة المركبة */}
+        {/* منزلك (نقطة انطلاقك) — بحث بالاسم أو تحديد بالخريطة */}
         <div className="card p-4">
-          <div className="mb-1 flex items-center justify-between">
-            <p className="font-bold">نقاط الانطلاق</p>
-            <span className="text-xs font-bold text-royal">
-              {points.length} / {seats}
-            </span>
-          </div>
+          <p className="font-bold text-royal">منزلك (نقطة انطلاقك)</p>
           <p className="mb-3 text-xs text-ink-soft">
-            كل راكب من منزله إلى الوجهة المشتركة — والإياب بالعكس. أضف نقطة لكل راكب،
-            أو شارك رابط الدعوة بعد الإنشاء لينضمّ كلٌّ بنفسه.
+            حدّد منزلك فقط — بقية الركّاب ينضمّون كلٌّ بمنزله عبر رابط الدعوة بعد الإنشاء.
           </p>
-
-          <div className="space-y-3">
-            {points.map((p, i) => (
-              <div
-                key={i}
-                className={`rounded-2xl border p-3 ${
-                  activeIdx === i ? 'border-royal bg-royal-soft/40' : 'border-hairline'
-                }`}
-              >
-                <div className="mb-2 flex items-center justify-between">
-                  <p className="flex items-center gap-1.5 text-sm font-bold">
-                    <span className="h-2.5 w-2.5 rounded-full bg-royal" />
-                    {i === 0 ? 'انطلاقي (المنظّم)' : `راكب ${i + 1}`}
-                    {p.placed && <Check className="h-4 w-4 text-royal" strokeWidth={2.5} />}
-                  </p>
-                  {i > 0 && (
-                    <button
-                      onClick={() => removePoint(i)}
-                      className="text-xs font-bold text-danger"
-                    >
-                      حذف
-                    </button>
-                  )}
-                </div>
-                {i > 0 && (
-                  <input
-                    className="field mb-2"
-                    value={p.name}
-                    onChange={(e) => setPoint(i, { name: e.target.value })}
-                    placeholder={`اسم الراكب ${i + 1} (اختياري)`}
-                  />
-                )}
-                <div className="flex items-center gap-2">
-                  <div className="min-w-0 flex-1">
-                    <PlaceSearch
-                      value={p.addr}
-                      onFocus={() => setActiveIdx(i)}
-                      onChange={(v) => setPoint(i, { addr: v, placed: v.trim() !== '' || p.placed })}
-                      onPick={({ pos, address }) => setPoint(i, { pos, addr: address, placed: true })}
-                      placeholder="اكتب اسم المكان أو حدّده بالخريطة"
-                      className="field"
-                    />
-                  </div>
-                  <button
-                    onClick={() => setActiveIdx(i)}
-                    aria-label="تحديد على الخريطة"
-                    className={`grid shrink-0 place-items-center rounded-xl border px-3 py-2.5 ${
-                      activeIdx === i
-                        ? 'border-royal bg-royal text-white'
-                        : 'border-royal/40 text-royal'
-                    }`}
-                  >
-                    <MapIcon className="h-4 w-4" strokeWidth={1.8} />
-                  </button>
-                </div>
-              </div>
-            ))}
-          </div>
-
-          {plan === 'daily' && points.length < seats && (
-            <button
-              onClick={addPoint}
-              className="btn-outline mt-3 flex w-full items-center justify-center gap-1.5"
-            >
-              <Plus className="h-4 w-4" strokeWidth={2} /> إضافة نقطة انطلاق ({points.length}/{seats})
-            </button>
-          )}
-          {plan === 'monthly' && (
-            <p className="mt-3 rounded-xl bg-gold-soft p-2.5 text-center text-[11px] text-ink-muted">
-              في الاشتراك الشهري ينضمّ كل راكب برمز الدعوة ويدفع اشتراكه من محفظته.
-            </p>
-          )}
-
-          {/* خريطة النقطة النشطة */}
-          <p className="mb-1 mt-3 text-xs text-ink-soft">
-            حرّك الخريطة لتحديد{' '}
-            <span className="font-bold text-royal">
-              {activeIdx === 0 ? 'انطلاق المنظّم' : `انطلاق الراكب ${activeIdx + 1}`}
-            </span>
-          </p>
-          <LocationPicker
-            center={points[activeIdx]?.pos ?? KHARTOUM}
-            onChange={(pos) => setPoint(activeIdx, { pos, placed: true })}
+          <PlaceSearch
+            value={homeAddress}
+            onChange={setHomeAddress}
+            onPick={({ pos, address }) => {
+              setHome(pos)
+              setHomeAddress(address)
+            }}
+            placeholder="اكتب اسم الحي/المكان أو حدّده بالخريطة"
+            className="field mb-2"
           />
+          <LocationPicker center={home} onChange={setHome} />
         </div>
 
         {/* مكان العمل (الوجهة) — بحث بالاسم أو تحديد بالخريطة */}
