@@ -153,6 +153,7 @@ export interface Settings {
   commute_enabled?: boolean // تفعيل تسعير الترحيل
   commute_commission_rate?: number | null // عمولة المنصّة على الترحيل (0..1)؛ null = عمولة الرحلات
   commute_discount?: number // خصم على سعر الترحيل (0..1)
+  commute_monthly_discount?: number // خصم إضافي على الاشتراك الشهري لتشجيعه (0..1)
   commute_weeks_per_month?: number // أسابيع الشهر لحساب الاشتراك الشهري
   updated_at: string
 }

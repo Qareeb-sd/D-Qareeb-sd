@@ -70,12 +70,13 @@ export default function Commute() {
 
   const commuteEnabled = settings?.commute_enabled ?? true
   const discount = settings?.commute_discount ?? 0
+  const monthlyDiscount = settings?.commute_monthly_discount ?? 0
   const weeks = settings?.commute_weeks_per_month ?? 4
   // أجرة نقطة (منزل → الوجهة، ذهاب/إياب، بعد الخصم) — 0 إن لم يتوفّر التسعير.
   const dailyFareAt = (pos: google.maps.LatLngLiteral) =>
     periodRate ? memberDailyFare(pos, dest, periodRate, roundTrip, discount) : 0
   const orgDaily = dailyFareAt(home)
-  const orgMonthly = monthlyTotal(orgDaily, selected.length, weeks)
+  const orgMonthly = monthlyTotal(orgDaily, selected.length, weeks, monthlyDiscount)
 
   // منزل المنظّم = موقعه الحالي مبدئياً. خريطة الوجهة تبدأ عند موقعه أيضاً (لا
   // نفترض الخرطوم) حتى يجدها العميل بجواره ويحدّدها بنفسه — بلا وجهة مفروضة.
@@ -372,6 +373,11 @@ export default function Commute() {
                   اشتراكك الشهري <span className="font-bold text-sand-ink">{money(orgMonthly)}</span>
                 </p>
                 <p className="mt-0.5 text-[11px] text-ink-muted">يُخصم مقدّماً من محفظتك عند الإنشاء.</p>
+                {monthlyDiscount > 0 && (
+                  <p className="mt-0.5 text-[11px] text-green">
+                    وفّرت {Math.round(monthlyDiscount * 100)}% باختيارك الاشتراك الشهري 🎉
+                  </p>
+                )}
                 {discount > 0 && (
                   <p className="mt-0.5 text-[11px] text-green">شامل خصم الترحيل {Math.round(discount * 100)}%</p>
                 )}

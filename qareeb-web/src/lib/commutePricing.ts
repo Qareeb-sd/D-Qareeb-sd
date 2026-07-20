@@ -30,7 +30,17 @@ export function memberDailyFare(
   return Math.round(f / 100) * 100
 }
 
-/** الإجمالي الشهري لراكب = أجرة يومية × أيام الأسبوع × أسابيع الشهر. */
-export function monthlyTotal(dailyFare: number, daysPerWeek: number, weeksPerMonth = 4): number {
-  return Math.round(dailyFare * Math.max(1, daysPerWeek) * Math.max(1, weeksPerMonth))
+/**
+ * الإجمالي الشهري لراكب = أجرة يومية × أيام الأسبوع × أسابيع الشهر،
+ * ناقص خصم الاشتراك الشهري (تشجيعاً على الخطّة الشهرية). مقرّب لأقرب 100.
+ */
+export function monthlyTotal(
+  dailyFare: number,
+  daysPerWeek: number,
+  weeksPerMonth = 4,
+  monthlyDiscount = 0, // كسر 0..1
+): number {
+  let total = dailyFare * Math.max(1, daysPerWeek) * Math.max(1, weeksPerMonth)
+  if (monthlyDiscount > 0) total *= 1 - Math.min(0.95, Math.max(0, monthlyDiscount))
+  return Math.round(total / 100) * 100
 }

@@ -5679,6 +5679,8 @@ alter table public.settings add column if not exists commute_enabled boolean not
 alter table public.settings add column if not exists commute_commission_rate numeric(5,3);
 -- خصم على السعر المحسوب (كسر 0..1، مثال 0.15 = خصم 15%). 0 = بلا خصم.
 alter table public.settings add column if not exists commute_discount numeric(5,4) not null default 0;
+-- خصم إضافي على الاشتراك الشهري للترحيل (تشجيعاً على الخطّة الشهرية).
+alter table public.settings add column if not exists commute_monthly_discount numeric(5,4) not null default 0;
 -- عدد أسابيع الشهر لحساب إجمالي الاشتراك الشهري.
 alter table public.settings add column if not exists commute_weeks_per_month int not null default 4;
 

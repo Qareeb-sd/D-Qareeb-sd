@@ -1614,6 +1614,7 @@ export default function AdminDashboard() {
       commute_enabled: settings.commute_enabled,
       commute_commission_rate: settings.commute_commission_rate,
       commute_discount: settings.commute_discount,
+      commute_monthly_discount: settings.commute_monthly_discount,
       commute_weeks_per_month: settings.commute_weeks_per_month,
     })
     setSavedMsg(error ? `خطأ: ${error}` : 'تم حفظ الإعدادات ✓')
@@ -4535,6 +4536,17 @@ export default function AdminDashboard() {
                     onChange={(v) => setSettings({ ...settings, commute_discount: Math.max(0, Math.min(95, v)) / 100 })}
                   />
                   <p className="mt-1 text-[11px] text-ink-muted">خصم على السعر لأنّه مشوار متكرّر (0 = بلا خصم).</p>
+                </div>
+                <div className="rounded-2xl border border-sand/40 bg-sand-soft/40 p-3">
+                  <NumField
+                    label="خصم الاشتراك الشهري %"
+                    step={1}
+                    value={Math.round((settings.commute_monthly_discount ?? 0) * 100)}
+                    onChange={(v) => setSettings({ ...settings, commute_monthly_discount: Math.max(0, Math.min(95, v)) / 100 })}
+                  />
+                  <p className="mt-1 text-[11px] text-ink-muted">
+                    خصم إضافي يظهر للعميل عند اختيار الخطّة الشهرية — تشجيعاً عليها (0 = بلا خصم).
+                  </p>
                 </div>
                 <div className="rounded-2xl border border-sand/40 bg-sand-soft/40 p-3">
                   <NumField

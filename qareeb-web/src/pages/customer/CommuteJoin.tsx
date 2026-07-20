@@ -91,9 +91,10 @@ export default function CommuteJoin() {
   // أجرة الراكب: منزله → وجهة الطلب (×2 إن ذهاب وإياب)، بعد خصم الترحيل.
   const dest = { lat: order.dest_lat, lng: order.dest_lng }
   const discount = settings?.commute_discount ?? 0
+  const monthlyDiscount = settings?.commute_monthly_discount ?? 0
   const weeks = settings?.commute_weeks_per_month ?? 4
   const daily = periodRate ? memberDailyFare(home, dest, periodRate, order.round_trip, discount) : 0
-  const monthly = monthlyTotal(daily, order.days.length, weeks)
+  const monthly = monthlyTotal(daily, order.days.length, weeks, monthlyDiscount)
 
   const join = async () => {
     if (!name.trim() || full) return
@@ -220,6 +221,11 @@ export default function CommuteJoin() {
                   <p className="text-[11px] text-ink-muted">
                     = {money(daily)} × {order.days.length} يوم/أسبوع × {weeks} أسابيع — يُخصم مقدّماً من محفظتك عند الانضمام.
                   </p>
+                  {monthlyDiscount > 0 && (
+                    <p className="text-[11px] text-green">
+                      وفّرت {Math.round(monthlyDiscount * 100)}% باختيارك الاشتراك الشهري 🎉
+                    </p>
+                  )}
                 </>
               )}
               {discount > 0 && (
