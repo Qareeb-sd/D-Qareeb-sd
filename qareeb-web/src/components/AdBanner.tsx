@@ -15,21 +15,21 @@ export default function AdBanner({ role }: { role: 'customer' | 'driver' }) {
 
   if (!ad) return null
 
-  // شريط قصير بارتفاع ثابت (بحجم بطاقات المركبات) — الصورة تملأ عرضاً وتُقصّ ارتفاعاً.
+  // نسبة أبعاد ثابتة 16:5 — صورة بهذه النسبة (مثلاً 1280×400) تملأ البنر دون أي قص.
   const image = (
     <img
       src={ad.image_url}
       alt={ad.title ?? 'إعلان'}
       loading="lazy"
-      className="block h-24 w-full object-cover sm:h-28"
+      className="block h-full w-full object-cover"
     />
   )
 
   return (
     <div className="mb-3">
-      <div className="relative overflow-hidden rounded-2xl border border-hairline">
+      <div className="relative aspect-[16/5] overflow-hidden rounded-2xl border border-hairline">
         {ad.link_url ? (
-          <a href={ad.link_url} target="_blank" rel="noopener noreferrer" className="block">
+          <a href={ad.link_url} target="_blank" rel="noopener noreferrer" className="block h-full">
             {image}
           </a>
         ) : (

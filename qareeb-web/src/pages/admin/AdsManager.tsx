@@ -216,6 +216,10 @@ export default function AdsManager() {
             onChange={(e) => pickImage(e.target.files?.[0] ?? null)}
           />
         </label>
+        <p className="-mt-1 text-[11px] text-ink-muted">
+          المقاس المثالي: <span className="font-bold">1280 × 400 بكسل</span> (نسبة 16:5) — بهذه
+          النسبة يملأ البنر دون أي قص.
+        </p>
 
         <input
           className="input w-full"
