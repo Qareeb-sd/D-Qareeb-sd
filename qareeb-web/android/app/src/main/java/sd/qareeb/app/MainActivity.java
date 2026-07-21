@@ -10,5 +10,11 @@ public class MainActivity extends BridgeActivity {
         // إضافة أصلية للكابتن: خدمة أمامية + إشعارات الطلبات (بلا Firebase).
         registerPlugin(CaptainBgPlugin.class);
         super.onCreate(savedInstanceState);
+        // نسمح بتشغيل الصوت داخل WebView دون لمسة مستخدم — ليعمل تنبيه الطلب أمامياً.
+        try {
+            getBridge().getWebView().getSettings().setMediaPlaybackRequiresUserGesture(false);
+        } catch (Exception ignored) {
+            // لا يُعطّل شيئاً إن تعذّر الوصول للإعداد.
+        }
     }
 }

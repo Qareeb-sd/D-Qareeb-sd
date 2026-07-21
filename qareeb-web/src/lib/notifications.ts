@@ -3,7 +3,7 @@
  *  • على أندرويد: مسار أصلي (إضافة CaptainBg) يعمل في الخلفية/الشاشة مقفلة.
  *  • على الويب: Notification API + WebAudio + اهتزاز (أثناء فتح التطبيق فقط).
  */
-import { isAndroid, notifyRideNative, requestNotifNative } from './captainBg'
+import { isAndroid, notifyRideNative, playAlertNative, requestNotifNative } from './captainBg'
 
 export const notificationsSupported =
   isAndroid || (typeof window !== 'undefined' && 'Notification' in window)
@@ -58,12 +58,18 @@ export async function alertNewRide(): Promise<void> {
 
 /** إشعار عام (صوت + اهتزاز) — يُستخدم أيضاً لإخطار العميل بقبول رحلته. */
 export async function notify(title: string, body: string): Promise<void> {
-  // على أندرويد: إشعار أصلي (يعمل في الخلفية/الشاشة مقفلة).
-  if (isAndroid) void notifyRideNative(title, body)
-  // نبرة + اهتزاز دائماً كتنبيه أمامي احتياطي (تعمل والتطبيق مفتوح).
+  // على أندرويد: إشعار أصلي (يظهر في الدرج/الخلفية/الشاشة مقفلة) + صوت واهتزاز
+  // مباشران مضمونان حتى والتطبيق مفتوح أمام السائق (تُسكِت بعض الأجهزة إشعار
+  // التطبيق الأمامي، فنُشغّل النغمة والاهتزاز أصلياً بلا اعتماد على الإشعار).
+  if (isAndroid) {
+    void notifyRideNative(title, body)
+    void playAlertNative()
+    if ('vibrate' in navigator) navigator.vibrate([200, 100, 200])
+    return
+  }
+  // نبرة + اهتزاز على الويب كتنبيه أمامي (تعمل والتطبيق مفتوح).
   if ('vibrate' in navigator) navigator.vibrate([200, 100, 200])
   beep()
-  if (isAndroid) return
   const options: NotificationOptions = {
     body,
     icon: '/icon-192.png',

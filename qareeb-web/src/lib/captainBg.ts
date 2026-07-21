@@ -11,6 +11,7 @@ interface CaptainBgPlugin {
   start(): Promise<void>
   stop(): Promise<void>
   notifyRide(o: { title: string; body: string }): Promise<void>
+  alertSound(): Promise<void>
   requestNotif(): Promise<void>
   requestLocation(): Promise<void>
 }
@@ -47,6 +48,16 @@ export async function notifyRideNative(title: string, body: string): Promise<boo
     return true
   } catch {
     return false
+  }
+}
+
+/** صوت واهتزاز مباشران أصلياً — تنبيه مضمون والتطبيق مفتوح (المقدّمة). */
+export async function playAlertNative(): Promise<void> {
+  if (!isAndroid) return
+  try {
+    await CaptainBg.alertSound()
+  } catch {
+    /* تجاهل — يبقى مسار الإشعار */
   }
 }
 

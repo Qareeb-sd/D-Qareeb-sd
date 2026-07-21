@@ -5,8 +5,15 @@ import android.app.Notification;
 import android.app.NotificationChannel;
 import android.app.NotificationManager;
 import android.app.PendingIntent;
+import android.content.Context;
 import android.content.Intent;
+import android.media.AudioManager;
+import android.media.Ringtone;
+import android.media.RingtoneManager;
+import android.net.Uri;
 import android.os.Build;
+import android.os.VibrationEffect;
+import android.os.Vibrator;
 
 import androidx.core.app.NotificationCompat;
 import androidx.core.app.NotificationManagerCompat;
@@ -90,6 +97,41 @@ public class CaptainBgPlugin extends Plugin {
             NotificationManagerCompat.from(getContext()).notify(1001, b.build());
         } catch (SecurityException ignored) {
             // إذن الإشعارات مرفوض — نتجاهل بلا انهيار.
+        }
+        call.resolve();
+    }
+
+    /**
+     * صوت واهتزاز مباشران (بلا إشعار) — لتنبيهٍ مضمون والتطبيق مفتوح أمام السائق،
+     * حيث تُسكِت بعض الأجهزة إشعار التطبيق الأمامي نفسه. يعمل في المقدّمة والخلفية.
+     */
+    @PluginMethod
+    public void alertSound(PluginCall call) {
+        // نغمة إشعار النظام (تُشغَّل ولو كان التطبيق في المقدّمة).
+        try {
+            Uri uri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION);
+            Ringtone r = RingtoneManager.getRingtone(getContext(), uri);
+            if (r != null) {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+                    r.setStreamType(AudioManager.STREAM_NOTIFICATION);
+                }
+                r.play();
+            }
+        } catch (Exception ignored) {
+            // الصوت اختياري — لا نُعطّل شيئاً إن فشل.
+        }
+        // اهتزاز مباشر عبر خدمة الاهتزاز.
+        try {
+            Vibrator v = (Vibrator) getContext().getSystemService(Context.VIBRATOR_SERVICE);
+            if (v != null && v.hasVibrator()) {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                    v.vibrate(VibrationEffect.createWaveform(VIBRATE, -1));
+                } else {
+                    v.vibrate(VIBRATE, -1);
+                }
+            }
+        } catch (Exception ignored) {
+            // الاهتزاز اختياري.
         }
         call.resolve();
     }
