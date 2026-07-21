@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Images, Upload, Trash2, ExternalLink } from 'lucide-react'
 import {
   listAdBanners,
@@ -6,16 +6,22 @@ import {
   setAdBannerActive,
   deleteAdBanner,
   uploadAdImage,
+  getSettings,
+  updateSettings,
 } from '@/lib/api'
 import { money } from '@/lib/format'
-import type { AdBanner } from '@/lib/types'
+import type { AdBanner, Settings } from '@/lib/types'
 
 type Audience = 'all' | 'customers' | 'drivers'
+type Period = 'day' | 'week' | 'month'
+
 const AUD_LABEL: Record<Audience, string> = {
-  all: 'الكل (العميل + السائق)',
-  customers: 'العملاء فقط',
-  drivers: 'السائقون فقط',
+  all: 'التطبيقان (عميل + سائق)',
+  customers: 'تطبيق العميل فقط',
+  drivers: 'تطبيق السائق فقط',
 }
+const PERIOD_LABEL: Record<Period, string> = { day: 'يوم', week: 'أسبوع', month: 'شهر' }
+const PERIOD_DAYS: Record<Period, number> = { day: 1, week: 7, month: 30 }
 
 /** حالة البنر حسب التواريخ والتفعيل. */
 function statusOf(a: AdBanner): { label: string; color: string } {
@@ -28,26 +34,31 @@ function statusOf(a: AdBanner): { label: string; color: string } {
   if (today >= end) return { label: 'منتهٍ', color: '#B23A48' }
   return { label: 'نشط', color: '#1B6B3F' }
 }
-
 function endDate(a: AdBanner): string {
   const end = new Date(a.start_date)
   end.setDate(end.getDate() + a.days)
   return end.toISOString().slice(0, 10)
 }
 
-/** إدارة بنرات الإعلانات المدفوعة (صورة + رابط + سعر يومي × أيام). */
+/** إدارة بنرات الإعلانات المدفوعة (صورة + رابط + مدة يوم/أسبوع/شهر بسعر ثابت). */
 export default function AdsManager() {
+  const [settings, setSettings] = useState<Settings | null>(null)
   const [ads, setAds] = useState<AdBanner[]>([])
   const [loading, setLoading] = useState(true)
 
+  // بطاقة الأسعار (يحفظها الأدمن مرّة).
+  const [pDay, setPDay] = useState(0)
+  const [pWeek, setPWeek] = useState(0)
+  const [pMonth, setPMonth] = useState(0)
+  const [savedRates, setSavedRates] = useState('')
+
   // نموذج الإنشاء
   const [file, setFile] = useState<File | null>(null)
-  const [preview, setPreview] = useState<string>('')
+  const [preview, setPreview] = useState('')
   const [title, setTitle] = useState('')
   const [link, setLink] = useState('')
   const [audience, setAudience] = useState<Audience>('all')
-  const [dailyPrice, setDailyPrice] = useState(0)
-  const [days, setDays] = useState(7)
+  const [period, setPeriod] = useState<Period>('week')
   const [startDate, setStartDate] = useState(new Date().toISOString().slice(0, 10))
   const [busy, setBusy] = useState(false)
   const [msg, setMsg] = useState('')
@@ -59,13 +70,35 @@ export default function AdsManager() {
       setLoading(false)
     })
   }
-  useEffect(reload, [])
+  useEffect(() => {
+    void getSettings().then((s) => {
+      setSettings(s)
+      setPDay(s.ad_price_day ?? 0)
+      setPWeek(s.ad_price_week ?? 0)
+      setPMonth(s.ad_price_month ?? 0)
+    })
+    reload()
+  }, [])
 
-  const total = useMemo(() => days * Math.max(0, dailyPrice), [days, dailyPrice])
-  const revenue = useMemo(
-    () => ads.reduce((s, a) => s + a.days * Number(a.daily_price || 0), 0),
-    [ads],
-  )
+  const priceFor = (p: Period): number => {
+    if (p === 'day') return settings?.ad_price_day ?? 0
+    if (p === 'week') return settings?.ad_price_week ?? 0
+    return settings?.ad_price_month ?? 0
+  }
+  const currentPrice = priceFor(period)
+
+  const saveRates = async () => {
+    setSavedRates('')
+    const { error } = await updateSettings({
+      ad_price_day: Math.max(0, pDay),
+      ad_price_week: Math.max(0, pWeek),
+      ad_price_month: Math.max(0, pMonth),
+    })
+    if (error) return setSavedRates(error)
+    const s = await getSettings()
+    setSettings(s)
+    setSavedRates('حُفظت الأسعار ✓')
+  }
 
   const pickImage = (f: File | null) => {
     setFile(f)
@@ -74,7 +107,6 @@ export default function AdsManager() {
 
   const submit = async () => {
     if (!file) return setMsg('اختر صورة الإعلان أولاً.')
-    if (days < 1) return setMsg('عدد الأيام يجب أن يكون ١ على الأقل.')
     setBusy(true)
     setMsg('')
     const up = await uploadAdImage(file)
@@ -87,19 +119,17 @@ export default function AdsManager() {
       image_url: up.url,
       link_url: link.trim() || null,
       audience,
-      daily_price: Math.max(0, dailyPrice),
-      days,
+      period,
+      days: PERIOD_DAYS[period],
+      price: currentPrice,
       start_date: startDate,
     })
     setBusy(false)
     if (error) return setMsg(error)
-    // تصفير النموذج
     setFile(null)
     setPreview('')
     setTitle('')
     setLink('')
-    setDailyPrice(0)
-    setDays(7)
     setMsg('نُشر الإعلان ✓')
     reload()
   }
@@ -116,6 +146,53 @@ export default function AdsManager() {
 
   return (
     <div className="space-y-4">
+      {/* بطاقة الأسعار — يحدّدها الأدمن */}
+      <div className="card space-y-3 p-4">
+        <p className="font-bold text-royal">أسعار الإعلان (يحدّدها الأدمن)</p>
+        <p className="text-xs text-ink-muted">
+          المُعلِن يدفع مقدّماً حسب المدة المختارة. عدّل الأسعار متى شئت.
+        </p>
+        <div className="grid grid-cols-3 gap-2">
+          <label className="text-sm">
+            <span className="mb-1 block font-bold text-ink-soft">اليوم</span>
+            <input
+              type="number"
+              min={0}
+              step={500}
+              className="input w-full"
+              value={pDay}
+              onChange={(e) => setPDay(Math.max(0, Number(e.target.value)))}
+            />
+          </label>
+          <label className="text-sm">
+            <span className="mb-1 block font-bold text-ink-soft">الأسبوع</span>
+            <input
+              type="number"
+              min={0}
+              step={500}
+              className="input w-full"
+              value={pWeek}
+              onChange={(e) => setPWeek(Math.max(0, Number(e.target.value)))}
+            />
+          </label>
+          <label className="text-sm">
+            <span className="mb-1 block font-bold text-ink-soft">الشهر</span>
+            <input
+              type="number"
+              min={0}
+              step={500}
+              className="input w-full"
+              value={pMonth}
+              onChange={(e) => setPMonth(Math.max(0, Number(e.target.value)))}
+            />
+          </label>
+        </div>
+        {savedRates && <p className="text-sm font-medium text-green">{savedRates}</p>}
+        <button className="btn-outline w-full" onClick={saveRates}>
+          حفظ الأسعار
+        </button>
+      </div>
+
       {/* نموذج إنشاء إعلان */}
       <div className="card space-y-3 p-4">
         <div className="flex items-center gap-2">
@@ -125,7 +202,7 @@ export default function AdsManager() {
 
         <label className="flex cursor-pointer items-center justify-center gap-2 rounded-2xl border border-dashed border-sand py-6 text-sm font-bold text-ink-soft">
           {preview ? (
-            <img src={preview} alt="معاينة" className="max-h-40 rounded-xl object-contain" />
+            <img src={preview} alt="معاينة" className="max-h-32 rounded-xl object-contain" />
           ) : (
             <>
               <Upload className="h-[18px] w-[18px]" strokeWidth={2} />
@@ -154,68 +231,65 @@ export default function AdsManager() {
           dir="ltr"
         />
 
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-          <label className="text-sm">
-            <span className="mb-1 block font-bold text-ink-soft">الجمهور</span>
-            <select
-              className="input w-full"
-              value={audience}
-              onChange={(e) => setAudience(e.target.value as Audience)}
-            >
-              <option value="all">{AUD_LABEL.all}</option>
-              <option value="customers">{AUD_LABEL.customers}</option>
-              <option value="drivers">{AUD_LABEL.drivers}</option>
-            </select>
-          </label>
-          <label className="text-sm">
-            <span className="mb-1 block font-bold text-ink-soft">تاريخ البدء</span>
-            <input
-              type="date"
-              className="input w-full"
-              value={startDate}
-              onChange={(e) => setStartDate(e.target.value)}
-            />
-          </label>
-          <label className="text-sm">
-            <span className="mb-1 block font-bold text-ink-soft">السعر اليومي (ج.س)</span>
-            <input
-              type="number"
-              min={0}
-              step={500}
-              className="input w-full"
-              value={dailyPrice}
-              onChange={(e) => setDailyPrice(Math.max(0, Number(e.target.value)))}
-            />
-          </label>
-          <label className="text-sm">
-            <span className="mb-1 block font-bold text-ink-soft">عدد الأيام</span>
-            <input
-              type="number"
-              min={1}
-              step={1}
-              className="input w-full"
-              value={days}
-              onChange={(e) => setDays(Math.max(1, Math.floor(Number(e.target.value))))}
-            />
-          </label>
+        {/* أين يظهر */}
+        <label className="text-sm">
+          <span className="mb-1 block font-bold text-ink-soft">أين يظهر</span>
+          <select
+            className="input w-full"
+            value={audience}
+            onChange={(e) => setAudience(e.target.value as Audience)}
+          >
+            <option value="all">{AUD_LABEL.all}</option>
+            <option value="customers">{AUD_LABEL.customers}</option>
+            <option value="drivers">{AUD_LABEL.drivers}</option>
+          </select>
+        </label>
+
+        {/* المدة */}
+        <div>
+          <span className="mb-1 block text-sm font-bold text-ink-soft">المدة</span>
+          <div className="grid grid-cols-3 gap-2">
+            {(['day', 'week', 'month'] as Period[]).map((p) => (
+              <button
+                key={p}
+                type="button"
+                onClick={() => setPeriod(p)}
+                className={`rounded-2xl border py-2.5 text-sm font-bold ${
+                  period === p
+                    ? 'border-royal bg-royal text-white'
+                    : 'border-sand bg-sand-soft/40 text-ink-soft'
+                }`}
+              >
+                {PERIOD_LABEL[p]}
+                <span className="mt-0.5 block text-[11px] font-medium opacity-80">
+                  {money(priceFor(p))}
+                </span>
+              </button>
+            ))}
+          </div>
         </div>
 
+        {/* تاريخ البدء */}
+        <label className="text-sm">
+          <span className="mb-1 block font-bold text-ink-soft">تاريخ البدء</span>
+          <input
+            type="date"
+            className="input w-full"
+            value={startDate}
+            onChange={(e) => setStartDate(e.target.value)}
+          />
+        </label>
+
         <div className="rounded-2xl border border-sand/50 bg-sand-soft/40 p-3 text-sm">
-          الإجمالي المستحقّ:{' '}
-          <span className="font-extrabold text-royal">{money(total)}</span>{' '}
-          <span className="text-ink-muted">({days} يوم × {money(dailyPrice)})</span>
+          يدفع المُعلِن مقدّماً:{' '}
+          <span className="font-extrabold text-royal">{money(currentPrice)}</span>{' '}
+          <span className="text-ink-muted">({PERIOD_LABEL[period]})</span>
         </div>
 
         {msg && <p className="text-sm font-medium text-green">{msg}</p>}
         <button className="btn-primary w-full" disabled={busy} onClick={submit}>
           {busy ? '…' : 'نشر الإعلان'}
         </button>
-      </div>
-
-      {/* إيراد الإعلانات */}
-      <div className="card flex items-center justify-between p-4">
-        <span className="font-bold text-ink-soft">إجمالي إيراد الإعلانات</span>
-        <span className="text-lg font-extrabold text-royal">{money(revenue)}</span>
       </div>
 
       {/* قائمة الإعلانات */}
@@ -248,8 +322,8 @@ export default function AdsManager() {
                     {AUD_LABEL[a.audience]} · {a.start_date} ← {endDate(a)}
                   </p>
                   <p className="mt-0.5 text-[12px] text-ink-soft">
-                    {a.days} يوم × {money(a.daily_price)} ={' '}
-                    <span className="font-bold text-royal">{money(a.days * Number(a.daily_price))}</span>
+                    {a.period ? PERIOD_LABEL[a.period] : `${a.days} يوم`} ·{' '}
+                    <span className="font-bold text-royal">{money(a.price)}</span> (مدفوع مقدّماً)
                   </p>
                   <div className="mt-1.5 flex items-center gap-2">
                     <button

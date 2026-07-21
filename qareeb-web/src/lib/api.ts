@@ -1030,14 +1030,15 @@ export async function listAdBanners(): Promise<AdBanner[]> {
   return (data as AdBanner[]) ?? []
 }
 
-/** ينشئ بنر إعلان جديد. */
+/** ينشئ بنر إعلان جديد (بمدة يوم/أسبوع/شهر وسعر مدفوع مقدّماً). */
 export async function createAdBanner(b: {
   title?: string | null
   image_url: string
   link_url?: string | null
   audience: 'all' | 'customers' | 'drivers'
-  daily_price: number
+  period: 'day' | 'week' | 'month'
   days: number
+  price: number
   start_date?: string
 }): Promise<{ error?: string }> {
   if (!isSupabaseConfigured) return {}
@@ -1046,8 +1047,10 @@ export async function createAdBanner(b: {
     image_url: b.image_url,
     link_url: b.link_url ?? null,
     audience: b.audience,
-    daily_price: b.daily_price,
+    period: b.period,
     days: b.days,
+    price: b.price,
+    daily_price: 0,
     ...(b.start_date ? { start_date: b.start_date } : {}),
   })
   return { error: error?.message }

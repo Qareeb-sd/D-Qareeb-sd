@@ -157,6 +157,9 @@ export interface Settings {
   active_cities?: string[] | null // معرّفات المدن النشطة (يحدّدها الأدمن)؛ null=الافتراضي
   city_vehicles?: Record<string, string[]> | null // أنواع المركبات المتاحة لكل مدينة
   commute_weeks_per_month?: number // أسابيع الشهر لحساب الاشتراك الشهري
+  ad_price_day?: number // سعر الإعلان لليوم (ج.س)
+  ad_price_week?: number // سعر الإعلان للأسبوع (ج.س)
+  ad_price_month?: number // سعر الإعلان للشهر (ج.س)
   updated_at: string
 }
 
@@ -568,6 +571,8 @@ export interface AdBanner {
   audience: 'all' | 'customers' | 'drivers'
   daily_price: number
   days: number
+  price: number // السعر الإجمالي المدفوع مقدّماً
+  period: 'day' | 'week' | 'month' | null
   start_date: string
   active: boolean
   created_at: string

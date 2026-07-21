@@ -15,12 +15,13 @@ export default function AdBanner({ role }: { role: 'customer' | 'driver' }) {
 
   if (!ad) return null
 
+  // شريط قصير بارتفاع ثابت (بحجم بطاقات المركبات) — الصورة تملأ عرضاً وتُقصّ ارتفاعاً.
   const image = (
     <img
       src={ad.image_url}
       alt={ad.title ?? 'إعلان'}
       loading="lazy"
-      className="block w-full rounded-2xl object-cover"
+      className="block h-24 w-full object-cover sm:h-28"
     />
   )
 
