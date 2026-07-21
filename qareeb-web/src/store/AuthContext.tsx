@@ -8,6 +8,7 @@ import {
 import type { Session } from '@supabase/supabase-js'
 import { supabase, isSupabaseConfigured } from '@/lib/supabase'
 import { registerPush, unregisterPush } from '@/lib/pushNative'
+import { refreshPushSubscription } from '@/lib/push'
 import type { AppUser } from '@/lib/types'
 
 interface AuthValue {
@@ -109,7 +110,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // تسجيل رمز FCM عند توفّر المستخدم (عميل/سائق) ليبقى محفوظاً فتصله إشعارات
   // الاعتماد وغيرها حتى والتطبيق مغلق. لا أثر على الويب/الأدمن (يتحمّله بهدوء).
   useEffect(() => {
-    if (profile?.id) void registerPush(profile.id)
+    if (profile?.id) {
+      void registerPush(profile.id) // FCM الأصلي (تطبيق أندرويد)
+      void refreshPushSubscription(profile.id) // إصلاح اشتراك المتصفّح بعد تدوير مفاتيح VAPID
+    }
   }, [profile?.id])
 
   const value: AuthValue = {
