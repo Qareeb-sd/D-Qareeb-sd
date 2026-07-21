@@ -1760,8 +1760,8 @@ export default function AdminDashboard() {
 
   return (
     <div dir="rtl" className="flex min-h-screen bg-bg text-ink">
-      {/* تنبيه منبثق عند وصول طلب جديد */}
-      {toast && (
+      {/* تنبيه منبثق عند وصول طلب جديد (لمن يملك صلاحية الطلبات فقط) */}
+      {toast && (access.is_admin || access.perms.includes('requests')) && (
         <button
           onClick={() => {
             setTab('requests')
@@ -1866,18 +1866,20 @@ export default function AdminDashboard() {
           <h1 className="flex-1 text-lg font-extrabold text-green">
             {activeTab?.label ?? 'لوحة التحكم'}
           </h1>
-          <button
-            onClick={() => setTab('requests')}
-            title="الطلبات المعلّقة"
-            className="relative grid h-9 w-9 place-items-center rounded-full bg-green-soft text-green"
-          >
-            <Bell className="h-5 w-5" strokeWidth={1.8} />
-            {pendingCount > 0 && (
-              <span className="absolute -left-1 -top-1 grid h-5 min-w-5 place-items-center rounded-full bg-danger px-1 text-[10px] font-extrabold text-white">
-                {pendingCount}
-              </span>
-            )}
-          </button>
+          {(access.is_admin || access.perms.includes('requests')) && (
+            <button
+              onClick={() => setTab('requests')}
+              title="الطلبات المعلّقة"
+              className="relative grid h-9 w-9 place-items-center rounded-full bg-green-soft text-green"
+            >
+              <Bell className="h-5 w-5" strokeWidth={1.8} />
+              {pendingCount > 0 && (
+                <span className="absolute -left-1 -top-1 grid h-5 min-w-5 place-items-center rounded-full bg-danger px-1 text-[10px] font-extrabold text-white">
+                  {pendingCount}
+                </span>
+              )}
+            </button>
+          )}
         </header>
 
       <main className="mx-auto w-full max-w-6xl flex-1 space-y-4 p-4 md:p-6">
@@ -2440,7 +2442,7 @@ export default function AdminDashboard() {
             )
           })()}
 
-        {tab === 'requests' && (
+        {tab === 'requests' && (access.is_admin || access.perms.includes('requests')) && (
           <>
             {/* طلبات التعبئة */}
             <div className="card p-4">

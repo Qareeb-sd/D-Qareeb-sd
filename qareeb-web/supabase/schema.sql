@@ -696,7 +696,7 @@ returns table (
   wallet_liability    numeric    -- مجموع أرصدة كل المحافظ
 ) language plpgsql stable security definer set search_path = public as $$
 begin
-  if not public.is_staff_or_admin() then raise exception 'غير مصرّح'; end if;
+  if not public.is_admin() then raise exception 'غير مصرّح'; end if;
   return query
     select
       coalesce(-sum(t.amount) filter (where t.type = 'commission'), 0),
@@ -2193,7 +2193,7 @@ create or replace function public.admin_analytics()
 returns jsonb language plpgsql security definer set search_path = public as $$
 declare v jsonb; tz text := 'Africa/Khartoum';
 begin
-  if not public.is_staff_or_admin() then raise exception 'غير مصرّح'; end if;
+  if not public.is_admin() then raise exception 'غير مصرّح'; end if;
   select jsonb_build_object(
     'completedCount', (select count(*) from public.rides where status = 'completed'),
     'revenue', (select coalesce(round(sum(fare)), 0) from public.rides where status = 'completed'),
@@ -4383,7 +4383,7 @@ create or replace function public.admin_deep_analytics(p_days int default 30)
 returns jsonb language plpgsql security definer set search_path = public as $$
 declare v jsonb; tz text := 'Africa/Khartoum';
 begin
-  if not public.is_staff_or_admin() then raise exception 'غير مصرّح'; end if;
+  if not public.is_admin() then raise exception 'غير مصرّح'; end if;
   select jsonb_build_object(
     -- توزّع الطلبات على ساعات اليوم (0..23) خلال المدّة.
     'peakHours', (
@@ -5228,7 +5228,7 @@ returns table (
   wallet_liability    numeric
 ) language plpgsql stable security definer set search_path = public as $$
 begin
-  if not public.is_staff_or_admin() then raise exception 'غير مصرّح'; end if;
+  if not public.is_admin() then raise exception 'غير مصرّح'; end if;
   return query
     select
       coalesce(-sum(t.amount) filter (where t.type = 'commission'), 0),
@@ -6103,16 +6103,23 @@ grant execute on function public.list_available_rides() to authenticated;
 create or replace function public.accept_ride(p_ride uuid)
 returns boolean language plpgsql security definer set search_path = public as $$
 declare v_status ride_status; v_driver uuid; v_pkg boolean; v_inter boolean; v_service text; v_vtype text;
+        v_payment text; v_prepaid boolean;
 begin
   if exists (select 1 from public.drivers where user_id = auth.uid()
        and (suspended or (frozen_until is not null and frozen_until > now()))) then
     raise exception 'حسابك موقوف/مجمّد عن العمل — تواصل مع الإدارة';
   end if;
 
-  select status, driver_id, is_package, intercity, service_id
-    into v_status, v_driver, v_pkg, v_inter, v_service
+  select status, driver_id, is_package, intercity, service_id, payment_method, prepaid
+    into v_status, v_driver, v_pkg, v_inter, v_service, v_payment, v_prepaid
     from public.rides where id = p_ride for update;
   if v_status is null then raise exception 'الرحلة غير موجودة'; end if;
+
+  -- المحفظة تُدفع مسبقاً قبل الإرسال — لا تُقبل رحلة محفظة غير مدفوعة (تحمي السائق
+  -- من عملٍ بلا مقابل إن فشل الدفع المسبق لدى العميل بسبب انقطاع الشبكة).
+  if v_payment = 'wallet' and not coalesce(v_prepaid, false) then
+    raise exception 'الرحلة غير مدفوعة بعد — بانتظار دفع العميل';
+  end if;
 
   -- مطابقة نوع مركبة السائق مع فئة الطلب.
   select vehicle_type into v_vtype from public.drivers where user_id = auth.uid();
