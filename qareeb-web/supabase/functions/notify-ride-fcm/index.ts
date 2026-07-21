@@ -82,10 +82,26 @@ async function accessToken(sa: ServiceAccount): Promise<string> {
 
 Deno.serve(async (req) => {
   if (req.method !== 'POST') return json({ error: 'method not allowed' }, 405)
-  if (WEBHOOK_SECRET && req.headers.get('x-webhook-secret') !== WEBHOOK_SECRET) {
-    // يُسمح أيضاً بالاستدعاء من العميل المصدَّق (JWT) — لا نُلزم السرّ إن لم يُضبط.
-  }
   if (!SERVICE_ACCOUNT_RAW) return json({ error: 'FCM not configured' }, 500)
+
+  // حراسة: يُسمح إمّا بالسرّ المشترك (استدعاء خادمي/مشغّل)، أو بمستخدم مصدَّق فعلاً
+  // (العميل يستدعيها بعد إنشاء رحلته عبر functions.invoke الذي يحمل JWT جلسته).
+  // نرفض أي استدعاء مجهول بمفتاح anon فقط — كان الحارس السابق فارغاً بلا رفض.
+  const secretOk = Boolean(WEBHOOK_SECRET) && req.headers.get('x-webhook-secret') === WEBHOOK_SECRET
+  if (!secretOk) {
+    const jwt = (req.headers.get('authorization') ?? '').replace(/^Bearer\s+/i, '')
+    let userOk = false
+    if (jwt) {
+      try {
+        const auth = createClient(SUPABASE_URL, SERVICE_ROLE)
+        const { data } = await auth.auth.getUser(jwt)
+        userOk = Boolean(data.user?.id)
+      } catch {
+        userOk = false
+      }
+    }
+    if (!userOk) return json({ error: 'unauthorized' }, 401)
+  }
 
   let ride_id: string | undefined
   try {

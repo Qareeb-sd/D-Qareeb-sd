@@ -32,7 +32,7 @@ jobs:
 
       - name: نشر دوال الإشعارات
         run: |
-          for fn in notify-drivers notify-admins; do
+          for fn in notify-drivers notify-admins notify-ride-fcm notify-user-fcm; do
             echo "→ نشر $fn"
             supabase functions deploy "$fn" \
               --project-ref "$PROJECT_REF" \

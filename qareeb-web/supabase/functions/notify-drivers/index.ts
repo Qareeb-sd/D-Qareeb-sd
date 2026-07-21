@@ -76,7 +76,7 @@ async function vapidAuth(endpoint: string, key: CryptoKey): Promise<string> {
 }
 
 Deno.serve(async (req) => {
-  if (WEBHOOK_SECRET && req.headers.get('x-webhook-secret') !== WEBHOOK_SECRET) {
+  if (!WEBHOOK_SECRET || req.headers.get('x-webhook-secret') !== WEBHOOK_SECRET) {
     return json({ error: 'unauthorized' }, 401)
   }
   if (!VAPID_PUBLIC || !VAPID_PRIVATE) return json({ error: 'VAPID keys missing' }, 500)

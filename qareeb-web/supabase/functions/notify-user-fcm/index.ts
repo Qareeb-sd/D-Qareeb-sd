@@ -16,6 +16,7 @@ import { createClient } from 'jsr:@supabase/supabase-js@2'
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!
 const SERVICE_ROLE = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
 const SERVICE_ACCOUNT_RAW = Deno.env.get('FCM_SERVICE_ACCOUNT') ?? ''
+const WEBHOOK_SECRET = Deno.env.get('WEBHOOK_SECRET') ?? ''
 
 const json = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } })
@@ -101,6 +102,17 @@ Deno.serve(async (req) => {
     payload = await req.json()
   } catch {
     return json({ error: 'bad body' }, 400)
+  }
+
+  // حراسة: المساران الآمنان (topup_id/withdrawal_id) يصيغ الخادم محتواهما ويشتقّ
+  // المستلِم (مالك السجلّ)، فيُسمح بهما للعميل. أمّا البثّ الجماعي (audience) أو
+  // الإشعار الحرّ (user_id/title/body عشوائيان) فيُنتحَلان للتصيّد/السبام — نحرسهما
+  // بالسرّ المشترك ونرفض إن لم يُضبط (fail-closed).
+  const isDerived = Boolean(payload.topup_id || payload.withdrawal_id)
+  if (!isDerived) {
+    if (!WEBHOOK_SECRET || req.headers.get('x-webhook-secret') !== WEBHOOK_SECRET) {
+      return json({ error: 'unauthorized' }, 401)
+    }
   }
 
   const sa = JSON.parse(SERVICE_ACCOUNT_RAW) as ServiceAccount
