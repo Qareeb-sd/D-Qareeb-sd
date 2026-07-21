@@ -586,10 +586,10 @@ export default function AdminDashboard() {
     // نوقف الاستقصاء عندما تكون اللوحة في الخلفية (تبويب مخفي) — يوفّر ضغط الشبكة
     // والخادم طوال ساعات العمل، ويستأنف فور عودة الأدمن للتبويب.
     const active = () => typeof document === 'undefined' || !document.hidden
-    // الطلبات المعلّقة: استقصاء كل ١٢ ثانية (كافٍ لظهور الطلب الجديد) — أخفّ على الخادم.
+    // الطلبات المعلّقة: استقصاء كل ٦ ثوانٍ كضمانةٍ موثوقة إن تعذّر Realtime — خفيف.
     const ivFast = setInterval(() => {
       if (active()) void refreshPending()
-    }, 12000)
+    }, 6000)
     // الإحصاءات والملخّص المالي أثقل → استقصاء أبطأ (٣٠ ثانية).
     const ivSlow = setInterval(() => {
       if (!active()) return
@@ -608,6 +608,8 @@ export default function AdminDashboard() {
       if (active()) void refreshPending()
     }
     document.addEventListener('visibilitychange', onVisible)
+    // العودة للتطبيق (نقر الإشعار أو تبديل التطبيقات على الجوال) → تحديث فوري.
+    window.addEventListener('focus', onVisible)
     // Realtime عند توفّره = تحديث فوري (يمرّ عبر نفس refreshPending فلا تنبيه مكرّر).
     const unTopup = subscribeToTopups(() => void refreshPending())
     const unApp = subscribeToDriverApplications(() => void refreshPending())
@@ -616,6 +618,7 @@ export default function AdminDashboard() {
       clearInterval(ivFast)
       clearInterval(ivSlow)
       document.removeEventListener('visibilitychange', onVisible)
+      window.removeEventListener('focus', onVisible)
       unTopup()
       unApp()
     }
