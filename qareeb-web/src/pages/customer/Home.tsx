@@ -16,6 +16,7 @@ import {
   type DriverWarning,
 } from '@/lib/api'
 import { isServedLocation } from '@/lib/serviceArea'
+import AdBanner from '@/components/AdBanner'
 import type { Announcement, Settings } from '@/lib/types'
 import { currentPeriod } from '@/lib/pricing'
 import { money } from '@/lib/format'
@@ -244,6 +245,9 @@ export default function Home() {
         <div className="rounded-t-[28px] bg-white px-5 pb-4 pt-3 shadow-soft">
           {/* مقبض ذهبي */}
           <div className="mx-auto mb-4 h-1 w-10 rounded-full bg-sand/60" />
+
+          {/* بنر إعلان مدفوع (صورة من الأدمن) */}
+          <AdBanner role="customer" />
 
           {/* إعلان من قريب */}
           {announcement && (

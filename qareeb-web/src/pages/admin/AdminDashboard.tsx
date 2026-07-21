@@ -35,6 +35,7 @@ import {
   Trash2,
   MessageSquare,
   Bus,
+  Images,
   type LucideIcon,
 } from 'lucide-react'
 import Logo from '@/components/Logo'
@@ -53,6 +54,7 @@ import { services } from '@/data/services'
 import { money, num, memberCode } from '@/lib/format'
 import { useAuth } from '@/store/AuthContext'
 import NotificationToggle from '@/components/NotificationToggle'
+import AdsManager from './AdsManager'
 import {
   getAdminStats,
   getSettings,
@@ -188,6 +190,7 @@ type Tab =
   | 'drivers'
   | 'customers'
   | 'announcements'
+  | 'ads'
   | 'support'
   | 'rides'
   | 'complaints'
@@ -234,6 +237,7 @@ const tabs: {
   { id: 'complaints', label: 'الشكاوى', perm: 'requests', group: 'ops', Icon: Flag },
   { id: 'support', label: 'الدعم', perm: 'requests', group: 'ops', Icon: MessageSquare },
   { id: 'announcements', label: 'الإشعارات', perm: 'requests', group: 'ops', Icon: Megaphone },
+  { id: 'ads', label: 'الإعلانات المدفوعة', perm: 'requests', group: 'ops', Icon: Images },
 
   { id: 'drivers', label: 'السائقون', perm: 'drivers', group: 'people', Icon: Car },
   { id: 'customers', label: 'العملاء', perm: 'drivers', group: 'people', Icon: Users },
@@ -2965,6 +2969,8 @@ export default function AdminDashboard() {
             )}
           </div>
         )}
+
+        {tab === 'ads' && <AdsManager />}
 
         {tab === 'announcements' && (
           <div className="space-y-4">

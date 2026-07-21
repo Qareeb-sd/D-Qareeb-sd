@@ -6,6 +6,7 @@ import { haversineKm } from '@/lib/pricing'
 import Logo from '@/components/Logo'
 import DriverNav from '@/components/DriverNav'
 import VehicleImage from '@/components/VehicleImage'
+import AdBanner from '@/components/AdBanner'
 import { useAuth } from '@/store/AuthContext'
 import { useDriver } from '@/store/DriverContext'
 import {
@@ -353,6 +354,9 @@ export default function DriverHome() {
       </header>
 
       <main className="flex-1 px-4 pt-4 pb-24">
+        {/* بنر إعلان مدفوع (صورة من الأدمن) */}
+        <AdBanner role="driver" />
+
         {/* إعلان من قريب */}
         {announcement && (
           <div className="mb-4 rounded-2xl border border-royal/15 bg-royal-soft p-3.5">

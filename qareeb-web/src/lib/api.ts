@@ -11,6 +11,7 @@ import type {
   ServicePricing,
   Complaint,
   Announcement,
+  AdBanner,
   SosAlert,
   SosRole,
   StaffRow,
@@ -1005,14 +1006,104 @@ export async function listAnnouncements(limit = 20): Promise<Announcement[]> {
   return (data as Announcement[]) ?? []
 }
 
-/** إعلانات تخصّ المستخدم حسب دوره (للافتة داخل التطبيق). */
+// ---------- بنرات الإعلانات المدفوعة ----------
+/** يرفع صورة بنر إعلان إلى مخزن عام ويعيد رابطها المباشر. */
+export async function uploadAdImage(file: File): Promise<{ url?: string; error?: string }> {
+  if (!isSupabaseConfigured) return { error: 'قاعدة البيانات غير مضبوطة' }
+  const ext = (file.name.split('.').pop() || 'jpg').toLowerCase()
+  const path = `ads/${Date.now()}.${ext}`
+  const { error } = await supabase.storage
+    .from('vehicles')
+    .upload(path, file, { upsert: true, contentType: file.type || 'image/jpeg' })
+  if (error) return { error: error.message }
+  const { data } = supabase.storage.from('vehicles').getPublicUrl(path)
+  return { url: data.publicUrl }
+}
+
+/** كل البنرات (للأدمن) — سارية ومنتهية. */
+export async function listAdBanners(): Promise<AdBanner[]> {
+  if (!isSupabaseConfigured) return []
+  const { data } = await supabase
+    .from('ad_banners')
+    .select('*')
+    .order('created_at', { ascending: false })
+  return (data as AdBanner[]) ?? []
+}
+
+/** ينشئ بنر إعلان جديد. */
+export async function createAdBanner(b: {
+  title?: string | null
+  image_url: string
+  link_url?: string | null
+  audience: 'all' | 'customers' | 'drivers'
+  daily_price: number
+  days: number
+  start_date?: string
+}): Promise<{ error?: string }> {
+  if (!isSupabaseConfigured) return {}
+  const { error } = await supabase.from('ad_banners').insert({
+    title: b.title ?? null,
+    image_url: b.image_url,
+    link_url: b.link_url ?? null,
+    audience: b.audience,
+    daily_price: b.daily_price,
+    days: b.days,
+    ...(b.start_date ? { start_date: b.start_date } : {}),
+  })
+  return { error: error?.message }
+}
+
+/** تفعيل/إيقاف بنر. */
+export async function setAdBannerActive(id: string, active: boolean): Promise<{ error?: string }> {
+  if (!isSupabaseConfigured) return {}
+  const { error } = await supabase.from('ad_banners').update({ active }).eq('id', id)
+  return { error: error?.message }
+}
+
+/** حذف بنر. */
+export async function deleteAdBanner(id: string): Promise<{ error?: string }> {
+  if (!isSupabaseConfigured) return {}
+  const { error } = await supabase.from('ad_banners').delete().eq('id', id)
+  return { error: error?.message }
+}
+
+/** البنر النشط الساري لدور المستخدم (لعرضه في الرئيسية) — أحدث واحد. */
+export async function getActiveAdBanner(role: 'customer' | 'driver'): Promise<AdBanner | null> {
+  if (!isSupabaseConfigured) return null
+  const aud = role === 'customer' ? ['customers', 'all'] : ['drivers', 'all']
+  const today = new Date().toISOString().slice(0, 10)
+  const { data } = await supabase
+    .from('ad_banners')
+    .select('*')
+    .eq('active', true)
+    .in('audience', aud)
+    .lte('start_date', today)
+    .order('created_at', { ascending: false })
+    .limit(10)
+  const list = (data as AdBanner[]) ?? []
+  // نتأكّد أنّ المدة لم تنتهِ (start_date + days > اليوم) — احترازاً لو رأى الطاقم الكل.
+  const running = list.filter((a) => {
+    const end = new Date(a.start_date)
+    end.setDate(end.getDate() + a.days)
+    return end > new Date(today)
+  })
+  return running[0] ?? null
+}
+
+/**
+ * إعلانات تخصّ المستخدم حسب دوره (للافتة داخل التطبيق).
+ * نعرض الحديثة فقط (آخر ٤ أيام) حتى لا تعود إعلانات قديمة للظهور بعد إعادة تثبيت
+ * التطبيق (الذي يمسح تعليم «مقروء» المحلّي) — الإعلان رسالة لحظية لا أرشيف دائم.
+ */
 export async function getMyAnnouncements(role: 'customer' | 'driver'): Promise<Announcement[]> {
   if (!isSupabaseConfigured) return []
   const aud = role === 'customer' ? ['customers', 'all'] : ['drivers', 'all']
+  const cutoff = new Date(Date.now() - 4 * 24 * 60 * 60 * 1000).toISOString()
   const { data } = await supabase
     .from('announcements')
     .select('*')
     .in('audience', aud)
+    .gte('created_at', cutoff)
     .order('created_at', { ascending: false })
     .limit(5)
   return (data as Announcement[]) ?? []

@@ -560,6 +560,19 @@ export interface Announcement {
   created_at: string
 }
 
+export interface AdBanner {
+  id: string
+  title: string | null
+  image_url: string
+  link_url: string | null
+  audience: 'all' | 'customers' | 'drivers'
+  daily_price: number
+  days: number
+  start_date: string
+  active: boolean
+  created_at: string
+}
+
 export interface AdminCustomer {
   id: string
   full_name: string | null
