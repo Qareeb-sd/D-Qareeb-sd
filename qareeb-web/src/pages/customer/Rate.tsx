@@ -3,14 +3,16 @@ import { useNavigate } from 'react-router-dom'
 import { Star, CheckCircle2, Flag, ShieldAlert } from 'lucide-react'
 import Screen from '@/components/Screen'
 import { useRide } from '@/store/RideContext'
+import { useAuth } from '@/store/AuthContext'
 import { getService } from '@/data/services'
-import { submitReview, getRideDriver, type RideDriverInfo } from '@/lib/api'
+import { submitReview, getRideDriver, getPendingRateRide, type RideDriverInfo } from '@/lib/api'
 import { money } from '@/lib/format'
 
 /** تقييم الرحلة + تحقّق مطابقة السائق/المركبة + شكوى اختيارية + إيصال. */
 export default function Rate() {
   const navigate = useNavigate()
-  const { rideId, serviceId, dropoff, payment, fare, reset } = useRide()
+  const { rideId, serviceId, dropoff, payment, fare, reset, restore } = useRide()
+  const { profile } = useAuth()
   const service = serviceId ? getService(serviceId) : undefined
   const total = fare ?? 0
   const [stars, setStars] = useState(5)
@@ -26,6 +28,18 @@ export default function Rate() {
   const [comment, setComment] = useState('')
   const toggleTag = (t: string) =>
     setTags((cur) => (cur.includes(t) ? cur.filter((x) => x !== t) : [...cur, t]))
+
+  // استرجاع الرحلة إن فُقد سياقها (تحديث الصفحة/فتح بارد) — حتى لا يضيع التقييم.
+  const [recovering, setRecovering] = useState(false)
+  useEffect(() => {
+    if (rideId || !profile?.id) return
+    setRecovering(true)
+    void getPendingRateRide(profile.id)
+      .then((r) => {
+        if (r) restore(r)
+      })
+      .finally(() => setRecovering(false))
+  }, [rideId, profile?.id, restore])
 
   useEffect(() => {
     if (!rideId) return
@@ -173,8 +187,8 @@ export default function Rate() {
         </p>
       )}
 
-      <button className="btn-primary mt-6 w-full" onClick={finish} disabled={busy}>
-        {busy ? '…' : 'تم'}
+      <button className="btn-primary mt-6 w-full" onClick={finish} disabled={busy || recovering}>
+        {busy || recovering ? '…' : 'تم'}
       </button>
       {err && (
         <button className="mt-2 w-full py-2 text-center text-sm text-ink-muted" onClick={skip}>

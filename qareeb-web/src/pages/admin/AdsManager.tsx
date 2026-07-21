@@ -23,21 +23,35 @@ const AUD_LABEL: Record<Audience, string> = {
 const PERIOD_LABEL: Record<Period, string> = { day: 'يوم', week: 'أسبوع', month: 'شهر' }
 const PERIOD_DAYS: Record<Period, number> = { day: 1, week: 7, month: 30 }
 
-/** حالة البنر حسب التواريخ والتفعيل. */
+/** تاريخ اليوم المحلّي (YYYY-MM-DD) — نفس إطار حقل التاريخ الذي يملؤه الأدمن. */
+function localToday(): string {
+  const d = new Date()
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(
+    d.getDate(),
+  ).padStart(2, '0')}`
+}
+/** يحوّل YYYY-MM-DD إلى تاريخ منتصف الليل محلّياً (تفادياً لانزياح UTC). */
+function localDate(s: string): Date {
+  return new Date(`${s}T00:00:00`)
+}
+
+/** حالة البنر حسب التواريخ والتفعيل — كلّها بالتوقيت المحلّي لتفادي فرق ساعتين. */
 function statusOf(a: AdBanner): { label: string; color: string } {
   if (!a.active) return { label: 'موقوف', color: '#8A8A8A' }
-  const today = new Date(new Date().toISOString().slice(0, 10))
-  const start = new Date(a.start_date)
-  const end = new Date(a.start_date)
+  const today = localDate(localToday())
+  const start = localDate(a.start_date)
+  const end = localDate(a.start_date)
   end.setDate(end.getDate() + a.days)
   if (today < start) return { label: 'مجدول', color: '#A88528' }
   if (today >= end) return { label: 'منتهٍ', color: '#B23A48' }
   return { label: 'نشط', color: '#1B6B3F' }
 }
 function endDate(a: AdBanner): string {
-  const end = new Date(a.start_date)
+  const end = localDate(a.start_date)
   end.setDate(end.getDate() + a.days)
-  return end.toISOString().slice(0, 10)
+  return `${end.getFullYear()}-${String(end.getMonth() + 1).padStart(2, '0')}-${String(
+    end.getDate(),
+  ).padStart(2, '0')}`
 }
 
 /** إدارة بنرات الإعلانات المدفوعة (صورة + رابط + مدة يوم/أسبوع/شهر بسعر ثابت). */
@@ -101,12 +115,17 @@ export default function AdsManager() {
   }
 
   const pickImage = (f: File | null) => {
+    // نُحرّر رابط المعاينة السابق لتفادي تسريب الذاكرة عند تكرار الاختيار.
+    if (preview) URL.revokeObjectURL(preview)
     setFile(f)
     setPreview(f ? URL.createObjectURL(f) : '')
   }
 
   const submit = async () => {
     if (!file) return setMsg('اختر صورة الإعلان أولاً.')
+    if (currentPrice <= 0) {
+      return setMsg('سعر هذه المدة صفر — حدّد أسعار الإعلان أولاً في الأعلى.')
+    }
     setBusy(true)
     setMsg('')
     const up = await uploadAdImage(file)
@@ -126,6 +145,7 @@ export default function AdsManager() {
     })
     setBusy(false)
     if (error) return setMsg(error)
+    if (preview) URL.revokeObjectURL(preview)
     setFile(null)
     setPreview('')
     setTitle('')

@@ -69,15 +69,18 @@ export const PERIOD_LABEL: Record<Period, string> = {
 }
 
 /** الفترة الحالية حسب توقيت الخرطوم (UTC+2). */
-export function currentPeriod(now: Date = new Date()): Period {
-  const utcMs = now.getTime() + now.getTimezoneOffset() * 60000
-  const kh = new Date(utcMs + 2 * 3600000)
-  const h = kh.getHours()
-  const m = kh.getMinutes()
+/** فترة التسعير من ساعة ودقيقة — مصدر واحد للحدود يشترك فيه الطلب الفوري والترحيل. */
+export function periodFor(h: number, m: number): Period {
   if (h < 6) return 'night' // 00:00–05:59
   if (h < 14) return 'morning' // 06:00–13:59
   if (h < 17 || (h === 17 && m === 0)) return 'afternoon' // 14:00–17:00
   return 'evening' // 17:01–23:59
+}
+
+export function currentPeriod(now: Date = new Date()): Period {
+  const utcMs = now.getTime() + now.getTimezoneOffset() * 60000
+  const kh = new Date(utcMs + 2 * 3600000)
+  return periodFor(kh.getHours(), kh.getMinutes())
 }
 
 /** يحسب الأجرة بنموذج الفترات: حدّ أدنى فقط + تقريب لأقرب 100. */

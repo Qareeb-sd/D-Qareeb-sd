@@ -7,6 +7,7 @@ import { subscribeToRide } from '@/lib/realtime'
 import { cancelRide, getRide } from '@/lib/api'
 import CancelReasonSheet, { type CancelReason } from '@/components/CancelReasonSheet'
 import { notify } from '@/lib/notifications'
+import { money } from '@/lib/format'
 import { isSupabaseConfigured } from '@/lib/supabase'
 
 /**
@@ -31,15 +32,22 @@ export default function FindDriver() {
   const cancel = async (reason: CancelReason) => {
     setBusy(true)
     setCancelErr('')
-    // قبل قبول السائق لا رسوم إطلاقاً.
+    // قبل قبول السائق لا رسوم عادةً، لكن قد يقبل سائقٌ في نفس اللحظة فتُطبَّق رسوم —
+    // نفحص النتيجة ونُعلم العميل قبل المغادرة (كما في شاشة الرحلة).
     if (rideId) {
-      const { error } = await cancelRide(rideId, reason.label, reason.code)
+      const { result, error } = await cancelRide(rideId, reason.label, reason.code)
       if (error) {
         // فشل الإلغاء (شبكة مثلاً) → لا نغادر، فالرحلة قد تبقى قابلة للقبول.
         setBusy(false)
         setConfirmCancel(false)
         setCancelErr('تعذّر إلغاء الطلب، تأكّد من اتصالك وحاول مجدداً.')
         return
+      }
+      if (result && (result.charged > 0 || result.debt > 0)) {
+        const parts: string[] = []
+        if (result.charged > 0) parts.push(`خُصم ${money(result.charged)} من محفظتك`)
+        if (result.debt > 0) parts.push(`${money(result.debt)} تُضاف لأجرة رحلتك القادمة`)
+        alert(`تم إلغاء الطلب — ${parts.join(' و')} (قبِل سائقٌ لحظة الإلغاء).`)
       }
     }
     reset()

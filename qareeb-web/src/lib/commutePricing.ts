@@ -4,15 +4,12 @@
  *   ×2 إن كان ذهاباً وإياباً (رحلتان)، ثم × (1 − الخصم)، مقرّبة لأقرب 100.
  *   الإجمالي الشهري = الأجرة اليومية × أيام الأسبوع × أسابيع الشهر.
  */
-import { computeFare, estimateRoute, type PeriodRate, type Period } from './pricing'
+import { computeFare, estimateRoute, periodFor, type PeriodRate, type Period } from './pricing'
 
-/** فترة التسعير من وقت «HH:MM» (نفس حدود currentPeriod). */
+/** فترة التسعير من وقت «HH:MM» — نفس حدود currentPeriod تماماً (بما فيها 17:00). */
 export function periodFromTime(hhmm: string): Period {
-  const h = Number((hhmm || '07:00').split(':')[0])
-  if (h < 6) return 'night'
-  if (h < 14) return 'morning'
-  if (h < 17) return 'afternoon'
-  return 'evening'
+  const [hs, ms] = (hhmm || '07:00').split(':')
+  return periodFor(Number(hs) || 0, Number(ms) || 0)
 }
 
 /** أجرة راكب واحد لليوم = سعر المشوار العادي (×2 إن ذهاباً وإياباً) ناقص خصم الترحيل. */

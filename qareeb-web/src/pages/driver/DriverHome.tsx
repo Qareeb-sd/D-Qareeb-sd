@@ -581,8 +581,8 @@ export default function DriverHome() {
 
                   <button
                     onClick={() => accept(r)}
-                    disabled={busyId === r.id}
-                    className="btn-driver mt-3 w-full"
+                    disabled={busyId !== null}
+                    className="btn-driver mt-3 w-full disabled:opacity-60"
                   >
                     {busyId === r.id ? '…' : 'قبول الطلب'}
                   </button>
