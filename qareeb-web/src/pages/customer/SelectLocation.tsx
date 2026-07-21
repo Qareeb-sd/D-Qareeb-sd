@@ -468,6 +468,11 @@ export default function SelectLocation() {
     if (!isServedLocation(pickupPos, settings)) {
       return alert('الخدمة غير متوفّرة في هذه المنطقة حالياً — «قريب» يعمل في مدن محدّدة.')
     }
+    // وجهة التوصيل إلزامية بإحداثيات حقيقية — وإلا وصل السائق لطلب «بلا موقع».
+    // (نمنع الاعتماد على الوجهة الافتراضية للخريطة إن لم يخترها العميل فعلاً.)
+    if (isPackage && !dropoffSet) {
+      return alert('حدّد موقع تسليم الطرد على الخريطة أو ابحث عنه أولاً.')
+    }
     // توصيل طرد: اسم وهاتف المستلِم إلزاميان قبل الطلب.
     if (isPackage) {
       if (!recipientName.trim() || !recipientPhone.trim()) {
