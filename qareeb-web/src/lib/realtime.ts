@@ -1,31 +1,60 @@
 import { supabase, isSupabaseConfigured } from './supabase'
+import type { RealtimeChannel } from '@supabase/supabase-js'
 import type { Ride, RideMessage } from './types'
 
 export type Unsubscribe = () => void
 
 /**
- * اشتراكات Realtime على جدول الرحلات (Supabase Realtime).
- * تتطلّب تفعيل النشر على الجدول (انظر supabase/schema.sql).
- * في وضع المعاينة (بدون مفاتيح) تُرجع دالة إلغاء فارغة.
+ * اشتراكات Realtime على Supabase — تتطلّب تفعيل النشر على الجداول (schema.sql).
+ * في وضع المعاينة (بلا مفاتيح) تُرجع دالة إلغاء فارغة.
+ *
+ * كل قناة تُبنى عبر makeChannel التي تُعيد الاشتراك تلقائياً عند سقوط الاتصال
+ * (شبكة ضعيفة/انقطاع WebSocket — شائع في السودان) بدل أن تبقى القناة ميّتة صامتة.
  */
+function makeChannel(
+  name: string,
+  build: (ch: RealtimeChannel) => RealtimeChannel,
+): Unsubscribe {
+  if (!isSupabaseConfigured) return () => {}
+  let closed = false
+  let current: RealtimeChannel | null = null
+  let retry: ReturnType<typeof setTimeout> | undefined
+
+  const connect = () => {
+    const ch = build(supabase.channel(name))
+    current = ch
+    ch.subscribe((status) => {
+      // نتجاهل تحديثات قناة قديمة أو بعد الإغلاق المتعمّد.
+      if (closed || current !== ch) return
+      if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
+        clearTimeout(retry)
+        retry = setTimeout(() => {
+          if (closed || current !== ch) return
+          void supabase.removeChannel(ch)
+          connect()
+        }, 3000)
+      }
+    })
+  }
+  connect()
+
+  return () => {
+    closed = true
+    clearTimeout(retry)
+    if (current) void supabase.removeChannel(current)
+  }
+}
 
 /** يستمع لتغيّرات رحلة محدّدة (قبول / وصول / إكمال / إلغاء). */
-export function subscribeToRide(
-  rideId: string,
-  onChange: (ride: Ride) => void,
-): Unsubscribe {
-  if (!isSupabaseConfigured || !rideId) return () => {}
-  const channel = supabase
-    .channel(`ride:${rideId}`)
-    .on(
+export function subscribeToRide(rideId: string, onChange: (ride: Ride) => void): Unsubscribe {
+  if (!rideId) return () => {}
+  return makeChannel(`ride:${rideId}`, (ch) =>
+    ch.on(
       'postgres_changes',
       { event: 'UPDATE', schema: 'public', table: 'rides', filter: `id=eq.${rideId}` },
       (payload) => onChange(payload.new as Ride),
-    )
-    .subscribe()
-  return () => {
-    void supabase.removeChannel(channel)
-  }
+    ),
+  )
 }
 
 /** يستمع لرسائل المحادثة الجديدة داخل رحلة محدّدة. */
@@ -33,121 +62,74 @@ export function subscribeToRideMessages(
   rideId: string,
   onInsert: (msg: RideMessage) => void,
 ): Unsubscribe {
-  if (!isSupabaseConfigured || !rideId) return () => {}
-  const channel = supabase
-    .channel(`ride-chat:${rideId}`)
-    .on(
+  if (!rideId) return () => {}
+  return makeChannel(`ride-chat:${rideId}`, (ch) =>
+    ch.on(
       'postgres_changes',
       { event: 'INSERT', schema: 'public', table: 'ride_messages', filter: `ride_id=eq.${rideId}` },
       (payload) => onInsert(payload.new as RideMessage),
-    )
-    .subscribe()
-  return () => {
-    void supabase.removeChannel(channel)
-  }
+    ),
+  )
 }
 
 /**
  * يستمع لظهور طلبات جديدة قابلة للقبول فقط (status=searching) — لواجهة السائق.
- * مُصفّى على الخادم حتى لا تصل تحديثات موقع السائق (على رحلات جارية) لكل السائقين،
- * وهو ما كان يُحدث فيضان رسائل Realtime عند الحجم الكبير. إزالة الطلبات المأخوذة
- * يتكفّل بها الاستطلاع الدوري (poll) لقائمة الطلبات المتاحة.
+ * مُصفّى على الخادم حتى لا تصل تحديثات موقع السائق لكل السائقين (فيضان رسائل).
  */
 export function subscribeToRides(onEvent: () => void): Unsubscribe {
-  if (!isSupabaseConfigured) return () => {}
-  const channel = supabase
-    .channel('rides:feed')
-    .on(
+  return makeChannel('rides:feed', (ch) =>
+    ch.on(
       'postgres_changes',
       { event: '*', schema: 'public', table: 'rides', filter: 'status=eq.searching' },
       () => onEvent(),
-    )
-    .subscribe()
-  return () => {
-    void supabase.removeChannel(channel)
-  }
+    ),
+  )
 }
 
 /** يستمع لانضمام/تغيّر ركّاب طلب ترحيل محدّد (لصفحة المنظّم). */
-export function subscribeToCommuteMembers(
-  orderId: string,
-  onEvent: () => void,
-): Unsubscribe {
-  if (!isSupabaseConfigured || !orderId) return () => {}
-  const channel = supabase
-    .channel(`commute-members:${orderId}`)
-    .on(
+export function subscribeToCommuteMembers(orderId: string, onEvent: () => void): Unsubscribe {
+  if (!orderId) return () => {}
+  return makeChannel(`commute-members:${orderId}`, (ch) =>
+    ch.on(
       'postgres_changes',
-      {
-        event: '*',
-        schema: 'public',
-        table: 'commute_members',
-        filter: `order_id=eq.${orderId}`,
-      },
+      { event: '*', schema: 'public', table: 'commute_members', filter: `order_id=eq.${orderId}` },
       () => onEvent(),
-    )
-    .subscribe()
-  return () => {
-    void supabase.removeChannel(channel)
-  }
+    ),
+  )
 }
 
 /** يستمع لتنبيهات الطوارئ الجديدة (للوحة الأدمن). */
 export function subscribeToSos(onEvent: () => void): Unsubscribe {
-  if (!isSupabaseConfigured) return () => {}
-  const channel = supabase
-    .channel('sos:feed')
-    .on(
-      'postgres_changes',
-      { event: '*', schema: 'public', table: 'sos_alerts' },
-      () => onEvent(),
-    )
-    .subscribe()
-  return () => {
-    void supabase.removeChannel(channel)
-  }
+  return makeChannel('sos:feed', (ch) =>
+    ch.on('postgres_changes', { event: '*', schema: 'public', table: 'sos_alerts' }, () => onEvent()),
+  )
 }
 
 /** يستمع لطلبات التعبئة الجديدة/المتغيّرة (للوحة الأدمن). */
 export function subscribeToTopups(onEvent: () => void): Unsubscribe {
-  if (!isSupabaseConfigured) return () => {}
-  const channel = supabase
-    .channel('topups:feed')
-    .on('postgres_changes', { event: '*', schema: 'public', table: 'topups' }, () => onEvent())
-    .subscribe()
-  return () => {
-    void supabase.removeChannel(channel)
-  }
+  return makeChannel('topups:feed', (ch) =>
+    ch.on('postgres_changes', { event: '*', schema: 'public', table: 'topups' }, () => onEvent()),
+  )
 }
 
 /** يستمع لطلبات انضمام السائقين (للوحة الأدمن). */
 export function subscribeToDriverApplications(onEvent: () => void): Unsubscribe {
-  if (!isSupabaseConfigured) return () => {}
-  const channel = supabase
-    .channel('driver-apps:feed')
-    .on(
+  return makeChannel('driver-apps:feed', (ch) =>
+    ch.on(
       'postgres_changes',
       { event: '*', schema: 'public', table: 'driver_applications' },
       () => onEvent(),
-    )
-    .subscribe()
-  return () => {
-    void supabase.removeChannel(channel)
-  }
+    ),
+  )
 }
 
 /** يستمع لتغيّرات طلبات الترحيل (لواجهة السائق). */
 export function subscribeToCommuteOrders(onEvent: () => void): Unsubscribe {
-  if (!isSupabaseConfigured) return () => {}
-  const channel = supabase
-    .channel('commute-orders:feed')
-    .on(
+  return makeChannel('commute-orders:feed', (ch) =>
+    ch.on(
       'postgres_changes',
       { event: '*', schema: 'public', table: 'commute_orders' },
       () => onEvent(),
-    )
-    .subscribe()
-  return () => {
-    void supabase.removeChannel(channel)
-  }
+    ),
+  )
 }

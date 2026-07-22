@@ -350,17 +350,23 @@ export default function SelectLocation() {
     const t = setTimeout(async () => {
       // المسار عبر نقاط التوقّف: انطلاق → توقّف₁ → … → وجهة (جمع المسافات والأزمنة).
       const pts = [pickupPos, ...stops.map((s) => s.pos), dropoffPos]
+      // نجلب مقاطع المسار بالتوازي (بدل التسلسل) — السعر أسرع على الشبكة الضعيفة.
+      const legPairs = pts.slice(0, -1).map((p, i) => [p, pts[i + 1]] as const)
+      const legs = await Promise.all(
+        legPairs.map(async ([a, b]) => {
+          const real = bothPlaced ? await fetchRoute(a, b) : null
+          return { leg: real ?? estimateRoute(a, b), real: Boolean(real) }
+        }),
+      )
+      if (!alive) return
       let km = 0
       let min = 0
       let anyReal = false
-      for (let i = 0; i < pts.length - 1; i++) {
-        const real = bothPlaced ? await fetchRoute(pts[i], pts[i + 1]) : null
-        const leg = real ?? estimateRoute(pts[i], pts[i + 1])
+      for (const { leg, real } of legs) {
         km += leg.distanceKm
         min += leg.durationMin
         if (real) anyReal = true
       }
-      if (!alive) return
       // النموذج الجديد (فترات) إن توفّر، وإلا التسعير القديم (شرائح).
       const rawFare = periodRate
         ? computeFare(km, min, periodRate)

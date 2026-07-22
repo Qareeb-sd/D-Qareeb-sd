@@ -1,6 +1,8 @@
-import { createContext, useContext, useState, type ReactNode } from 'react'
+import { createContext, useContext, useEffect, useState, type ReactNode } from 'react'
 import type { PaymentMethod, Ride } from '@/lib/types'
 import { KHARTOUM } from '@/theme'
+
+const STORE_KEY = 'qareeb_ride_draft'
 
 interface Place {
   pos: google.maps.LatLngLiteral
@@ -39,8 +41,30 @@ const defaultDraft: RideDraft = {
 
 const RideContext = createContext<RideContextValue | null>(null)
 
+// نستعيد المسودّة من تخزين الجلسة حتى تصمد الحالة أمام تحديث الصفحة/الفتح البارد
+// (شائع في الشبكة الضعيفة) — فلا تضيع متابعة الرحلة ولا شاشة التقييم.
+function loadDraft(): RideDraft {
+  try {
+    const raw = sessionStorage.getItem(STORE_KEY)
+    if (raw) return { ...defaultDraft, ...(JSON.parse(raw) as Partial<RideDraft>) }
+  } catch {
+    /* تخزين غير متاح — نبدأ نظيفاً */
+  }
+  return defaultDraft
+}
+
 export function RideProvider({ children }: { children: ReactNode }) {
-  const [draft, setDraft] = useState<RideDraft>(defaultDraft)
+  const [draft, setDraft] = useState<RideDraft>(loadDraft)
+
+  // نحفظ المسودّة ما دامت هناك رحلة نشطة، ونمسحها عند التصفير.
+  useEffect(() => {
+    try {
+      if (draft.rideId) sessionStorage.setItem(STORE_KEY, JSON.stringify(draft))
+      else sessionStorage.removeItem(STORE_KEY)
+    } catch {
+      /* تجاهل */
+    }
+  }, [draft])
 
   const value: RideContextValue = {
     ...draft,

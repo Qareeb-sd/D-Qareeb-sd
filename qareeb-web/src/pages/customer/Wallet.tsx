@@ -185,7 +185,7 @@ export default function Wallet() {
                     className="field"
                     inputMode="numeric"
                     value={amount}
-                    onChange={(e) => setAmount(e.target.value)}
+                    onChange={(e) => setAmount(toAsciiDigits(e.target.value).replace(/[^\d]/g, ''))}
                     placeholder="مثال: 20000"
                     required
                   />
