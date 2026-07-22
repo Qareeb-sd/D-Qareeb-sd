@@ -292,6 +292,21 @@ export default function Trip() {
         {/* لوحة سفلية */}
         <section className="relative z-10 -mt-4 rounded-t-[24px] bg-white shadow-soft">
           <div className="space-y-3 px-4 pt-4">
+            {/* نقطة الالتقاء بالسائق — تظهر قبل بدء الرحلة (مثل شاشات النقل المعروفة) */}
+            {status !== 'in_progress' && (
+              <div className="flex items-center gap-3 rounded-2xl border border-hairline bg-green-mint/40 p-3.5">
+                <span className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-green-mint text-green">
+                  <MapPin className="h-5 w-5" strokeWidth={2} />
+                </span>
+                <div className="min-w-0 flex-1">
+                  <p className="text-[12px] font-medium text-ink-muted">نقطة الالتقاء</p>
+                  <p className="truncate font-bold text-royal">
+                    {pickup?.address ?? 'موقعك الحالي'}
+                  </p>
+                </div>
+              </div>
+            )}
+
             {/* السائق */}
             <div className="flex items-center gap-3 rounded-2xl border border-hairline bg-ivory/50 p-3.5">
               {driver?.photo_url ? (
