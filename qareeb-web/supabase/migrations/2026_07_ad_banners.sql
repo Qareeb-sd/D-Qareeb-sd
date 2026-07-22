@@ -20,15 +20,10 @@ create index if not exists ad_banners_running_idx on public.ad_banners(active, s
 
 alter table public.ad_banners enable row level security;
 
--- المستخدمون المسجّلون يقرؤون البنرات النشطة السارية فقط (اليوم داخل [start_date, start_date+days)).
+-- لا سياسة قراءة عامّة للجدول (كانت تكشف اسم المُعلن وسعر الإعلان لكل مستخدم):
+-- يُقرأ البنر عبر دالّة get_active_ad_banner التي تُرجع الحقول الآمنة فقط.
+-- (تُطبَّق في تحصين الجولة الثالثة 2026_07_security_hardening_r3.sql.)
 drop policy if exists "read running ads" on public.ad_banners;
-create policy "read running ads" on public.ad_banners
-  for select to authenticated
-  using (
-    active
-    and current_date >= start_date
-    and current_date < (start_date + days)
-  );
 
 -- الأدمن/الطاقم: إدارة كاملة (وقراءة كل الإعلانات في اللوحة، سارية أو منتهية).
 drop policy if exists "staff manage ads" on public.ad_banners;

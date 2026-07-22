@@ -1,6 +1,5 @@
 import { useEffect, useState } from 'react'
-import { getActiveAdBanner, trackAdClick } from '@/lib/api'
-import type { AdBanner as Ad } from '@/lib/types'
+import { getActiveAdBanner, trackAdClick, type PublicAdBanner as Ad } from '@/lib/api'
 
 /**
  * بنر إعلان مدفوع — صورة يرفعها الأدمن، تُفتح رابطاً عند الضغط (إن وُجد).
@@ -19,7 +18,7 @@ export default function AdBanner({ role }: { role: 'customer' | 'driver' }) {
   const image = (
     <img
       src={ad.image_url}
-      alt={ad.title ?? 'إعلان'}
+      alt="إعلان"
       loading="lazy"
       className="block h-full w-full object-cover"
     />

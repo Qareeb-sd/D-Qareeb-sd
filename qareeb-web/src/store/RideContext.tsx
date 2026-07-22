@@ -1,6 +1,7 @@
-import { createContext, useContext, useEffect, useState, type ReactNode } from 'react'
+import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from 'react'
 import type { PaymentMethod, Ride } from '@/lib/types'
 import { KHARTOUM } from '@/theme'
+import { useAuth } from '@/store/AuthContext'
 
 const STORE_KEY = 'qareeb_ride_draft'
 
@@ -55,6 +56,28 @@ function loadDraft(): RideDraft {
 
 export function RideProvider({ children }: { children: ReactNode }) {
   const [draft, setDraft] = useState<RideDraft>(loadDraft)
+  const { profile } = useAuth()
+
+  // تصفير المسودّة عند تبدّل هوية المستخدم على نفس الجهاز (تسجيل خروج ثم دخول
+  // حسابٍ آخر). المزوّد لا يُعاد تركيبه عند الخروج، فمسح تخزين الجلسة وحده لا
+  // يكفي — الحالة في الذاكرة تبقى وتُعاد كتابتها لأول تفاعل. نتتبّع آخر هوية
+  // ونصفّر عند الانتقال لحسابٍ مختلف أو للخروج (بعد أن كان مسجّلاً).
+  // نصفّر فقط حين تكون الهوية السابقة مستخدماً حقيقياً وتغيّرت (خروج أو تبديل
+  // حساب) — لا عند أول تحميل (null→مستخدم) حتى لا نمسح استرجاع رحلة نشطة للفتح
+  // البارد لنفس المستخدم.
+  const lastUid = useRef<string | null | undefined>(undefined)
+  useEffect(() => {
+    const uid = profile?.id ?? null
+    if (lastUid.current != null && lastUid.current !== uid) {
+      setDraft(defaultDraft)
+      try {
+        sessionStorage.removeItem(STORE_KEY)
+      } catch {
+        /* تجاهل */
+      }
+    }
+    lastUid.current = uid
+  }, [profile?.id])
 
   // نحفظ المسودّة ما دامت هناك رحلة نشطة، ونمسحها عند التصفير.
   useEffect(() => {

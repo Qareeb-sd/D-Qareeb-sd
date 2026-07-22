@@ -1081,26 +1081,16 @@ export async function deleteAdBanner(id: string): Promise<{ error?: string }> {
 }
 
 /** البنر النشط الساري لدور المستخدم (لعرضه في الرئيسية) — أحدث واحد. */
-export async function getActiveAdBanner(role: 'customer' | 'driver'): Promise<AdBanner | null> {
+/** لَقْطة عرض البنر — الحقول الآمنة فقط (لا اسم مُعلن ولا سعر). */
+export type PublicAdBanner = Pick<AdBanner, 'id' | 'image_url' | 'link_url' | 'audience'>
+
+export async function getActiveAdBanner(role: 'customer' | 'driver'): Promise<PublicAdBanner | null> {
   if (!isSupabaseConfigured) return null
-  const aud = role === 'customer' ? ['customers', 'all'] : ['drivers', 'all']
-  const today = new Date().toISOString().slice(0, 10)
-  const { data } = await supabase
-    .from('ad_banners')
-    .select('*')
-    .eq('active', true)
-    .in('audience', aud)
-    .lte('start_date', today)
-    .order('created_at', { ascending: false })
-    .limit(10)
-  const list = (data as AdBanner[]) ?? []
-  // نتأكّد أنّ المدة لم تنتهِ (start_date + days > اليوم) — احترازاً لو رأى الطاقم الكل.
-  const running = list.filter((a) => {
-    const end = new Date(a.start_date)
-    end.setDate(end.getDate() + a.days)
-    return end > new Date(today)
-  })
-  return running[0] ?? null
+  // عبر دالّة آمنة تُرجع الحقول الآمنة فقط وتفرض السريان خادمياً — بدل قراءة
+  // الجدول مباشرةً (التي كانت تكشف اسم المُعلن وسعر الإعلان لكل مستخدم).
+  const { data } = await supabase.rpc('get_active_ad_banner', { p_role: role })
+  const list = (data as PublicAdBanner[]) ?? []
+  return list[0] ?? null
 }
 
 /**

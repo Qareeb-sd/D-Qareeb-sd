@@ -12,9 +12,9 @@
 //   OTP_PEPPER          — سرّ إضافي للتجزئة (اختياري لكن يُنصح به)
 // (SUPABASE_URL و SUPABASE_SERVICE_ROLE_KEY يحقنهما Supabase تلقائياً.)
 //
-// وضع تطوير: إن غاب WHATSAPP_TOKEN أو WHATSAPP_PHONE_ID لا نتّصل بـ Meta،
-// ونُعيد devCode في الرد ليكتمل التدفّق قبل ضبط واتساب. في الإنتاج (بوجود
-// الأسرار) لا يُعاد devCode إطلاقاً.
+// وضع تطوير: يُعاد devCode في الرد **فقط** عند ضبط OTP_DEV_MODE=1 صراحةً (لا
+// يُضبط في الإنتاج أبداً). لو غابت أسرار واتساب بلا وضع تطوير، نفشل مغلقاً بدل
+// كشف الرمز — فلا يتحوّل خطأ إعدادٍ في الإنتاج إلى تسريب رمزٍ لأي رقم.
 
 import { createClient } from 'jsr:@supabase/supabase-js@2'
 
@@ -25,6 +25,8 @@ const WA_PHONE_ID = Deno.env.get('WHATSAPP_PHONE_ID') ?? ''
 const WA_TEMPLATE = Deno.env.get('WHATSAPP_TEMPLATE') ?? 'otp'
 const WA_LANG = Deno.env.get('WHATSAPP_LANG') ?? 'ar'
 const PEPPER = Deno.env.get('OTP_PEPPER') ?? ''
+// وضع تطوير صريح: يُعيد الرمز في الرد. لا يُضبط في الإنتاج مطلقاً.
+const DEV_MODE = (Deno.env.get('OTP_DEV_MODE') ?? '') === '1'
 
 const CORS = {
   'access-control-allow-origin': '*',
@@ -112,9 +114,13 @@ Deno.serve(async (req) => {
     .upsert({ phone, code_hash, expires_at, attempts: 0, last_sent_at: new Date().toISOString() })
   if (upErr) return json({ error: 'تعذّر إنشاء الرمز' }, 500)
 
-  // وضع تطوير: بلا أسرار واتساب نعيد الرمز ليكتمل التدفّق.
-  if (!WA_TOKEN || !WA_PHONE_ID) {
+  // وضع تطوير صريح فقط: يُعاد الرمز ليكتمل التدفّق دون واتساب.
+  if (DEV_MODE) {
     return json({ sent: true, dev: true, devCode: code })
+  }
+  // إنتاج بلا أسرار واتساب = خطأ إعداد: نفشل مغلقاً بدل كشف الرمز.
+  if (!WA_TOKEN || !WA_PHONE_ID) {
+    return json({ error: 'خدمة التحقّق غير متاحة حالياً' }, 500)
   }
 
   const wa = await sendWhatsapp(phone, code)

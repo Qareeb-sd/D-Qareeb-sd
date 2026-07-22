@@ -50,7 +50,8 @@ Deno.serve(async (req) => {
     .eq('phone', phone)
     .maybeSingle()
 
-  if (!row) return json({ ok: false, error: 'اطلب رمزاً جديداً' })
+  // رسالة موحّدة مع «الرمز غير صحيح» حتى لا تكشف إن كان للرقم رمزٌ معلّق (تعداد).
+  if (!row) return json({ ok: false, error: 'الرمز غير صحيح أو منتهي — اطلب رمزاً جديداً' })
   if (new Date(row.expires_at).getTime() < Date.now()) {
     await supabase.from('otp_codes').delete().eq('phone', phone)
     return json({ ok: false, error: 'انتهت صلاحية الرمز — اطلب رمزاً جديداً' })
@@ -66,7 +67,7 @@ Deno.serve(async (req) => {
       .from('otp_codes')
       .update({ attempts: (row.attempts ?? 0) + 1 })
       .eq('phone', phone)
-    return json({ ok: false, error: 'الرمز غير صحيح' })
+    return json({ ok: false, error: 'الرمز غير صحيح أو منتهي — اطلب رمزاً جديداً' })
   }
 
   // نجح — احذف السجلّ (استخدام لمرّة واحدة).

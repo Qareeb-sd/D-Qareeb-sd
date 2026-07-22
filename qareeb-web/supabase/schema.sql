@@ -1376,6 +1376,7 @@ returns table (
     from public.rides r
     left join public.users u on u.id = r.driver_id
    where r.share_token = p_token
+     and r.status not in ('completed', 'cancelled')   -- لا تتبّع بعد انتهاء الرحلة
 $$;
 grant execute on function public.track_shared_ride(text) to anon, authenticated;
 
@@ -2113,8 +2114,9 @@ create policy "own vip requests" on public.vip_requests
   for select using (auth.uid() = driver_id or public.is_staff_or_admin());
 -- الإدخال يتم حصراً عبر دالة request_vip (SECURITY DEFINER) — لا سياسة إدخال مباشرة.
 drop policy if exists "admin update vip request" on public.vip_requests;
+-- يوائم صلاحية دالّة الاعتماد (has_perm('requests')).
 create policy "admin update vip request" on public.vip_requests
-  for update using (public.is_staff_or_admin()) with check (public.is_staff_or_admin());
+  for update using (public.has_perm('requests')) with check (public.has_perm('requests'));
 
 -- طلب اشتراك VIP: wallet → خصم فوري وتفعيل؛ bank_transfer → طلب معلّق للاعتماد.
 create or replace function public.request_vip(p_method text, p_proof_url text default null)
@@ -2376,8 +2378,10 @@ create policy "own withdrawals" on public.withdrawals
   for select using (auth.uid() = driver_id or public.is_staff_or_admin());
 -- الإدخال حصراً عبر request_withdrawal (SECURITY DEFINER) — لا سياسة إدخال مباشرة.
 drop policy if exists "admin update withdrawal" on public.withdrawals;
+-- يوائم صلاحية دالّة الاعتماد (has_perm('requests')) — فلا يغيّر الحالة موظّفٌ
+-- بلا الصلاحية عبر PostgREST فيجمّد أموال السائق المحجوزة.
 create policy "admin update withdrawal" on public.withdrawals
-  for update using (public.is_staff_or_admin()) with check (public.is_staff_or_admin());
+  for update using (public.has_perm('requests')) with check (public.has_perm('requests'));
 
 -- طلب سحب: يتحقّق من الرصيد ويخصمه فوراً (حجز) ثم ينشئ طلباً معلّقاً.
 create or replace function public.request_withdrawal(
@@ -3237,28 +3241,33 @@ grant execute on function public.apply_referral_code(text) to authenticated;
 -- مكافأة الإحالة عند أوّل رحلة مكتملة للمُحال (الطرفان).
 create or replace function public.reward_referral()
 returns trigger language plpgsql security definer set search_path = public as $$
-declare v_ref uuid; v_rewarded boolean; v_reward numeric; v_cw uuid; v_rw uuid;
+declare v_ref uuid; v_reward numeric; v_cw uuid; v_rw uuid; v_claimed int;
 begin
   if new.status = 'completed' and old.status is distinct from 'completed' then
-    select referred_by, referral_rewarded into v_ref, v_rewarded
-      from public.users where id = new.customer_id;
-    if v_ref is not null and not coalesce(v_rewarded, false) then
-      select referral_reward into v_reward from public.settings where id = 1;
-      if coalesce(v_reward, 0) > 0 then
-        select id into v_cw from public.wallets where user_id = new.customer_id;
-        if v_cw is not null then
-          update public.wallets set balance = balance + v_reward, updated_at = now() where id = v_cw;
-          insert into public.transactions (wallet_id, type, amount, note)
-            values (v_cw, 'topup', v_reward, 'مكافأة دعوة صديق');
-        end if;
-        select id into v_rw from public.wallets where user_id = v_ref;
-        if v_rw is not null then
-          update public.wallets set balance = balance + v_reward, updated_at = now() where id = v_rw;
-          insert into public.transactions (wallet_id, type, amount, note)
-            values (v_rw, 'topup', v_reward, 'مكافأة إحالة صديق');
+    select referred_by into v_ref from public.users where id = new.customer_id;
+    if v_ref is not null then
+      -- مطالبة ذرّية: من يحدّث العلَم (false→true) هو الوحيد الذي يمنح المكافأة
+      -- فلا تُدفع مرّتين عند اكتمال رحلتين للعميل في آنٍ واحد.
+      update public.users set referral_rewarded = true
+        where id = new.customer_id and not coalesce(referral_rewarded, false);
+      get diagnostics v_claimed = row_count;
+      if v_claimed = 1 then
+        select referral_reward into v_reward from public.settings where id = 1;
+        if coalesce(v_reward, 0) > 0 then
+          select id into v_cw from public.wallets where user_id = new.customer_id;
+          if v_cw is not null then
+            update public.wallets set balance = balance + v_reward, updated_at = now() where id = v_cw;
+            insert into public.transactions (wallet_id, type, amount, note)
+              values (v_cw, 'topup', v_reward, 'مكافأة دعوة صديق');
+          end if;
+          select id into v_rw from public.wallets where user_id = v_ref;
+          if v_rw is not null then
+            update public.wallets set balance = balance + v_reward, updated_at = now() where id = v_rw;
+            insert into public.transactions (wallet_id, type, amount, note)
+              values (v_rw, 'topup', v_reward, 'مكافأة إحالة صديق');
+          end if;
         end if;
       end if;
-      update public.users set referral_rewarded = true where id = new.customer_id;
     end if;
   end if;
   return new;
@@ -4148,9 +4157,18 @@ create table if not exists public.announcements (
 create index if not exists announcements_created_idx on public.announcements(created_at desc);
 alter table public.announcements enable row level security;
 drop policy if exists "read announcements" on public.announcements;
--- أي مستخدم مسجّل يقرأ الإعلانات (يُصفّيها التطبيق حسب جمهوره)؛ الإنشاء عبر RPC فقط.
+-- القراءة مقيّدة بجمهور المستخدم (الكل أو دوره) — بدل التصفية في العميل فقط.
 create policy "read announcements" on public.announcements
-  for select using (auth.uid() is not null);
+  for select using (
+    auth.uid() is not null
+    and (
+      audience = 'all'
+      or audience = (
+        select case when u.role = 'driver' then 'drivers' else 'customers' end
+        from public.users u where u.id = auth.uid()
+      )
+    )
+  );
 
 create or replace function public.admin_broadcast(p_title text, p_body text, p_audience text)
 returns void language plpgsql security definer set search_path = public as $$
@@ -5713,18 +5731,45 @@ language sql stable security definer set search_path = public as $$
 $$;
 
 -- انضمام شهري: يدفع الراكب إجمالي الشهر مقدّماً من محفظته (يُحجز على صفّه).
+-- حدّ أدنى متحفّظ لأجرة الترحيل (كحدّ الرحلات guard_ride_fare): يمنع p_fare
+-- الوهمي دون رفض أي اشتراك حقيقي. الترحيل لا يمرّ بجدول rides فلا يشمله حدّه.
+create or replace function public.commute_fare_floor(
+  p_service text, p_home_lat double precision, p_home_lng double precision,
+  p_dest_lat double precision, p_dest_lng double precision
+) returns numeric language sql stable set search_path = public as $$
+  select (coalesce(min(base_fare), 0) + coalesce(min(per_km), 0)
+          * coalesce(public.haversine_km(p_home_lat, p_home_lng, p_dest_lat, p_dest_lng), 0)) * 0.30
+    from public.service_pricing_periods where service_id = p_service;
+$$;
+
+-- قيد فريد يمنع الانضمام المكرّر لنفس المستخدم لنفس الطلب (خطّ دفاع أخير).
+do $$
+begin
+  if not exists (select 1 from pg_constraint where conname = 'commute_members_order_user_uniq') then
+    delete from public.commute_members a using public.commute_members b
+      where a.order_id = b.order_id and a.user_id = b.user_id
+        and a.user_id is not null and a.ctid > b.ctid;
+    alter table public.commute_members
+      add constraint commute_members_order_user_uniq unique (order_id, user_id);
+  end if;
+end $$;
+
 create or replace function public.commute_join_monthly(
   p_order uuid, p_name text, p_home_lat double precision, p_home_lng double precision,
   p_home_addr text, p_fare numeric, p_organizer boolean default false
 ) returns void language plpgsql security definer set search_path = public as $$
 declare v_uid uuid := auth.uid(); v_plan text; v_days int; v_weeks int; v_total numeric;
-        v_wallet uuid; v_bal numeric;
+        v_wallet uuid; v_bal numeric; v_service text; v_dlat double precision; v_dlng double precision;
 begin
   if v_uid is null then raise exception 'غير مصرّح'; end if;
-  select plan, coalesce(array_length(days, 1), 0) into v_plan, v_days
-    from public.commute_orders where id = p_order;
+  select plan, coalesce(array_length(days, 1), 0), service_id, dest_lat, dest_lng
+    into v_plan, v_days, v_service, v_dlat, v_dlng
+    from public.commute_orders where id = p_order for update;   -- قفل يمنع الانضمام المتزامن
   if not found then raise exception 'الطلب غير موجود'; end if;
   if v_plan <> 'monthly' then raise exception 'الطلب ليس شهرياً'; end if;
+  if coalesce(p_fare, 0) < coalesce(public.commute_fare_floor(v_service, p_home_lat, p_home_lng, v_dlat, v_dlng), 0) then
+    raise exception 'سعر الاشتراك لا يطابق التسعير المعتمد';
+  end if;
   if exists (select 1 from public.commute_members where order_id = p_order and user_id = v_uid) then
     raise exception 'أنت مشترك بالفعل في هذا الترحيل';
   end if;
@@ -5754,12 +5799,17 @@ create or replace function public.commute_join_daily(
   p_organizer boolean default false
 ) returns void language plpgsql security definer set search_path = public as $$
 declare v_uid uuid := auth.uid(); v_plan text; v_service text; v_seats int; v_count int; v_org uuid;
+        v_dlat double precision; v_dlng double precision;
 begin
   if v_uid is null then raise exception 'غير مصرّح'; end if;
-  select plan, service_id, organizer_id into v_plan, v_service, v_org
+  select plan, service_id, organizer_id, dest_lat, dest_lng
+    into v_plan, v_service, v_org, v_dlat, v_dlng
     from public.commute_orders where id = p_order for update;
   if not found then raise exception 'الطلب غير موجود'; end if;
   if coalesce(v_plan, 'daily') <> 'daily' then raise exception 'الطلب ليس يومياً'; end if;
+  if coalesce(p_fare, 0) < coalesce(public.commute_fare_floor(v_service, p_home_lat, p_home_lng, v_dlat, v_dlng), 0) then
+    raise exception 'سعر الاشتراك لا يطابق التسعير المعتمد';
+  end if;
   if exists (select 1 from public.commute_members where order_id = p_order and user_id = v_uid) then
     raise exception 'أنت مشترك بالفعل في هذا الترحيل';
   end if;

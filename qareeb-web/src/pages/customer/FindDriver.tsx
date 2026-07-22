@@ -74,6 +74,7 @@ export default function FindDriver() {
           if (ride.status === 'cancelled') {
             if (!done.current) {
               done.current = true // أوقف الاستطلاع بعد الإلغاء (لا مزيد من نداءات getRide)
+              reset() // الرحلة منتهية — امسح المسودّة فلا يتركها سهم الرجوع عالقة
               setPhase('cancelled')
             }
           } else if (ride.status !== 'searching' && ride.status !== 'requested') {
@@ -92,6 +93,7 @@ export default function FindDriver() {
             if (ride.status === 'cancelled') {
               if (!done.current) {
                 done.current = true
+                reset() // الرحلة منتهية — امسح المسودّة فلا يتركها سهم الرجوع عالقة
                 setPhase('cancelled')
               }
               return
