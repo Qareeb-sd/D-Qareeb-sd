@@ -209,6 +209,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         }
       }
       if (isSupabaseConfigured) await supabase.auth.signOut()
+      // امسح مسوّدة الرحلة المحفوظة حتى لا تتسرّب وجهة/مبلغ مستخدمٍ لحساب آخر
+      // يسجّل الدخول على نفس الجهاز بعده.
+      try {
+        sessionStorage.removeItem('qareeb_ride_draft')
+      } catch {
+        /* تجاهل */
+      }
       setSession(null)
       setProfile(null)
     },

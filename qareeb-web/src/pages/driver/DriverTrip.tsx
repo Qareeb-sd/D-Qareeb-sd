@@ -488,7 +488,9 @@ export default function DriverTrip() {
     setSettleErr('')
     const { error } = await settleRide(activeRide.id)
     setBusy(false)
-    if (error) {
+    // إن كانت الرحلة مسوّاة مسبقاً (أول محاولة نجحت خادمياً لكن ردّها ضاع بالشبكة
+    // فأعاد الكابتن الضغط) فهذا نجاحٌ فعلي — ننتقل للتقييم بدل حبسه أمام «خطأ».
+    if (error && !/مسوّا|مسوا/.test(error)) {
       // لا نترك الكابتن عالقاً أمام تنبيه — نعرض الخطأ داخلياً مع إبقاء زر إعادة المحاولة.
       setSettleErr(error)
       return

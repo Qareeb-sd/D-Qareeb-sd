@@ -614,9 +614,8 @@ drop policy if exists "read commute members" on public.commute_members;
 create policy "read commute members" on public.commute_members
   for select using (auth.role() = 'authenticated');
 
+-- (الإدراج المباشر ملغى لاحقاً في تحصين الجولة الثانية — انظر أدناه.)
 drop policy if exists "add commute members" on public.commute_members;
-create policy "add commute members" on public.commute_members
-  for insert to authenticated with check (true);
 
 -- المستخدم يقرأ/يعدّل بياناته
 drop policy if exists "own profile" on public.users;
@@ -1568,8 +1567,15 @@ end $$;
 -- ============================================================
 
 -- bucket عام لصور العرض (يقرأها العميل بالرابط). الوثائق السرّية تبقى في driver-docs.
-insert into storage.buckets (id, name, public) values ('driver-photos','driver-photos', true)
+insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+  values ('driver-photos','driver-photos', true, 5242880,
+          array['image/jpeg', 'image/png', 'image/webp'])
   on conflict (id) do nothing;
+-- تقييد الحجم/النوع حتى للسلّة الموجودة مسبقاً (يمنع استضافة ملفّات عشوائية).
+update storage.buckets
+   set file_size_limit  = 5242880,
+       allowed_mime_types = array['image/jpeg', 'image/png', 'image/webp']
+ where id = 'driver-photos';
 drop policy if exists "upload own driver photo" on storage.objects;
 create policy "upload own driver photo" on storage.objects
   for insert to authenticated
@@ -5654,10 +5660,10 @@ create policy "read commute members" on public.commute_members for select using 
              where o.id = order_id and (o.organizer_id = auth.uid() or o.driver_id = auth.uid()))
 );
 
--- الإدراج: يربط الصفّ بمُدرِجه (user_id = المتصل) — لازم لسياسة القراءة أعلاه.
+-- الإدراج المباشر ملغى (تحصين الجولة الثانية): كان يتجاوز commute_join_daily
+-- ففحص السعة/القفل/منع التكرار قابل للتخطّي. كلّ الإدراجات تمرّ الآن عبر دوالّ
+-- SECURITY DEFINER (commute_join_daily / commute_join_monthly) بما فيها صفّ المنظّم.
 drop policy if exists "add commute members" on public.commute_members;
-create policy "add commute members" on public.commute_members for insert to authenticated
-  with check (user_id = auth.uid());
 
 -- القبول صار عبر accept_commute_order — نُسقِط سياسة التحديث المباشر.
 drop policy if exists "driver accept commute" on public.commute_orders;
@@ -5740,31 +5746,39 @@ end $$;
 grant execute on function public.commute_join_monthly(uuid, text, double precision, double precision, text, numeric, boolean) to authenticated;
 
 -- انضمام يومي آمن: قفل صفّ الطلب يمنع سباق المقاعد + فرض السعة خادمياً.
+-- (p_organizer) يمرّ إنشاء صفّ المنظّم عبر الدالّة نفسها بدل الإدراج المباشر،
+-- بعد إسقاط سياسة الإدراج المباشر في commute_members (تحصين الجولة الثانية).
 create or replace function public.commute_join_daily(
   p_order uuid, p_name text, p_home_lat double precision, p_home_lng double precision,
-  p_home_addr text, p_fare numeric, p_pay_method text default 'cash'
+  p_home_addr text, p_fare numeric, p_pay_method text default 'cash',
+  p_organizer boolean default false
 ) returns void language plpgsql security definer set search_path = public as $$
-declare v_uid uuid := auth.uid(); v_plan text; v_service text; v_seats int; v_count int;
+declare v_uid uuid := auth.uid(); v_plan text; v_service text; v_seats int; v_count int; v_org uuid;
 begin
   if v_uid is null then raise exception 'غير مصرّح'; end if;
-  select plan, service_id into v_plan, v_service
+  select plan, service_id, organizer_id into v_plan, v_service, v_org
     from public.commute_orders where id = p_order for update;
   if not found then raise exception 'الطلب غير موجود'; end if;
   if coalesce(v_plan, 'daily') <> 'daily' then raise exception 'الطلب ليس يومياً'; end if;
   if exists (select 1 from public.commute_members where order_id = p_order and user_id = v_uid) then
     raise exception 'أنت مشترك بالفعل في هذا الترحيل';
   end if;
-  select coalesce(seats, 4) into v_seats from public.service_pricing where service_id = v_service;
-  select count(*) into v_count from public.commute_members where order_id = p_order;
-  if v_count >= coalesce(v_seats, 4) then
-    raise exception 'اكتمل عدد المقاعد في هذا الترحيل';
+  if coalesce(p_organizer, false) then
+    -- صفّ المنظّم: يُنشئه صاحب الطلب فقط، ولا يخضع لفحص السعة (هو أوّل عضو).
+    if v_org is distinct from v_uid then raise exception 'غير مصرّح'; end if;
+  else
+    select coalesce(seats, 4) into v_seats from public.service_pricing where service_id = v_service;
+    select count(*) into v_count from public.commute_members where order_id = p_order;
+    if v_count >= coalesce(v_seats, 4) then
+      raise exception 'اكتمل عدد المقاعد في هذا الترحيل';
+    end if;
   end if;
   insert into public.commute_members
     (order_id, user_id, name, home_lat, home_lng, home_address, is_organizer, fare, pay_method)
-  values (p_order, v_uid, p_name, p_home_lat, p_home_lng, p_home_addr, false,
+  values (p_order, v_uid, p_name, p_home_lat, p_home_lng, p_home_addr, coalesce(p_organizer, false),
           p_fare, coalesce(p_pay_method, 'cash'));
 end $$;
-grant execute on function public.commute_join_daily(uuid, text, double precision, double precision, text, numeric, text) to authenticated;
+grant execute on function public.commute_join_daily(uuid, text, double precision, double precision, text, numeric, text, boolean) to authenticated;
 
 -- التحصيل اليومي: السائق يؤكّد «تم ترحيل اليوم» فيُحصَّل لكل راكب يومه (مرّة/يوم).
 --   محفظة → خصم من الراكب وإضافة الصافي للسائق (نموذج قيد مزدوج كالرحلات).
@@ -6120,7 +6134,8 @@ returns table (
   join public.users cu on cu.id = r.customer_id
   join public.drivers d on d.user_id = auth.uid()
   where r.status = 'searching' and r.driver_id is null
-    and d.vehicle_type = r.service_id                 -- مطابقة الفئة
+    -- الطرود/بين المدن فئات وهمية → لا تُطابَق بالمركبة، بل بالقدرة أدناه.
+    and (r.is_package or r.intercity or d.vehicle_type = r.service_id)
     and (not r.is_package or d.accepts_packages)
     and (not r.intercity  or d.accepts_intercity)
   order by r.created_at asc;
@@ -6148,9 +6163,10 @@ begin
     raise exception 'الرحلة غير مدفوعة بعد — بانتظار دفع العميل';
   end if;
 
-  -- مطابقة نوع مركبة السائق مع فئة الطلب.
+  -- مطابقة نوع مركبة السائق مع فئة الطلب — إلا الطرود/بين المدن (فئات وهمية
+  -- لا تُطابَق بالمركبة، بل بالقدرة أدناه).
   select vehicle_type into v_vtype from public.drivers where user_id = auth.uid();
-  if v_vtype is distinct from v_service then
+  if not (v_pkg or v_inter) and v_vtype is distinct from v_service then
     raise exception 'هذا الطلب لفئة مركبة مختلفة عن مركبتك';
   end if;
 
@@ -6191,16 +6207,19 @@ begin
   end if;
   -- حدّ أدنى متحفّظ من التسعير المخزّن (هافرسين × أرخص فترة × 0.30) يمنع الأسعار
   -- الوهمية (fare=1) دون رفض أي رحلة حقيقية حتى بخصم واسع. تفاصيل في الترحيل
-  -- 2026_07_ride_fare_floor.sql.
-  if new.dropoff_lat is not null and new.dropoff_lng is not null then
-    select min(base_fare), min(per_km) into v_base, v_perkm
-      from public.service_pricing_periods where service_id = new.service_id;
-    if v_base is not null then
+  -- 2026_07_ride_fare_floor.sql. يُطبَّق دائماً؛ بلا وجهة نأخذ مسافة 0 فيبقى
+  -- حدّ الأجرة الأساسية على الأقلّ (يمنع تجاوزه بإرسال وجهة فارغة).
+  select min(base_fare), min(per_km) into v_base, v_perkm
+    from public.service_pricing_periods where service_id = new.service_id;
+  if v_base is not null then
+    if new.dropoff_lat is not null and new.dropoff_lng is not null then
       v_km := public.haversine_km(new.pickup_lat, new.pickup_lng, new.dropoff_lat, new.dropoff_lng);
-      v_floor := (coalesce(v_base, 0) + coalesce(v_perkm, 0) * coalesce(v_km, 0)) * 0.30;
-      if new.fare < v_floor then
-        raise exception 'سعر الرحلة لا يطابق التسعير المعتمد';
-      end if;
+    else
+      v_km := 0;
+    end if;
+    v_floor := (coalesce(v_base, 0) + coalesce(v_perkm, 0) * coalesce(v_km, 0)) * 0.30;
+    if new.fare < v_floor then
+      raise exception 'سعر الرحلة لا يطابق التسعير المعتمد';
     end if;
   end if;
   return new;

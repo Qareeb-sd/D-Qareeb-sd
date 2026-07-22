@@ -119,10 +119,11 @@ export async function createCommuteOrder(
     })
     if (mErr) throw new Error(mErr.message)
   } else {
-    const { error: iErr } = await supabase.from('commute_members').insert({
-      order_id: order.id, user_id: organizerId, name: org.name,
-      home_lat: home.lat, home_lng: home.lng, home_address: home.address,
-      is_organizer: true, fare: org.fare, pay_method: org.pay_method,
+    // يومي → عبر الدالّة الآمنة (p_organizer) بدل الإدراج المباشر الملغى.
+    const { error: iErr } = await supabase.rpc('commute_join_daily', {
+      p_order: order.id, p_name: org.name,
+      p_home_lat: home.lat, p_home_lng: home.lng, p_home_addr: home.address,
+      p_fare: org.fare, p_pay_method: org.pay_method, p_organizer: true,
     })
     if (iErr) throw new Error(iErr.message)
   }

@@ -127,9 +127,12 @@ Deno.serve(async (req) => {
   if (payload.topup_id) {
     const { data: t } = await supabase
       .from('topups')
-      .select('amount, wallet_id')
+      .select('amount, wallet_id, status')
       .eq('id', payload.topup_id)
       .maybeSingle()
+    // لا نُرسل «تمت الموافقة» إلا لتعبئةٍ معتمدة فعلاً (يمنع إشعاراً كاذباً
+    // بتمرير معرّف تعبئة معلّقة من عميل عادي).
+    if (t?.status !== 'approved') return json({ ok: true, skipped: 'not approved' })
     if (t?.wallet_id) {
       const { data: w } = await supabase
         .from('wallets')
@@ -144,9 +147,10 @@ Deno.serve(async (req) => {
   } else if (payload.withdrawal_id) {
     const { data: wd } = await supabase
       .from('withdrawals')
-      .select('amount, driver_id')
+      .select('amount, driver_id, status')
       .eq('id', payload.withdrawal_id)
       .maybeSingle()
+    if (wd?.status !== 'approved') return json({ ok: true, skipped: 'not approved' })
     userId = wd?.driver_id
     title = 'تمت الموافقة على السحب'
     body = wd ? `تم تحويل ${fmt(Number(wd.amount))} إلى حسابك` : 'تمت الموافقة على طلب سحبك'

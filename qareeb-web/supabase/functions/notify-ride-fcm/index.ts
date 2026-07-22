@@ -88,19 +88,19 @@ Deno.serve(async (req) => {
   // (العميل يستدعيها بعد إنشاء رحلته عبر functions.invoke الذي يحمل JWT جلسته).
   // نرفض أي استدعاء مجهول بمفتاح anon فقط — كان الحارس السابق فارغاً بلا رفض.
   const secretOk = Boolean(WEBHOOK_SECRET) && req.headers.get('x-webhook-secret') === WEBHOOK_SECRET
+  let callerId: string | null = null
   if (!secretOk) {
     const jwt = (req.headers.get('authorization') ?? '').replace(/^Bearer\s+/i, '')
-    let userOk = false
     if (jwt) {
       try {
         const auth = createClient(SUPABASE_URL, SERVICE_ROLE)
         const { data } = await auth.auth.getUser(jwt)
-        userOk = Boolean(data.user?.id)
+        callerId = data.user?.id ?? null
       } catch {
-        userOk = false
+        callerId = null
       }
     }
-    if (!userOk) return json({ error: 'unauthorized' }, 401)
+    if (!callerId) return json({ error: 'unauthorized' }, 401)
   }
 
   let ride_id: string | undefined
@@ -117,10 +117,16 @@ Deno.serve(async (req) => {
   // الرحلة يجب أن تكون في حالة بحث (لا نُشعِر عن رحلة مأخوذة/ملغاة).
   const { data: ride } = await supabase
     .from('rides')
-    .select('id, status, service_id, pickup_address, pickup_lat, pickup_lng, fare')
+    .select('id, status, service_id, customer_id, pickup_address, pickup_lat, pickup_lng, fare')
     .eq('id', ride_id)
     .maybeSingle()
   if (!ride || ride.status !== 'searching') return json({ ok: true, skipped: true })
+
+  // مع JWT (لا سرّ): يجب أن يكون المتصل صاحب الرحلة — يمنع إغراق السائقين
+  // بإشعارات عن رحلة لا يملكها المتصل بتمرير معرّفها.
+  if (!secretOk && callerId && ride.customer_id !== callerId) {
+    return json({ error: 'forbidden' }, 403)
+  }
 
   // السائقون المتصلون القريبون من نقطة الانطلاق فقط (لا بثّ لكل السائقين).
   const { data: near } = await supabase.rpc('nearby_online_driver_ids', {

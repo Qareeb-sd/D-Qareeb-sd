@@ -111,8 +111,9 @@ export default function Rides() {
                     </span>
                   )}
                 </div>
-                {/* الإيصال/إعادة الطلب للرحلات المكتملة فقط — لا معنى لهما للملغاة */}
-                {!isCancelled && (
+                {/* الإيصال/إعادة الطلب للرحلات المكتملة فقط — لا للملغاة ولا للجارية
+                    (إعادة الطلب أثناء رحلة نشطة كانت تهجرها وتبدأ حجزاً جديداً). */}
+                {isCompleted && (
                   <div className="mt-3 flex gap-2">
                     {(r.dropoff_lat != null || r.dropoff_address) && (
                       <button
