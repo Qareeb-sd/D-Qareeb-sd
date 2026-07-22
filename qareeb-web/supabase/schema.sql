@@ -6154,12 +6154,27 @@ grant execute on function public.accept_ride(uuid) to authenticated;
 -- ── (C3) حارس سعر الرحلة: لا يُقبَل سعر صفري/سالب/فارغ أو مبالغ فيه ────────────
 create or replace function public.guard_ride_fare()
 returns trigger language plpgsql set search_path = public as $$
+declare v_km numeric; v_base numeric; v_perkm numeric; v_floor numeric;
 begin
   if new.fare is null or new.fare <= 0 then
     raise exception 'سعر الرحلة غير صالح';
   end if;
   if new.fare > 100000000 then           -- سقف أمان ضدّ التلاعب/الأخطاء
     raise exception 'سعر الرحلة تجاوز الحدّ المعقول';
+  end if;
+  -- حدّ أدنى متحفّظ من التسعير المخزّن (هافرسين × أرخص فترة × 0.30) يمنع الأسعار
+  -- الوهمية (fare=1) دون رفض أي رحلة حقيقية حتى بخصم واسع. تفاصيل في الترحيل
+  -- 2026_07_ride_fare_floor.sql.
+  if new.dropoff_lat is not null and new.dropoff_lng is not null then
+    select min(base_fare), min(per_km) into v_base, v_perkm
+      from public.service_pricing_periods where service_id = new.service_id;
+    if v_base is not null then
+      v_km := public.haversine_km(new.pickup_lat, new.pickup_lng, new.dropoff_lat, new.dropoff_lng);
+      v_floor := (coalesce(v_base, 0) + coalesce(v_perkm, 0) * coalesce(v_km, 0)) * 0.30;
+      if new.fare < v_floor then
+        raise exception 'سعر الرحلة لا يطابق التسعير المعتمد';
+      end if;
+    end if;
   end if;
   return new;
 end $$;
