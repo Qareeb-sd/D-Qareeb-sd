@@ -1020,6 +1020,16 @@ export async function uploadAdImage(file: File): Promise<{ url?: string; error?:
   return { url: data.publicUrl }
 }
 
+/** يزيد عدّاد نقرات بنر (أفضل جهد — لا يعطّل فتح الرابط). */
+export async function trackAdClick(id: string): Promise<void> {
+  if (!isSupabaseConfigured) return
+  try {
+    await supabase.rpc('ad_banner_click', { p_id: id })
+  } catch {
+    /* أفضل جهد */
+  }
+}
+
 /** كل البنرات (للأدمن) — سارية ومنتهية. */
 export async function listAdBanners(): Promise<AdBanner[]> {
   if (!isSupabaseConfigured) return []

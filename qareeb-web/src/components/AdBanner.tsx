@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { getActiveAdBanner } from '@/lib/api'
+import { getActiveAdBanner, trackAdClick } from '@/lib/api'
 import type { AdBanner as Ad } from '@/lib/types'
 
 /**
@@ -29,7 +29,13 @@ export default function AdBanner({ role }: { role: 'customer' | 'driver' }) {
     <div className="mb-3">
       <div className="relative aspect-[16/5] overflow-hidden rounded-2xl border border-hairline">
         {ad.link_url ? (
-          <a href={ad.link_url} target="_blank" rel="noopener noreferrer" className="block h-full">
+          <a
+            href={ad.link_url}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="block h-full"
+            onClick={() => void trackAdClick(ad.id)}
+          >
             {image}
           </a>
         ) : (

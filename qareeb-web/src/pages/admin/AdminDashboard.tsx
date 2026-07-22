@@ -630,29 +630,28 @@ export default function AdminDashboard() {
 
   // تحميل كسول لقوائم السائقين/العملاء/الشكاوى عند فتح تبويبها أول مرة.
   useEffect(() => {
+    // نُعيد الجلب عند كل فتح للتبويب (يعتمد على tab فقط) — بيانات طازجة بلا ركود
+    // بعد التنقّل ذهاباً وإياباً. الحمل مقبول لأنه إجراء تنقّل يدوي.
     if (tab === 'requests') {
       void listPendingVipRequests().then(setVipReqs)
       void listPendingWithdrawals().then(setWithdrawReqs)
     }
-    if (tab === 'drivers' && drivers === null) void listAllDrivers().then(setDrivers)
-    if (tab === 'customers' && customers === null)
-      void listAdminCustomers().then((c) => setCustomers(c as AdminCustomer[]))
-    if (tab === 'announcements' && announcements === null)
-      void listAnnouncements().then(setAnnouncements)
-    if (tab === 'complaints' && complaints === null)
-      void listComplaints().then((c) => setComplaints(c as Complaint[]))
+    if (tab === 'drivers') void listAllDrivers().then(setDrivers)
+    if (tab === 'customers') void listAdminCustomers().then((c) => setCustomers(c as AdminCustomer[]))
+    if (tab === 'announcements') void listAnnouncements().then(setAnnouncements)
+    if (tab === 'complaints') void listComplaints().then((c) => setComplaints(c as Complaint[]))
     if (tab === 'promo') void listPromos().then(setPromos)
     if (tab === 'pricing' && periods.length === 0) void listServicePeriods().then(setPeriods)
     if (tab === 'commute') void getCommuteHeld().then(setCommuteHeld)
     if (tab === 'rewards') {
-      if (rewards === null) void adminListRewards().then(setRewards)
-      if (rewardRedemptions === null)
-        void adminListRewardRedemptions().then(setRewardRedemptions)
+      void adminListRewards().then(setRewards)
+      void adminListRewardRedemptions().then(setRewardRedemptions)
     }
-    if (tab === 'support' && tickets === null) void adminListSupportTickets().then(setTickets)
+    if (tab === 'support') void adminListSupportTickets().then(setTickets)
     // قائمة الرحلات التفصيلية (1500) ثقيلة — تُحمّل عند فتح تبويب الرحلات فقط.
-    if (tab === 'rides' && detailRides === null) void adminListRides(1500).then(setDetailRides)
-  }, [tab, drivers, customers, complaints, announcements, rewards, rewardRedemptions, tickets, detailRides])
+    if (tab === 'rides') void adminListRides(1500).then(setDetailRides)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tab])
 
   // تحديث حيّ لمحادثة الدعم المفتوحة + قائمة التذاكر (تظهر ردود العميل الجديدة).
   useEffect(() => {

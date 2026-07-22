@@ -347,7 +347,8 @@ export default function AdsManager() {
                   </p>
                   <p className="mt-0.5 text-[12px] text-ink-soft">
                     {a.period ? PERIOD_LABEL[a.period] : `${a.days} يوم`} ·{' '}
-                    <span className="font-bold text-royal">{money(a.price)}</span> (مدفوع مقدّماً)
+                    <span className="font-bold text-royal">{money(a.price)}</span> (مدفوع مقدّماً) ·{' '}
+                    <span className="font-bold">{a.clicks ?? 0}</span> نقرة
                   </p>
                   <div className="mt-1.5 flex items-center gap-2">
                     <button

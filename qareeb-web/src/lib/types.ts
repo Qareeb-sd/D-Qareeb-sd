@@ -573,6 +573,7 @@ export interface AdBanner {
   days: number
   price: number // السعر الإجمالي المدفوع مقدّماً
   period: 'day' | 'week' | 'month' | null
+  clicks: number // عدد النقرات على البنر
   start_date: string
   active: boolean
   created_at: string
