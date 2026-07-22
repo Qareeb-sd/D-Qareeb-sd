@@ -129,12 +129,6 @@ export async function createCommuteOrder(
   return order as CommuteOrder
 }
 
-/** مُعرّف المستخدم الحالي من الجلسة (محلّي، بلا نداء شبكة). */
-async function currentUid(): Promise<string | null> {
-  const { data } = await supabase.auth.getSession()
-  return data.session?.user.id ?? null
-}
-
 // ------------------------------- الجلب -------------------------------
 export async function getCommuteOrder(id: string): Promise<CommuteOrder | null> {
   if (!isSupabaseConfigured)
@@ -200,16 +194,15 @@ export async function joinCommuteOrder(
     })
     return error ? { error: error.message } : {}
   }
-  const { error } = await supabase.from('commute_members').insert({
-    order_id: orderId,
-    user_id: await currentUid(),
-    name: input.name,
-    home_lat: input.home.lat,
-    home_lng: input.home.lng,
-    home_address: input.home.address,
-    is_organizer: false,
-    fare: input.fare,
-    pay_method: input.pay_method,
+  // يومي → دالّة آمنة تفرض سعة المقاعد وتمنع سباق الانضمام (بدل إدراج مباشر).
+  const { error } = await supabase.rpc('commute_join_daily', {
+    p_order: orderId,
+    p_name: input.name,
+    p_home_lat: input.home.lat,
+    p_home_lng: input.home.lng,
+    p_home_addr: input.home.address,
+    p_fare: input.fare,
+    p_pay_method: input.pay_method,
   })
   return error ? { error: error.message } : {}
 }
