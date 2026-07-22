@@ -90,6 +90,8 @@ import {
   adminSuspendDriver,
   adminFreezeDriver,
   adminWarnDriver,
+  adminSetDriverPhotos,
+  uploadDriverPhoto,
   adminBanCustomer,
   adminWarnCustomer,
   adminBroadcast,
@@ -1131,6 +1133,28 @@ export default function AdminDashboard() {
 
   // ===== VIP وإعفاء العمولة للسائقين =====
   const reloadDrivers = () => void listAllDrivers().then(setDrivers)
+
+  // الأدمن يستبدل صورة السائق/المركبة — تُرفع لمخزن عام ثم تُحفظ في سجلّ السائق،
+  // فتتحدّث الصورة التي يراها العميل عند الرحلة فوراً.
+  const replaceDriverPhoto = async (
+    d: AdminDriverRow,
+    kind: 'selfie' | 'vehicle',
+    file: File,
+  ) => {
+    setBusyId(d.user_id)
+    const up = await uploadDriverPhoto(d.user_id, kind, file)
+    if (up.error || !up.url) {
+      setBusyId(null)
+      return alert(up.error ?? 'تعذّر رفع الصورة')
+    }
+    const { error } = await adminSetDriverPhotos(
+      d.user_id,
+      kind === 'selfie' ? { photoUrl: up.url } : { vehiclePhotoUrl: up.url },
+    )
+    setBusyId(null)
+    if (error) return alert(error)
+    reloadDrivers()
+  }
 
   // ===== إدارة سائق: تحذير / إيقاف / تجميد =====
   const warnDriver = async (d: AdminDriverRow) => {
@@ -2829,6 +2853,38 @@ export default function AdminDashboard() {
                       >
                         ⚠ تحذير
                       </button>
+                      <label
+                        title="تعديل صورة السائق (تظهر للعميل)"
+                        className="cursor-pointer rounded-lg border border-hairline px-2.5 py-1 text-xs font-bold text-ink-soft hover:bg-green-soft"
+                      >
+                        📷 صورة السائق
+                        <input
+                          type="file"
+                          accept="image/*"
+                          className="hidden"
+                          onChange={(e) => {
+                            const f = e.target.files?.[0]
+                            if (f) void replaceDriverPhoto(d, 'selfie', f)
+                            e.target.value = ''
+                          }}
+                        />
+                      </label>
+                      <label
+                        title="تعديل صورة المركبة (تظهر للعميل)"
+                        className="cursor-pointer rounded-lg border border-hairline px-2.5 py-1 text-xs font-bold text-ink-soft hover:bg-green-soft"
+                      >
+                        🚗 صورة المركبة
+                        <input
+                          type="file"
+                          accept="image/*"
+                          className="hidden"
+                          onChange={(e) => {
+                            const f = e.target.files?.[0]
+                            if (f) void replaceDriverPhoto(d, 'vehicle', f)
+                            e.target.value = ''
+                          }}
+                        />
+                      </label>
                       <button
                         onClick={() => freezeDriver(d)}
                         disabled={busyId === d.user_id}

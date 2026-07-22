@@ -1505,6 +1505,20 @@ export async function getDriverDocUrl(path: string): Promise<string | null> {
  * يرفع صورة عرض (صورة السائق أو المركبة) إلى bucket عام ويعيد رابطها المباشر —
  * تُعرَض للعميل عند قبول الرحلة (بعكس وثائق KYC الخاصّة).
  */
+/** الأدمن يستبدل صورة السائق/المركبة (تنعكس فوراً على ما يراه العميل). */
+export async function adminSetDriverPhotos(
+  userId: string,
+  patch: { photoUrl?: string; vehiclePhotoUrl?: string },
+): Promise<{ error?: string }> {
+  if (!isSupabaseConfigured) return {}
+  const { error } = await supabase.rpc('admin_set_driver_photos', {
+    p_user: userId,
+    p_photo_url: patch.photoUrl ?? null,
+    p_vehicle_photo_url: patch.vehiclePhotoUrl ?? null,
+  })
+  return { error: error?.message }
+}
+
 export async function uploadDriverPhoto(
   userId: string,
   kind: 'selfie' | 'vehicle',
